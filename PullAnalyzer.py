@@ -1,0 +1,599 @@
+# -*- coding: utf-8 -*-
+"""
+Created on Mon Sep  8 21:49:47 2025
+
+@author: Team Minc, adapted in Python by Joseph Vermeil
+"""
+
+
+# %% 1. Imports
+
+import os
+import numpy as np
+import pandas as pd
+import statsmodels.api as sm
+import matplotlib.pyplot as plt
+import xml.etree.ElementTree as ET
+
+from scipy.io import savemat
+from scipy.optimize import minimize
+
+
+# %% 2. Subfunctions
+
+def importTrackMateTracks(filepath):
+    """
+    Parse a TrackMate XML file and return list of tracks.
+    Each track: numpy array [t, x, y].
+    """
+    tree = ET.parse(filepath)
+    root = tree.getroot()
+    tracks = []
+    for particle in root.findall('particle'):
+        L = []
+        for detection in particle.iter("detection"):
+            # print(detection)
+            # ID = int(spot.attrib["ID"])
+            t = float(detection.attrib["t"])
+            x = float(detection.attrib["x"])
+            y = float(detection.attrib["y"])
+            L.append([t, x, y])
+        tracks.append(np.array(L))
+    return(tracks)
+
+
+def trackSelection(tracks, mode="longest"):
+    """
+    Select one track.
+    mode="longest": pick the track with most frames
+    """
+    if mode == "longest":
+        lengths = [len(tr) for tr in tracks]
+        idx = int(np.argmax(lengths))
+        return(tracks[idx])
+    else:
+        print('Unspecified track selection')
+        # Fallback: first track
+        return(tracks[0])
+
+
+def fitLine(X, Y):
+    """
+    returns: results.params, results \n
+    Y=a*X+b ; params[0] = b,  params[1] = a
+    NB:
+        R2 = results.rsquared \n
+        ci = results.conf_int(alpha=0.05) \n
+        CovM = results.cov_params() \n
+        p = results.pvalues \n
+    This is how one should compute conf_int:
+        bse = results.bse \n
+        dist = stats.t \n
+        alpha = 0.05 \n
+        q = dist.ppf(1 - alpha / 2, results.df_resid) \n
+        params = results.params \n
+        lower = params - q * bse \n
+        upper = params + q * bse \n
+    """
+    X = sm.add_constant(X)
+    model = sm.OLS(Y, X)
+    results = model.fit()
+    params = results.params 
+#     print(dir(results))
+    return(results.params, results)
+
+
+def fitLineHuber(X, Y, with_wlm_results = False):
+    """
+    returns: results.params, results \n
+    Y=a*X+b ; params[0] = b,  params[1] = a
+    NB:
+        R2 = results.rsquared \n
+        ci = results.conf_int(alpha=0.05) \n
+        CovM = results.cov_params() \n
+        p = results.pvalues \n
+    This is how one should compute conf_int:
+        bse = results.bse \n
+        dist = stats.t \n
+        alpha = 0.05 \n
+        q = dist.ppf(1 - alpha / 2, results.df_resid) \n
+        params = results.params \n
+        lower = params - q * bse \n
+        upper = params + q * bse \n
+    """
+    X = sm.add_constant(X)
+    model = sm.RLM(Y, X, M=sm.robust.norms.HuberT())
+    results = model.fit()
+    params = results.params
+    
+    if not with_wlm_results:
+        out = (results.params, results)
+    else:
+        weights = results.weights
+        w_model = sm.WLS(Y, X, weights)
+        w_results = w_model.fit()
+        out = (results.params, results, w_results)
+    return(out)
+
+
+# %% 3. Parameters
+
+date = '25-09-04'
+# pull_id = '25-09-04_M1-D7-P4'
+# pull_id = '25-09-04_M1-D7-P6'
+# pull_id = '25-09-04_M2-D3-P1'
+pull_id = '25-09-04_M2-D4-P1'
+
+# directory = os.path.join("C:/Users/Utilisateur/Desktop/MicroscopeData/Leica/", date)
+# md_table = pd.read_csv(os.path.join(directory, 'md_pulls.csv'))
+# directory = os.path.join(directory, 'Analysis')
+
+directory = os.path.join("C:/Users/josep/Desktop/Pulls")
+df_manips = pd.read_csv(os.path.join(directory, 'md_manips.csv'))
+md_table = pd.read_csv(os.path.join(directory, 'md_pulls.csv'))
+directory = os.path.join(directory, 'Analysis')
+
+tracks_name = pull_id + '_Tracks.xml'
+output_folder = pull_id + '_Results'
+if not os.path.exists(os.path.join(directory, output_folder)):
+    os.makedirs(os.path.join(directory, output_folder))
+
+os.chdir(directory)
+
+frame_initPull = md_table.loc[md_table['id'] == pull_id, 'frame_initPull'].values[0]
+frame_endPull = md_table.loc[md_table['id'] == pull_id, 'frame_endPull'].values[0]
+magnet_x = md_table.loc[md_table['id'] == pull_id, 'magnet_x'].values[0]
+magnet_y = md_table.loc[md_table['id'] == pull_id, 'magnet_y'].values[0]
+
+pixel_size = 0.451  # µm
+# pixel_size = 0.909  # µm
+time_stp = 0.5      # s
+magnet_radius = pixel_size * md_table.loc[md_table['id'] == pull_id, 'magnet_diameter'].values[0] / 2  # µm
+bead_radius = pixel_size * md_table.loc[md_table['id'] == pull_id, 'bead_diameter'].values[0] / 2   # µm
+
+# Viscosity of glycerol 80% v/v glycerol/water at 21°C [Pa.s]
+viscosity_glycerol = 0.0857  
+# Magnet function distance (µm) to velocity (µm/s) [expected velocity in glycerol]
+mag_d2v = lambda x: 80.23*np.exp(-x/47.49) + 1.03*np.exp(-x/22740.0) 
+# Magnet function distance (µm) to force (pN)
+mag_d2f = lambda x: 6*np.pi*viscosity_glycerol*mag_d2v(x)*bead_radius
+
+# Fit options
+start1 = [2, 50, 900]   # initial [k, gamma1, gamma2]
+start2 = [0.9, 25]      # initial [a, tau]
+
+
+# %% 4. Load data
+
+tracks = importTrackMateTracks(os.path.join(directory, tracks_name))
+track = trackSelection(tracks, mode = 'longest')
+
+X, Y, t = track[:,1], track[:,2], track[:,0]
+
+initPullTime = np.where(t == (frame_initPull - 1))[0][0]
+finPullTime = np.where(t == (frame_endPull - 1))[0][0]
+
+
+# %% 5. Pretreatment
+
+# %%% --- Rotate track ---
+theta = np.arctan2(Y[initPullTime] - Y[finPullTime],
+                   X[initPullTime] - X[finPullTime])
+rotation_mat = np.array([[np.cos(-theta), -np.sin(-theta)],
+                         [np.sin(-theta),  np.cos(-theta)]])
+coords = np.vstack((X, Y)).T @ rotation_mat.T
+x_rot, y_rot = coords[:,0], coords[:,1]
+
+pull_index = np.arange(initPullTime, finPullTime+1)
+xp, yp = x_rot[pull_index], y_rot[pull_index]
+
+# %%% --- Pulling phase ---
+d = np.stack([(magnet_x - X[pull_index]) * pixel_size,
+              (magnet_y - Y[pull_index]) * pixel_size], axis=1)
+dist = np.linalg.norm(d, axis=1) - magnet_radius
+pull_force = mag_d2f(dist)
+
+x_shift = (-x_rot[initPullTime:] + np.max(x_rot[initPullTime:])) * pixel_size
+pull_length = finPullTime - initPullTime + 1
+dx_pulling = x_shift[pull_index - initPullTime]
+dx_pulling_n = dx_pulling / pull_force
+tpulling = (t[pull_index] - t[initPullTime]) * time_stp
+
+# %% 6. Fit model
+
+# %%% Option 1. --- Viscous model ---
+
+params, results = fitLine(tpulling[1:], dx_pulling_n[1:])
+# params, results = fitLineHuber(tpulling, dx_pulling_n)
+
+gamma = params[1]
+visco = 1/(6*np.pi*bead_radius*gamma)
+R2 = results.rsquared
+
+print(gamma, visco, R2)
+
+# %%%% --- Figures ---
+
+os.chdir(os.path.join(directory, output_folder))
+
+fig1, axes1 = plt.subplots(1, 2, figsize = (10,5))
+ax = axes1[0]
+ax.plot(X, Y, ".-")
+ax.axis("equal")
+ax.grid(axis='both')
+ax.set_title("Original track")
+
+ax = axes1[1]
+ax.plot(x_rot, y_rot, ".-")
+ax.plot(xp, yp, "k.-", linewidth=2)
+ax.axis("equal")
+ax.grid(axis='both')
+ax.set_title("Rotated track")
+plt.savefig("trajectories.png")
+
+fig2, axes2 = plt.subplots(1, 1, figsize = (5,5))
+ax = axes2
+ax.plot(tpulling, dx_pulling_n, "s")
+xfit = np.linspace(0, tpulling[-1], 100)
+yfit = params[0] + params[1]*xfit
+ax.plot(xfit, yfit, "r-", label=r'$\eta$ = ' + f'{visco*1000:.2f} mPa.s')
+ax.set_xlabel("t [s]")
+ax.set_ylabel("dx/f [µm/pN]")
+ax.grid(axis='both')
+ax.legend(fontsize = 11)
+plt.savefig("fits.jpg")
+
+plt.show()
+
+# %%% -----------
+
+# %%% Option 2. --- Jeffreys model ---
+
+# %%%% --- Fit pulling phase ---
+
+def jeffrey_model(params, x):
+    k, gamma1, gamma2 = params
+    return (1 - np.exp(-k*x/gamma1))/k + x/gamma2
+
+obj1 = lambda params: np.linalg.norm(jeffrey_model(params, tpulling) - dx_pulling_n)
+res1 = minimize(obj1, start1, method="Nelder-Mead", tol=1e-10,
+                options={"maxfev": 500})
+k, gamma1, gamma2 = res1.x
+tempo1, tempo2 = gamma1/k, gamma2/k
+
+# %%%% --- Fit release phase ---
+
+dx_release_n = x_shift[pull_length:] / x_shift[pull_length-1]
+Release_index = np.arange(finPullTime, len(t))
+trelease = (t[Release_index] - t[finPullTime]) * time_stp
+
+def exp_fit(params, x):
+    a, tau = params
+    return (1-a)*np.exp(-x/tau) + a
+
+obj2 = lambda params: np.linalg.norm(exp_fit(params, trelease) - dx_release_n)
+res2 = minimize(obj2, start2, method="Nelder-Mead", tol=1e-7,
+                options={"maxfev": 1000})
+a, tau = res2.x
+
+
+# %%%% --- Save results ---
+
+os.makedirs(os.path.join(directory, output_folder), exist_ok=True)
+os.chdir(os.path.join(directory, output_folder))
+
+# Excel saving
+with pd.ExcelWriter(f"Table.xlsx", engine="openpyxl") as writer:
+    pulling_force_df = pd.DataFrame(np.column_stack([tpulling, dx_pulling, pull_force]),
+                                    columns=["t[s]", "dx.pulling", "Pulling Force [pN]"])
+    pulling_force_df.to_excel(writer, sheet_name="PullingPhase1", startrow=1, startcol=1, index=False)
+
+    pulling_curves_df = pd.DataFrame(np.column_stack([tpulling, dx_pulling_n]),
+                                      columns=["t[s]", "dx/f[µm/pN]"])
+    pulling_curves_df.to_excel(writer, sheet_name="PullingPhase2", startrow=1, startcol=1, index=False)
+    pd.DataFrame([[k, gamma1, gamma2, tempo1, tempo2]],
+                  columns=["k", "gamma1", "gamma2", "tempo1", "tempo2"]).to_excel(
+                      writer, sheet_name="PullingPhase2", startrow=1, startcol=3, index=False)
+
+    release_curves_df = pd.DataFrame(np.column_stack([trelease, dx_release_n]),
+                                      columns=["t[s]", "dx/dx(0)"])
+    release_curves_df.to_excel(writer, sheet_name="ReleasePhase", startrow=1, startcol=1, index=False)
+    pd.DataFrame([[a, tau]], columns=["a", "tau"]).to_excel(
+        writer, sheet_name="ReleasePhase", startrow=1, startcol=3, index=False)
+
+# Save .mat
+savemat(f"Table.mat", {"k": k, "gamma1": gamma1, "gamma2": gamma2,
+                                "a": a, "tau": tau})
+
+# %%%% --- Figures ---
+
+plt.figure()
+plt.subplot(1,2,1)
+plt.plot(X, Y, ".-")
+plt.axis("equal")
+plt.title("Original track")
+
+plt.subplot(1,2,2)
+plt.plot(x_rot, y_rot, ".-")
+plt.plot(xp, yp, "k.-", linewidth=2)
+plt.axis("equal")
+plt.title("Rotated track")
+plt.savefig("trajectories.jpg")
+
+plt.figure()
+plt.subplot(1,2,1)
+plt.plot(tpulling, dx_pulling_n, "s")
+plt.plot(np.linspace(0, tpulling[-1], 1000),
+          jeffrey_model([k,gamma1,gamma2], np.linspace(0, tpulling[-1], 1000)), "r-")
+plt.xlabel("t [s]"); plt.ylabel("dx/f [µm/pN]")
+
+plt.subplot(1,2,2)
+plt.plot(trelease, dx_release_n, "s")
+plt.plot(np.linspace(0, trelease[-1], 1000),
+          exp_fit([a,tau], np.linspace(0, trelease[-1], 1000)), "r-")
+plt.xlabel("t [s]"); plt.ylabel("Normalized displacement")
+plt.ylim([0, 1.5])
+plt.savefig("fits.jpg")
+
+print(k, gamma1, gamma2, a, tau)
+
+# %% ---------------
+
+
+
+
+# %% 11. A function to analyze multiple files
+
+def pullAnalyzer_multiFiles(mainDir, prefix_id, mode = 'newton', results = 'results',
+                            Redo = False, PLOT = True, SHOW = False):
+    analysisDir = os.path.join(mainDir, 'Analysis')
+    df_manips = pd.read_csv(os.path.join(mainDir, 'md_manips.csv'))
+    df_pulls = pd.read_csv(os.path.join(mainDir, 'md_pulls.csv'))
+    try:
+        df_res = pd.read_csv(os.path.join(mainDir, results + '.csv'))
+        already_analyzed = df_res['pull_id'].values
+    except:
+        df_res = pd.DataFrame({})
+        already_analyzed = []
+    
+    prefix_id_manip = ('_').join(prefix_id.split('_')[:1 + ('_' in prefix_id)])
+    listManips = [m for m in df_manips['id'] if m.startswith(prefix_id_manip)]
+    
+    id_cols = ['pull_id']
+    co_cols = ['type', 'solution', 'bead type', 'bead radius', 'treatment', 'magnet']
+    if mode == 'newton':
+        result_cols = ['fit_mode', 'viscosity', 'R2', 'median speed', 'median force']
+    elif mode == 'jeffrey':
+        result_cols = []
+        # TODO!
+        
+    results_dict = {c:[] for c in id_cols}
+    results_dict.update({c:[] for c in result_cols})
+    results_dict.update({c:[] for c in co_cols})
+    
+    for M_id in listManips:
+        co_dict = df_manips[df_manips['id'] == M_id].to_dict('list')
+        listPulls = [p for p in df_pulls['id'] if p.startswith(M_id) and (Redo or (p not in already_analyzed))]
+        for P_id in listPulls:
+            output, error = pullAnalyzer(mainDir, P_id, mode = 'newton')
+            if not error:
+                results_dict['pull_id'].append(P_id)
+                results_dict['type'].append(co_dict['type'][0])
+                results_dict['solution'].append(co_dict['solution'][0])
+                results_dict['bead type'].append(co_dict['bead type'][0])
+                pixel_size = df_pulls.loc[md_table['id']==P_id, 'pixel_size'].values[0]
+                bead_radius = pixel_size * df_pulls.loc[df_pulls['id']==P_id, 'bead_diameter'].values[0]/2
+                results_dict['bead radius'].append(bead_radius)
+                results_dict['treatment'].append(co_dict['treatment'][0])
+                results_dict['magnet'].append(co_dict['magnet'][0])
+                
+                if mode == 'newton':
+                    visco, R2, speed_med, force_med = output
+                    results_dict['fit_mode'].append('newton')
+                    results_dict['viscosity'].append(visco*1000)
+                    results_dict['R2'].append(R2)
+                    results_dict['median speed'].append(speed_med)
+                    results_dict['median force'].append(force_med)
+                
+    new_df_res = pd.DataFrame(results_dict)
+    df_res = pd.concat([df_res,new_df_res]).drop_duplicates(subset='pull_id', keep='last').reset_index(drop=True)
+    df_res.to_csv(os.path.join(mainDir, results + '.csv'), index=False)
+    return(df_res)
+                
+            
+def pullAnalyzer(mainDir, pull_id, mode = 'newton',
+                 PLOT = True, SHOW = False):
+    if SHOW:
+        plt.ion()
+    else:
+        plt.ioff()
+    #### 1. Paths
+    analysisDir = os.path.join(mainDir, 'Analysis')
+    df_pulls = pd.read_csv(os.path.join(mainDir, 'md_pulls.csv'))
+    tracks_name = pull_id + '_Tracks.xml'
+    # output_folder = pull_id + '_Results'
+    # if not os.path.exists(os.path.join(analysisDir, output_folder)):
+    #     os.makedirs(os.path.join(analysisDir, output_folder))
+
+    #### 2. Parameters
+    frame_initPull = df_pulls.loc[df_pulls['id'] == pull_id, 'frame_initPull'].values[0]
+    frame_endPull = df_pulls.loc[df_pulls['id'] == pull_id, 'frame_endPull'].values[0]
+    magnet_x = df_pulls.loc[df_pulls['id'] == pull_id, 'magnet_x'].values[0]
+    magnet_y = df_pulls.loc[df_pulls['id'] == pull_id, 'magnet_y'].values[0]
+    pixel_size = df_pulls.loc[df_pulls['id'] == pull_id, 'pixel_size'].values[0]  # µm
+    time_stp = df_pulls.loc[df_pulls['id'] == pull_id, 'time_stp'].values[0]      # s
+    magnet_radius = pixel_size * df_pulls.loc[df_pulls['id'] == pull_id, 'magnet_diameter'].values[0] / 2  # µm
+    bead_radius = pixel_size * df_pulls.loc[df_pulls['id'] == pull_id, 'bead_diameter'].values[0] / 2   # µm
+    # Viscosity of glycerol 80% v/v glycerol/water at 21°C [Pa.s]
+    viscosity_glycerol = 0.0857  
+    # Magnet function distance (µm) to velocity (µm/s) [expected velocity in glycerol]
+    mag_d2v = lambda x: 80.23*np.exp(-x/47.49) + 1.03*np.exp(-x/22740.0) 
+    # Magnet function distance (µm) to force (pN)
+    mag_d2f = lambda x: 6*np.pi*viscosity_glycerol*mag_d2v(x)*bead_radius
+    
+    #### 3. Load data
+    try:
+        tracks = importTrackMateTracks(os.path.join(analysisDir, tracks_name))
+    except:
+        error, output = True, ()
+        return(output, error)
+    track = trackSelection(tracks, mode = 'longest')
+    X, Y, t = track[:,1], track[:,2], track[:,0]
+    initPullTime = np.where(t == (frame_initPull - 1))[0][0]
+    finPullTime = np.where(t == (frame_endPull - 1))[0][0]
+    
+    #### 4. Pretreatment
+    # --- Rotate track ---
+    theta = np.arctan2(Y[initPullTime] - Y[finPullTime],
+                       X[initPullTime] - X[finPullTime])
+    rotation_mat = np.array([[np.cos(-theta), -np.sin(-theta)],
+                             [np.sin(-theta),  np.cos(-theta)]])
+    coords = np.vstack((X, Y)).T @ rotation_mat.T
+    x_rot, y_rot = coords[:,0], coords[:,1]
+    pull_index = np.arange(initPullTime, finPullTime+1)
+    xp, yp = x_rot[pull_index], y_rot[pull_index]
+
+    # --- Pulling phase ---
+    d = np.stack([(magnet_x - X[pull_index]) * pixel_size,
+                  (magnet_y - Y[pull_index]) * pixel_size], axis=1)
+    dist = np.linalg.norm(d, axis=1) - magnet_radius
+    pull_force = mag_d2f(dist)
+    x_shift = (-x_rot[initPullTime:] + np.max(x_rot[initPullTime:])) * pixel_size
+    pull_length = finPullTime - initPullTime + 1
+    dx_pulling = x_shift[pull_index - initPullTime]
+    dx_pulling_n = dx_pulling / pull_force
+    tpulling = (t[pull_index] - t[initPullTime]) * time_stp
+    
+    speed_med = np.median((dx_pulling[1:]-dx_pulling[:-1])/time_stp) # µm/s
+    force_med = np.median(pull_force) # pN
+    
+    #### 5. Fit Model
+    if mode == 'newton':
+        params, results = fitLine(tpulling[1:], dx_pulling_n[1:])
+        # params, results = fitLineHuber(tpulling, dx_pulling_n)
+        gamma = params[1]
+        visco = 1/(6*np.pi*bead_radius*gamma)
+        R2 = results.rsquared
+        output = (visco, R2, speed_med, force_med)
+        
+    elif mode == 'jeffrey':
+        # Fit options
+        start1 = [2, 50, 900]   # initial [k, gamma1, gamma2]
+        start2 = [0.9, 25] 
+        
+        def jeffrey_model(params, x):
+            k, gamma1, gamma2 = params
+            return (1 - np.exp(-k*x/gamma1))/k + x/gamma2
+
+        obj1 = lambda params: np.linalg.norm(jeffrey_model(params, tpulling) - dx_pulling_n)
+        res1 = minimize(obj1, start1, method="Nelder-Mead", tol=1e-10,
+                        options={"maxfev": 500})
+        k, gamma1, gamma2 = res1.x
+        tempo1, tempo2 = gamma1/k, gamma2/k
+
+        dx_release_n = x_shift[pull_length:] / x_shift[pull_length-1]
+        Release_index = np.arange(finPullTime, len(t))
+        trelease = (t[Release_index] - t[finPullTime]) * time_stp
+
+        def exp_fit(params, x):
+            a, tau = params
+            return (1-a)*np.exp(-x/tau) + a
+
+        obj2 = lambda params: np.linalg.norm(exp_fit(params, trelease) - dx_release_n)
+        res2 = minimize(obj2, start2, method="Nelder-Mead", tol=1e-7,
+                        options={"maxfev": 1000})
+        a, tau = res2.x
+    
+    #### 6. Figures
+    if mode == 'newton' and PLOT:
+        fig1, axes1 = plt.subplots(1, 2, figsize = (10,5))
+        ax = axes1[0]
+        ax.plot(X, Y, ".-")
+        ax.axis("equal")
+        ax.grid(axis='both')
+        ax.set_title("Original track")
+    
+        ax = axes1[1]
+        ax.plot(x_rot, y_rot, ".-")
+        ax.plot(xp, yp, "k.-", linewidth=2)
+        ax.axis("equal")
+        ax.grid(axis='both')
+        ax.set_title("Rotated track")
+        fig1.savefig(os.path.join(analysisDir, pull_id + "_trajectories.png"))
+    
+        fig2, axes2 = plt.subplots(1, 1, figsize = (5,5))
+        ax = axes2
+        ax.plot(tpulling, dx_pulling_n, "s")
+        xfit = np.linspace(0, tpulling[-1], 100)
+        yfit = params[0] + params[1]*xfit
+        ax.plot(xfit, yfit, "r-", label=r'$\eta$ = ' + f'{visco*1000:.2f} mPa.s')
+        ax.set_xlabel("t [s]")
+        ax.set_ylabel("dx/f [µm/pN]")
+        ax.grid(axis='both')
+        ax.legend(fontsize = 11)
+        fig2.savefig(os.path.join(analysisDir, pull_id + "_fits.png"))
+        
+        if SHOW:
+            plt.show()
+            
+        plt.ion()
+        
+    #### 7. Output
+    error = False
+    return(output, error)
+
+
+# %% 12. Run the function
+ 
+mainDir = os.path.join("C:/Users/josep/Desktop/Pulls")
+prefix_id = '25-09-04'
+
+pullAnalyzer_multiFiles(mainDir, prefix_id, mode = 'newton', results = 'NaSS_results',
+                        Redo = True, PLOT = False, SHOW = False)
+
+
+# %% ---------------
+
+# %% 101. Tests
+
+# %%% Test step 4.
+filepath = os.path.join(directory, tracks_name)
+
+tree = ET.parse(filepath)
+root = tree.getroot()
+
+# Extract spots into dictionary: {ID: (t, x, y)}
+
+tracks = []
+for particle in root.findall('particle'):
+    L = []
+    for detection in particle.iter("detection"):
+        # print(detection)
+        # ID = int(spot.attrib["ID"])
+        t = float(detection.attrib["t"])
+        x = float(detection.attrib["x"])
+        y = float(detection.attrib["y"])
+        L.append([t, x, y])
+    tracks.append(np.array(L))
+    
+# for spot in root.findall(".//Spot"):
+#     # ID = int(spot.attrib["ID"])
+#     t = float(spot.attrib["FRAME"])
+#     x = float(spot.attrib["POSITION_X"])
+#     y = float(spot.attrib["POSITION_Y"])
+#     spots_dict[ID] = (t, x, y)
+
+# for track in root.findall(".//Track"):
+#     edges = []
+#     for edge in track.findall("Edge"):
+#         src = int(edge.attrib["SPOT_SOURCE_ID"])
+#         tgt = int(edge.attrib["SPOT_TARGET_ID"])
+#         edges.append((src, tgt))
+
+    # Collect unique spot IDs from this track
+#     spot_ids = set([src for src, _ in edges] + [tgt for _, tgt in edges])
+#     track_points = [spots_dict[sid] for sid in spot_ids if sid in spots_dict]
+#     track_points = np.array(sorted(track_points, key=lambda p: p[0]))  # sort by time
+#     tracks.append(track_points)
+
+# md = {}  # could store metadata here if needed
