@@ -36,122 +36,33 @@ import time
 import shutil
 import random
 import numbers
-import pyautogui
 import matplotlib
 import traceback
-# import cv2
 
-# import scipy
+
 from scipy import interpolate
 from scipy import signal
 from scipy import odr
 
-# import skimage
+
 from skimage import io, filters, exposure, measure, transform, util, color
 from scipy.signal import find_peaks, savgol_filter
 from scipy.optimize import linear_sum_assignment, least_squares
 from matplotlib.gridspec import GridSpec
 from datetime import date, datetime
-from PyQt5 import QtWidgets as Qtw
 from collections.abc import Collection
 from copy import deepcopy
 
 #### Local Imports
 
-import sys
-import CortexPaths as cp
-sys.path.append(cp.DirRepoPython)
-
 import GraphicStyles as gs
-import GlobalConstants as gc
-
-# 2. Pandas settings
-pd.set_option('mode.chained_assignment', None)
-
-# 3. Plot settings
-gs.set_default_options_jv()
-
-# 4. Other settings
-# These regex are used to correct the stupid date conversions done by Excel
-# When given a date yy-mm-dd, excel will convert in yy/mm/20dd or yy/mm/19dd if yy >= 30
-dateFormatExcel = re.compile(r'[1-2]\d{1}/\d{2}/(?:19|20)\d{2}') # matches X#/##/YY## where X in {1, 2} and YY in {19, 20}
-dateFormatExcel2 = re.compile(r'[1-2]\d-\d{2}-(?:19|20)\d{2}') # matches X#-##-YY## where X in {1, 2} and YY in {19, 20}
-dateFormatOk = re.compile(r'\d{2}-\d{2}-\d{2}') # Correct format yy-mm-dd we use
 
 
 # %% (1) Utility functions
 
 
 # %%% Image management - nomeclature and creating stacks
-
-def AllMMTriplets2Stack(DirExt, DirSave, expt, prefix, channel, subDir = None):
-    """
-    Used for metamorph created files.
-    Metamoprh does not save images in stacks but individual triplets. These individual triplets take time
-    to open in FIJI.
-    This function takes images of a sepcific channel and creates .tif stacks from them.
        
-    """
-    if subDir == None:
-        DirCells = os.path.join(DirExt, expt)
-    else:
-        DirCells = os.path.join(DirExt, expt, subDir)
-    
-    allCells = os.listdir(DirCells)
-    excludedCells = []
-    for currentCell in allCells:
-        dirImages = os.path.join(DirCells, currentCell)
-        date = findInfosInFileName(currentCell, 'date')
-        date = date.replace('-', '.')
-        filename = currentCell+'_'+channel
-        exptPath = DirSave+'/'+date
-        
-        if not os.path.exists(exptPath):
-            os.mkdir(exptPath)
-        
-        if subDir == None:
-            dirSave = os.path.join(exptPath, currentCell)
-            if not os.path.exists(dirSave):
-                os.mkdir(dirSave)
-        else:
-            dirSave = os.path.join(exptPath, subDir, currentCell)
-            dirSaveSubdir = os.path.join(exptPath, subDir)
-            if not os.path.exists(dirSaveSubdir):
-                os.mkdir(dirSaveSubdir)
-            
-            if not os.path.exists(dirSave):
-                os.mkdir(os.path.join(dirSaveSubdir, currentCell))
-                
-        allFiles = os.listdir(dirImages)
-    
-        date = findInfosInFileName(currentCell, 'date')
-        # print(gs.YELLOW + currentCell + gs.NORMAL)
-        
-        allFiles = [dirImages+'/'+string for string in allFiles if 'thumb' not in string and '.TIF' in string and channel in string]
-        
-        if len(allFiles) == 0:
-            print(gs.ORANGE + 'Error in loading files' + gs.NORMAL)
-            break
-        
-        #+4 at the end corrosponds to the '_t' part to sort the array well
-        limiter = len(dirImages)+len(prefix)+len(channel)+4
-        
-        try:
-            allFiles.sort(key=lambda x: int(x[limiter:-4]))
-        except:
-            print(gs.ORANGE + 'Error in sorting files for ' + currentCell + gs.NORMAL)
-        
-        try:
-            ic = io.ImageCollection(allFiles, conserve_memory = True)
-            stack = io.concatenate_images(ic)
-            io.imsave(dirSave+'/'+filename+'.tif', stack, check_contrast=False)
-            print(gs.GREEN + "Successfully saved "+currentCell + gs.NORMAL)
-        except:
-            excludedCells.append(currentCell)
-            print(gs.ORANGE + "Unknown error in saving "+currentCell + gs.NORMAL)
-            
-    return excludedCells
-        
 
 def renamePrefix(DirExt, currentCell, newPrefix):
     """
@@ -191,239 +102,7 @@ def renamePrefix(DirExt, currentCell, newPrefix):
             
 # %%% Data management
 
-def getExperimentalConditions(DirExp = cp.DirRepoExp, save = False, suffix = cp.suffix):
-    """
-    Import the table with all the conditions in a clean way.
-    It is a tedious function to read because it's doing a boring job:
-    Converting strings into numbers when possible; 
-    Converting commas into dots to correct for the French decimal notation; 
-    Converting semicolon separated values into lists when needed; 
-    \n
-    NEW FEATURE: Thanks to "engine='python'" in pd.read_csv() the separator can now be detected automatically !
-    """
-    
-    top = time.time()
-    
-    #### 0. Import the table
-    if suffix == '':
-        experimentalDataFile = 'ExperimentalConditions.csv'
-    else:
-        experimentalDataFile = 'ExperimentalConditions' + suffix + '.csv'
         
-    experimentalDataFilePath = os.path.join(DirExp, experimentalDataFile)
-    expDf = pd.read_csv(experimentalDataFilePath, sep=None, header=0, engine='python')
-    # print(gs.BLUE + 'Importing Experimental Conditions' + gs.NORMAL)
-    print(gs.BLUE + 'Experimental Conditions Table has ' + str(expDf.shape[0]) + ' lines and ' + str(expDf.shape[1]) + ' columns' + gs.NORMAL)
-    #### 1. Clean the table
-    
-    #### 1.1 Remove useless columns
-    for c in expDf.columns:
-        if 'Unnamed' in c:
-            expDf = expDf.drop([c], axis=1)
-        if '.1' in c:
-            expDf = expDf.drop([c], axis=1)
-        
-    expDf = expDf.convert_dtypes()
-
-    #### 1.2 Convert commas into dots
-    listTextColumns = []
-    for col in expDf.columns:
-        try:
-            if expDf[col].dtype == 'string':
-                listTextColumns.append(col)
-        except:
-            pass
-    expDf[listTextColumns] = expDf[listTextColumns].apply(lambda x: x.str.replace(',','.'))
-
-    #### 1.3 Format 'scale'
-    expDf['scale pixel per um'] = expDf['scale pixel per um'].astype(float)
-    
-    #### 1.4 Format 'optical index correction'
-    try: # In case the format is 'n1/n2'
-        expDf['optical index correction'] = \
-                  expDf['optical index correction'].apply(lambda x: x.split('/')[0]).astype(float) \
-                / expDf['optical index correction'].apply(lambda x: x.split('/')[1]).astype(float)
-        print(gs.ORANGE + 'optical index correction : format changed' + gs.NORMAL)
-    except:
-        pass
-    
-    #### 1.5 Format 'magnetic field correction'
-    expDf['magnetic field correction'] = expDf['magnetic field correction'].astype(float)
-    
-    #### 1.6 Format 'with fluo images'
-    expDf['with fluo images'] = expDf['with fluo images'].astype(bool)
-
-    # #### 1.7 Format 'ramp field'
-    # try:
-    #     print(ORANGE + 'ramp field : converted to list successfully' + gs.NORMAL)
-    #     expDf['ramp field'] = \
-    #     expDf['ramp field'].apply(lambda x: [x.split(';')[0], x.split(';')[1]] if not pd.isnull(x) else [])
-    # except:
-    #     pass
-
-    #### 1.8 Format 'date'
-    dateExemple = expDf.loc[expDf.index[1],'date']
-    if re.match(dateFormatExcel, dateExemple):
-        print(gs.ORANGE + 'dates : format corrected' + gs.NORMAL)
-        expDf.loc[:,'date'] = expDf.loc[:,'date'].apply(lambda x: x.split('/')[0] + '-' + x.split('/')[1] + '-' + x.split('/')[2][2:])        
-    elif re.match(dateFormatExcel2, dateExemple):
-        print(gs.ORANGE + 'dates : format corrected' + gs.NORMAL)
-        expDf.loc[:,'date'] = expDf.loc[:,'date'].apply(lambda x: x.split('-')[0] + '-' + x.split('-')[1] + '-' + x.split('-')[2][2:])  
-        
-    #### 1.9 Format activation fields
-    try:
-        expDf['first activation'] = expDf['first activation'].astype(np.float)
-        expDf['activation frequency'] = expDf['activation frequency'].astype(np.float)
-    except:
-        pass
-
-    #### 2. Save the table, if required
-    if save:
-        saveName = 'ExperimentalConditions' + suffix + '.csv'
-        savePath = os.path.join(DirExp, saveName)
-        expDf.to_csv(savePath, sep=';', index = False)
-        
-        if not cp.CloudSaving == '':
-            savePath_cloud = os.path.join(cp.DirCloudExp, saveName)
-            expDf.to_csv(savePath_cloud, sep=';', index = False)
-
-    #### 3. Generate additionnal field that won't be saved
-    
-    #### 3.1 Make 'manipID'
-    expDf['manipID'] = expDf['date'] + '_' + expDf['manip']
-    
-    
-    
-    #### 3.2 Make 'first time point'
-    dict_firstTimePoint = {}
-    unique_dates = expDf.date.unique()
-    unique_T0 = np.zeros_like(unique_dates, dtype = np.float64)
-    for kk in range(len(unique_dates)):
-        d = unique_dates[kk]
-        d_T0 = findFirstAbsTimeOfDate(cp.DirDataTimeseries, d, suffix = '.csv')
-        unique_T0[kk] = d_T0
-        
-    dictT0 = {unique_dates[ii]:unique_T0[ii] for ii in range(len(unique_dates))}
-    all_T0 = np.array([dictT0[d] for d in expDf.date.values])
-    expDf['date_T0'] = all_T0
-    
-    #### 3.3 Drop the 'comments' column
-    try:
-        expDf = expDf.drop(['comments'], axis=1)
-    except:
-        pass
-    
-    # def str2int(s):
-    #     try:
-    #         x = int(s)
-    #     except:
-    #         x = np.nan
-    #     return(x)
-    
-    # def str2float(s):
-    #     try:
-    #         x = float(s)
-    #     except:
-    #         x = np.nan
-    #     return(x)
-    
-    
-    # #### 3.2 Format 'bead diameter'
-    # diameters = expDf.loc[:,'bead diameter'].apply(lambda x: str(x).split('_'))
-    # diameters = diameters.apply(lambda x: [int(xx) for xx in x])
-    # expDf.loc[:,'bead diameter'] = diameters
-    # # print(ORANGE + 'ramp field : converted to list successfully' + NORMAL)
-    
-    # #### 3.3 Format 'bead type'
-    # bt = expDf.loc[:,'bead type'].apply(lambda x: str(x).split('_'))
-    # bt = bt.apply(lambda x: [str(xx) for xx in x])
-    # expDf.loc[:,'bead type'] = bt
-    
-    # #### 3.4 Format 'ramp field'
-    # rf = expDf.loc[:,'ramp field'].apply(lambda x: str(x).split('_'))
-    # rf = rf.apply(lambda x: [str2float(xx) for xx in x])
-    # expDf.loc[:,'ramp field'] = rf
-    
-    # #### 3.5 Format 'loop structure'
-    # ls = expDf.loc[:,'loop structure'].apply(lambda x: str(x).split('_'))
-    # ls = ls.apply(lambda x: [str2int(xx) for xx in x])
-    # expDf.loc[:,'loop structure'] = ls
-
-    #### 4. END
-    print(gs.GREEN + 'T = {:.3f}'.format(time.time() - top) + gs.NORMAL)
-    
-    return(expDf)
-
-
-def mergeExpDf(suffixes = [], save = False):
-    # getExperimentalConditions(DirExp = cp.DirRepoExp, save = False, suffix = cp.suffix)
-    all_expDf = []
-    DirExp_root = '_'.join(cp.DirRepoExp.split('_')[:-1])
-    for suf in suffixes:
-        DirExp = DirExp_root + suf
-        expDf = getExperimentalConditions(DirExp = DirExp, save = False, suffix = suf)
-        expDf['author'] = suf
-        expDf.insert(0, 'author', expDf.pop('author'))
-        all_expDf.append(expDf)
-        
-    new_expDf = pd.concat(all_expDf, axis=0, join='outer').reset_index(drop = True)
-    new_expDf = new_expDf.sort_values(by = ['date', 'manip'])
-    
-    if save:
-        saveName = 'ExperimentalConditions' + ''.join(suffixes) + '.csv'     
-        if not cp.CloudSaving == '':
-            savePath_cloud = os.path.join(cp.DirCloudExp, saveName)
-            new_expDf.to_csv(savePath_cloud, sep=';', index = False)
-        
-    return(all_expDf)
-    
-
-def correctExcelDatesInDf(df, dateColumn, dateExample = ''):
-    if dateExample == '':
-        dateExample = df.loc[df.index[1], dateColumn]
-    if re.match(dateFormatExcel, dateExample):
-        print(gs.ORANGE + 'dates : format corrected' + gs.NORMAL)
-        df.loc[:,dateColumn] = df.loc[:,dateColumn].apply(lambda x: x.split('/')[0] + '-' + x.split('/')[1] + '-' + x.split('/')[2][2:])        
-    elif re.match(dateFormatExcel2, dateExample):
-        print(gs.ORANGE + 'dates : format corrected' + gs.NORMAL)
-        df.loc[:,dateColumn] = df.loc[:,dateColumn].apply(lambda x: x.split('-')[0] + '-' + x.split('-')[1] + '-' + x.split('-')[2][2:])
-    return(df)
-
-
-def findFirstAbsTimeOfDate(src_path, date, suffix = '.csv'):
-    """
-    Given a directory containing time series (src_path), a date (date), 
-    and a suffix (suffix='.csv'), goes through all the files which name contains 
-    date and ends with suffix, and consider all the first elements of the columns named 'Tabs'.
-    Return the min of these elements.
-    
-    Should be called with src_path = cp.DirDataTimeseries, date = chosen_date, suffix = '.csv',
-    'chosen_date' being the date of an experiment in the format yy-mm-dd.
-    """
-    files = os.listdir(src_path)
-    selected_files = []
-    for f in files:
-        if date in f and f.endswith(suffix):
-            selected_files.append(f)
-    dictOrd = {}
-    listOrd = []
-    for f in selected_files:
-        ordVal = findInfosInFileName(f, 'ordinalValue')
-        dictOrd[ordVal] = f
-        listOrd.append(int(ordVal))
-    try:
-        minOrdVal = str(np.min(listOrd))
-        first_f = dictOrd[minOrdVal]
-        first_f_path = os.path.join(src_path, first_f)
-        df = pd.read_csv(first_f_path, sep = ';', usecols=['Tabs'], nrows=1)
-        date_T0 = df['Tabs'].values[0]
-        
-    except:
-        date_T0 = np.nan
-    
-    return(date_T0)
-        
-
 
 def removeColumnsDuplicate(df):
     cols = df.columns.values
@@ -433,19 +112,6 @@ def removeColumnsDuplicate(df):
         elif c.endswith('_y'):
             df = df.drop(columns=[c])
     return(df)
-
-
-def findActivation_V1(fieldDf):
-    maxZidx = fieldDf['Z'].argmax() #Finding the index of the max Z
-    maxZ = fieldDf['Z'][maxZidx] #To check if the value is correct
-    return(maxZidx, maxZ)   
-
-def findActivation(fieldDf):
-    Z = fieldDf['Z'].values
-    allActivations = [i for i in Z if '73.' in str(i)] #Finding the index of the max Z
-    allActivationIndices =  [i for i in range(len(Z)) if Z[i] in allActivations] #To check if the value is correct
-    return(np.asarray(allActivationIndices), np.asarray(allActivations))   
-
 
 
 
@@ -558,56 +224,6 @@ def findInfosInFileName(f, infoType):
                              
     return(infoString)
 
-
-# def isFileOfInterest_V0(f, manips, wells, cells):
-#     """
-#     Determine if a file f correspond to the given criteria.
-#     More precisely, return a boolean saying if the manip, well and cell number are in the given range.
-#     f is a file name. Each of the fields 'manips', 'wells', 'cells' can be either a number, a list of numbers, or 'all'.
-#     Example : if f = '21-01-18_M2_P1_C8.tif'
-#     * manips = 'all', wells = 'all', cells = 'all' -> the function return True.
-#     * manips = 1, wells = 'all', cells = 'all' -> the function return False.
-#     * manips = [1, 2], wells = 'all', cells = 'all' -> the function return True.
-#     * manips = [1, 2], wells = 2, cells = 'all' -> the function return False.
-#     * manips = [1, 2], wells = 1, cells = [5, 6, 7, 8] -> the function return True.
-#     Note : if manips = 'all', the code will consider that wells = 'all', cells = 'all'.
-#            if wells = 'all', the code will consider that cells = 'all'.
-#            This means you can add filters only in this order : manips > wells > cells.
-#     """
-#     test = False
-#     if f.endswith(".tif"):
-#         if manips == 'all':
-#             test = True
-#         else:
-#             try:
-#                 manips_str = [str(i) for i in manips]
-#             except:
-#                 manips_str = [str(manips)]
-#             infoM = findInfosInFileName(f, 'M')
-#             if infoM in manips_str:
-#                 if wells == 'all':
-#                     test = True
-#                 else:
-#                     try:
-#                         wells_str = [str(i) for i in wells]
-#                     except:
-#                         wells_str = [str(wells)]
-#                     infoP = findInfosInFileName(f, 'P')
-#                     if infoP in wells_str:
-#                         if cells == 'all':
-#                             test = True
-#                         else:
-#                             try:
-#                                 cells_str = [str(i) for i in cells]
-#                             except:
-#                                 cells_str = [str(cells)]
-#                             infoC = findInfosInFileName(f, 'C')
-#                             if infoC in cells_str:
-#                                 test = True
-#     return(test)
-
-
-
 def isFileOfInterest(f, manips, wells, cells, mode = 'soft', suffix = ''):
     """
     Determine if a file f correspond to the given criteria.
@@ -703,112 +319,6 @@ def getDictAggMean(df):
         dictAggMean['compNum'] = np.nanmax
                     
     return(dictAggMean)
-
-# def getDictAggMean_V0(df):
-#     dictAggMean = {}
-#     for c in df.columns:
-#     #         t = df[c].dtype
-#     #         print(c, t)
-#             try :
-#                 if np.array_equal(df[c], df[c].astype(bool)):
-#                     dictAggMean[c] = 'min'
-#                 else:
-#                     try:
-#                         if not c.isnull().all():
-#                             np.mean(df[c])
-#                             dictAggMean[c] = 'mean'
-#                     except:
-#                         dictAggMean[c] = 'first'
-#             except:
-#                     dictAggMean[c] = 'first'
-#     return(dictAggMean)
-
-
-def archiveData(df, name = '', sep = ';', descText = '',
-                saveDir = '', subDir = '', cloudSave = 'none'):
-    # Generate unique name if needed
-    if name == '':
-        dt = datetime.now().strftime("%Y-%m-%d_%Hh%Mm%Ss")
-        name = 'df_' + dt
-        
-    saveDesc = (descText != '')
-        
-    # Generate default save path if needed
-    if saveDir == '':
-        saveDir = cp.DirDataFigToday
-        saveCloudDir = cp.DirCloudFigToday
-    else:
-        saveDir = os.path.join(cp.DirDataFig, saveDir)
-        saveCloudDir = os.path.join(cp.DirCloudFig, saveDir)
-        
-    # Normal save
-    savePath = os.path.join(saveDir, subDir, name+'.csv')
-    df.to_csv(savePath, sep = sep, index = False)
-    if saveDesc:
-        descPath = os.path.join(saveDir, subDir, name+'_infos.txt')
-        f = open(descPath, 'w')
-        f.write(descText)
-        f.close()
-    
-    # Cloud save if specified
-    doCloudSave = (not (cloudSave == 'none')) \
-                  or (cloudSave == 'strict') \
-                  or (cloudSave == 'flexible' and cp.CloudSaving != '')
-                  
-    if doCloudSave:
-        cloudSavePath = os.path.join(saveCloudDir, subDir, name+'.csv')
-        df.to_csv(cloudSavePath, sep = sep, index = False)
-        if saveDesc:
-            descPathCloud = os.path.join(saveCloudDir, subDir, name+'_infos.txt')
-            f = open(descPathCloud, 'w')
-            f.write(descText)
-            f.close()
-        
-    
-def updateDefaultSettingsDict(settingsDict, defaultSettingsDict):
-    """
-    Update defaultSettingDict with new values contained in settingDict.
-
-    Parameters
-    ----------
-    settingDict : dict
-        Contains new {SettingName (string) : SettingValue (object)} pairs.
-    defaultSettingDict : dict
-        Contains all default {SettingName (string) : SettingValue (object)} pairs.
-
-    Returns
-    -------
-    newSettingDict : dict
-        Contains all default {SettingName (string) : SettingValue (object)} pairs, 
-        but updated where new setting values were inputed from settingDict.
-        
-    Example
-    -------
-    >>> defaultSettingsDict = {'A':1, 'B': 10, 'C': True}
-    >>> settingsDict = {'A':1000, 'D': False}
-    >>> newSettingsDict = updateDefaultSettingsDict(settingDict, 
-                                                  defaultSettingDict)
-    >>> newSettingsDict
-    Out[1]: {'A': 1000, 'B': 10, 'C': True, 'D': False}
-    
-    >>> defaultSettingsDict = {'A':1, 'B': 10, 'C': True}
-    >>> settingsDict = {} # We don't want to modify the default settings
-    >>> newSettingsDict = updateDefaultSettingsDict(settingsDict, 
-                                                    defaultSettingsDict)
-    >>> newSettingsDict
-    Out[2]: {'A':1, 'B': 10, 'C': True}
-    
-    IMPORTANT NOTE
-    --------------
-    I'M GUTTED !!!! This is exactly what the method dict1.update(dict2) does !!!
-    At least it shows that my way of proceeding isn't totally weird.
-    """
-    
-    newSettingsDict = deepcopy(defaultSettingsDict)
-    for k in settingsDict.keys():
-        newSettingsDict[k] = settingsDict[k]
-    return(newSettingsDict)
-
 
 
 def flattenPandasIndex(pandasIndex):
@@ -912,270 +422,6 @@ def get_Chi2(Ymeas, Ymodel, dof, err):
 
 # %%% Image processing
 
-def getDepthoCleanSize(D, scale):
-    """
-    Function that looks stupid but is quite important ! It allows to standardise 
-    across all other functions the way the depthograph width is computed.
-    D here is the approximative size of the bead in microns, 4.5 for M450, 2.7 for M270.
-    Scale is the pixel to microns ration of the objective.
-    """
-    cleanSize = int(np.floor(1*D*scale))
-    cleanSize += 1 + cleanSize%2
-    
-    return(cleanSize)
-
-def compute_cost_matrix(XY1,XY2):
-    """
-    Compute a custom cost matrix between two arrays of XY positions.
-    Here the costs are simply the squared distance between each XY positions.
-    Example : M[2,1] is the sqaured distance between XY1[2] and XY2[1], 
-    which is ((XY2[1,1]-XY1[2,1])**2 + (XY2[1,0]-XY1[2,0])**2)
-    """
-    N1, N2 = XY1.shape[0],XY2.shape[0]
-    M = np.zeros((N1, N2))
-    for i in range(N1):
-        for j in range(N2):
-            M[i,j] = (np.sum((XY2[j,:] - XY1[i,:]) ** 2))
-    return(M)
-
-def ui2array(uixy):
-    """
-    Translate the output of the function plt.ginput() 
-    (which are lists of tuples), in an XY array with this shape:
-    XY = [[x0, y0], [x1, y1], [x2, y2], ...]
-    So if you need the [x, y] of 1 specific point, call XY[i]
-    If you need the list of all x coordinates, call XY[:, 0]
-    """
-    n = len(uixy)
-    XY = np.zeros((n, 2))
-    for i in range(n):
-        XY[i,0], XY[i,1] = uixy[i][0], uixy[i][1]
-    return(XY)
-
-def getROI(roiSize, x0, y0, nx, ny):
-    """
-    Return coordinates of top left (x1, y1) and bottom right (x2, y2) corner of a ROI, 
-    and a boolean validROI that says if the ROI exceed the limit of the image.
-    Inputs : 
-    - roiSize, the width of the (square) ROI.
-    - x0, y0, the position of the central pixel.
-    - nx, ny, the size of the image.
-    Note : the ROI is done so that the final width (= height) 
-    of the ROI will always be an odd number.
-    """
-    roiSize -= roiSize%2 # even
-    x1 = int(np.round(x0) - roiSize*0.5) #- 1
-    x2 = int(np.round(x0) + roiSize*0.5) + 1
-    y1 = int(np.round(y0) - roiSize*0.5) #- 1
-    y2 = int(np.round(y0) + roiSize*0.5) + 1
-    if min([x1,nx-x2,y1,ny-y2]) < 0:
-        validROI = False
-    else:
-        validROI = True
-    return(x1, y1, x2, y2, validROI)
-
-
-
-def squareDistance(M, V, normalize = False): # MUCH FASTER ! **Michael Scott Voice** VERRRRY GOODE
-    """
-    Compute a distance between two arrays of the same size, defined as such:
-    D = integral of the squared difference between the two arrays.
-    It is used to compute the best fit of a slice of a bead profile on the depthograph.
-    This function speed is critical for the Z computation process because it is called so many times !
-    What made that function faster is the absence of 'for' loops and the use of np.repeat().
-    """
-    #     top = time.time()
-    n, m = M.shape[0], M.shape[1]
-    # len(V) should be m
-    if normalize:
-        V = V/np.mean(V)
-    V = np.array([V])
-    MV = np.repeat(V, n, axis = 0) # Key trick for speed !
-    if normalize:
-        M = (M.T/np.mean(M, axis = 1).T).T
-    R = np.sum((M-MV)**2, axis = 1)
-#     print('DistanceCompTime')
-#     print(time.time()-top)
-    return(R)
-
-
-def matchDists_Zdiff(listD, listVox_diff, direction):
-    """
-    This function transform the different distances curves computed for 
-    a Nuplet of images to match their minima. By definition it is not used for singlets of images.
-    In practice, it's a tedious and boring function.
-    For a triplet of image, it will move the distance curve by NVox voxels to the left 
-    for the first curve of a triplet, not move the second one, and move the third by NVox voxels to the right.
-    The goal : align the 3 matching minima so that the sum of the three will have a clear global minimum.
-    direction = 'upward' or 'downward' depending on how your triplet images are taken 
-    (i.e. upward = consecutively towards the bright spot and downwards otherwise)
-    """
-    N = len(listVox_diff)
-    listD2 = []
-    if direction == 'upward':
-        for i in range(N):
-            if listVox_diff[i] < 0:
-                shift = listVox_diff[i]
-                D = listD[i]
-                fillVal = max(D)
-                D2 = np.concatenate((D[-shift:],fillVal*np.ones(-shift))).astype(np.float64)
-                listD2.append(D2)
-            if listVox_diff[i] == 0:
-                D = listD[i].astype(np.float64)
-                listD2.append(D)
-            if listVox_diff[i] > 0:
-                shift = listVox_diff[i]
-                D = listD[i]
-                fillVal = max(D)
-                D2 = np.concatenate((fillVal*np.ones(shift),D[:-shift])).astype(np.float64)
-                listD2.append(D2)
-                
-    elif direction == 'downward':
-        for i in range(N):
-            if listVox_diff[i] > 0:
-                shift = listVox_diff[i]
-                D = listD[i]
-                fillVal = max(D)
-                D2 = np.concatenate((D[shift:],fillVal*np.ones(shift))).astype(np.float64)
-                listD2.append(D2)
-            if listVox_diff[i] == 0:
-                D = listD[i].astype(np.float64)
-                listD2.append(D)
-            if listVox_diff[i] < 0:
-                shift = listVox_diff[i]
-                D = listD[i]
-                fillVal = max(D)
-                D2 = np.concatenate((fillVal*np.ones(-shift),D[:shift])).astype(np.float64)
-                listD2.append(D2)
-    return(np.array(listD2))
-
-
-def matchDists(listD, listStatus, Nup, NVox, direction):
-    """
-    This function transform the different distances curves computed for 
-    a Nuplet of images to match their minima. By definition it is not used for singlets of images.
-    In practice, it's a tedious and boring function.
-    For a triplet of image, it will move the distance curve by NVox voxels to the left 
-    for the first curve of a triplet, not move the second one, and move the third by NVox voxels to the right.
-    The goal : align the 3 matching minima so that the sum of the three will have a clear global minimum.
-    direction = 'upward' or 'downward' depending on how your triplet images are taken 
-    (i.e. upward = consecutively towards the bright spot and downwards otherwise)
-    """
-    N = len(listStatus)
-    offsets = np.array(listStatus) - np.ones(N) * (Nup//2 + 1)
-    offsets = offsets.astype(int)
-    listD2 = []
-    if direction == 'upward':
-        for i in range(N):
-            if offsets[i] < 0:
-                shift = abs(offsets[i])*NVox
-                D = listD[i]
-                fillVal = max(D)
-                D2 = np.concatenate((D[shift:],fillVal*np.ones(shift))).astype(np.float64)
-                listD2.append(D2)
-            if offsets[i] == 0:
-                D = listD[i].astype(np.float64)
-                listD2.append(D)
-            if offsets[i] > 0:
-                shift = abs(offsets[i])*NVox
-                D = listD[i]
-                fillVal = max(D)
-                D2 = np.concatenate((fillVal*np.ones(shift),D[:-shift])).astype(np.float64)
-                listD2.append(D2)
-    elif direction == 'downward':
-        for i in range(N):
-            if offsets[i] > 0:
-                shift = abs(offsets[i])*NVox
-                D = listD[i]
-                fillVal = max(D)
-                D2 = np.concatenate((D[shift:],fillVal*np.ones(shift))).astype(np.float64)
-                listD2.append(D2)
-            if offsets[i] == 0:
-                D = listD[i].astype(np.float64)
-                listD2.append(D)
-            if offsets[i] < 0:
-                shift = abs(offsets[i])*NVox
-                D = listD[i]
-                fillVal = max(D)
-                D2 = np.concatenate((fillVal*np.ones(shift),D[:-shift])).astype(np.float64)
-                listD2.append(D2)
-    return(np.array(listD2))
-
-
-def uiThresholding(I, method = 'otsu', factorT = 0.8):
-    """
-    Interactive thresholding function to replace IJ.
-    Compute an auto thresholding on a global 3D image with a method from this list:
-    > 'otsu', 'max_entropy', (add the method you want ! here are the options : https://scikit-image.org/docs/stable/api/skimage.filters.html )
-    Then display a figure for the user to assess the threshold fitness, and according to the user choice,
-    confirm the threshold or recompute it with new parameters in a recursive way.
-    """
-    # 1. Compute the threshold
-    nz = I.shape[0]
-    if method == 'otsu':
-        threshold = factorT*filters.threshold_otsu(I)
-    elif method == 'max_entropy':
-        bitDepth = util.dtype_limits(I)[1]+1
-        I8 = util.img_as_ubyte(I)
-        threshold = factorT*max_entropy_threshold(I8)*(bitDepth/2**8)
-        
-    # 2. Display images for the user to assess the fitness
-    # New version of the plot
-        nS = I.shape[0]
-        loopSize = nS//4
-        N = min(4, nS//loopSize)
-        L_I_plot = [I[loopSize*2*k + 2] for k in range(N)]
-        L_I_thresh = [I_plot > threshold for I_plot in L_I_plot]
-        for i in range(N):
-            I_plot = L_I_plot[i]
-            I_thresh = L_I_thresh[i]
-            I_plot = util.img_as_ubyte(I_plot)
-            I_plot = color.gray2rgb(I_plot)
-            pStart, pStop = np.percentile(I_plot, (1, 99))
-            I_plot = exposure.rescale_intensity(I_plot, in_range=(pStart, pStop))
-            red_multiplier = [255, 0, 0]
-            I_plot[I_thresh] = red_multiplier
-            L_I_plot[i] = I_plot
-            
-        I_thresh_all = I > threshold
-        I_thresh_max = np.max(I_thresh_all, axis = 0)
-        
-        fig = plt.figure(tight_layout=True)
-        gs = GridSpec(2, 4, figure=fig)
-        ax = []
-        for i in range(N):
-            ax.append(fig.add_subplot(gs[i//2, i%2]))
-            ax[-1].imshow(L_I_plot[i])
-            ax[-1].set_title('Frame ' + str(loopSize*2*i + 2) + '/' + str(nS), fontsize = 8)
-            ax[-1].axes.xaxis.set_ticks([])
-            ax[-1].axes.yaxis.set_ticks([])
-        ax.append(fig.add_subplot(gs[:, 2:]))
-        ax[-1].imshow(I_thresh_max, cmap = 'gray')
-        ax[-1].set_title('Max projection', fontsize = 10)
-        ax[-1].axes.xaxis.set_ticks([])
-        ax[-1].axes.yaxis.set_ticks([])
-        fig.suptitle(str(threshold), fontsize = 12)
-        fig.show()
-        mngr = plt.get_current_fig_manager()
-        mngr.window.setGeometry(50, 380, 1800, 650)
-    
-    # 3. Ask the question to the user
-    QA = pyautogui.confirm(
-                text='Is the threshold satisfying?',
-                title='Confirm threshold', 
-                buttons=['Yes', '10% Lower', '5% Lower', '1% Lower', '1% Higher', '5% Higher', '10% Higher'])
-    plt.close(fig)
-    
-    # 4. Recall the same function with new parameters, or validate the threshold 
-    # according to the user answer.
-    increment = 0.1 * ('10%' in QA) + 0.05 * ('5%' in QA) + 0.01 * ('1%' in QA)
-    if 'Lower' in QA:
-        uiThresholding(method = method, factorT = factorT - increment)
-    elif 'Higher' in QA:
-        uiThresholding(method = method, factorT = factorT + increment)
-    elif QA == 'Yes':
-        threshold = threshold
-    return(threshold)
 
 def max_entropy(data):
     """
@@ -1453,84 +699,12 @@ def plotForce_Insert(d = 0):
     figDir = "D:/MagneticPincherData/Figures/PhysicsDataset"
     figSubDir = 'Mat&Meth'
     name = 'Force_vs_MagField_insert'
-    archiveFig(fig, name = name, ext = '.pdf', dpi = 100,
-                    figDir = figDir, figSubDir = figSubDir, cloudSave = 'flexible')
+    plt.show()
+    # archiveFig(fig, name = name, ext = '.pdf', dpi = 100,
+    #                 figDir = figDir, figSubDir = figSubDir, cloudSave = 'flexible')
 
 # plotForce_Insert(d = 0)
 
-def chadwickModel(h, E, H0, DIAMETER):
-    R = DIAMETER/2
-    f = (np.pi*E*R*((H0-h)**2))/(3*H0)
-    return(f)
-
-def inversedChadwickModel(f, E, H0, DIAMETER):
-    R = DIAMETER/2
-    h = H0 - ((3*H0*f)/(np.pi*E*R))**0.5
-    return(h)
-
-def getDimitriadisCoefs(v, order):
-    """
-    
-
-    Parameters
-    ----------
-    v : float
-        Poisson coefficient.
-    order : int, must be in [0, 4]
-        Order of the Dimitriadis polynomia.
-
-    Returns
-    -------
-    ks : list
-        List of the coefficient of the Dimitriadis polynomia expression, in growing exponent order.
-
-    
-    """
-    a0 = -0.347*(3 - 2*v)/(1 - v)
-    b0 = 0.056*(5 - 2*v)/(1 - v)
-    
-    ks = []
-    if order >= 0:
-        k0 = 1
-        ks.append(k0)
-        
-        if order >= 1:
-            k1 = - 2*a0/np.pi
-            ks.append(k1)
-        
-            if order >= 2:
-                k2 = + 4*a0**2/np.pi
-                ks.append(k2)
-            
-                if order >= 3:
-                    k3 = - (8/np.pi**3) * (a0**3 + (4*np.pi**2/15)*b0)
-                    ks.append(k3)
-            
-                    if order >= 4:
-                        k4 = + (16*a0/np.pi**4) * (a0**3 + (3*np.pi**2/5)*b0)
-                        ks.append(k4)    
-    return(ks)
-
-
-def dimitriadisModel(h, E, H0):
-    DIAMETER = 4477
-    R = DIAMETER/2
-    
-    v = 0
-    order = 2
-    ks = getDimitriadisCoefs(v, order)
-    
-    delta = H0-h
-    X = np.sqrt(R*delta)/h
-    
-    poly = np.zeros_like(X)
-    
-    for i in range(order+1):
-        poly = poly + ks[i] * X**i
-        
-    F = ((4 * E * R**0.5 * delta**1.5)/(3 * (1 - v**2))) * poly
-    
-    return(F)
  
                     
 # %%% Very general functions
@@ -1654,7 +828,7 @@ def fitLineTLS(X, Y):
         return(B[0]*X + B[1])
     linear = odr.Model(linearFun)
     data = odr.Data(X, Y, wd=1, we=1)
-    fit = odr.ODR(mydata, linear, beta0=[0, 0])
+    fit = odr.ODR(data, linear, beta0=[0, 0])
     output = fit.run()
     a, b = output.beta
 
@@ -1774,41 +948,41 @@ def simpleSaveFig(fig, name, savePath, ext, dpi):
     fig.savefig(figPath, dpi=dpi)
     
 
-def archiveFig(fig, name = '', ext = '.pdf', dpi = 150,
-               figDir = '', figSubDir = '', cloudSave = 'flexible'):
-    """
-    This is supposed to be a "smart" figure saver.
+#### def archiveFig(fig, name = '', ext = '.pdf', dpi = 150,
+    #            figDir = '', figSubDir = '', cloudSave = 'flexible'):
+    # """
+    # This is supposed to be a "smart" figure saver.
     
-    1. Main save
-        - It saves the fig with resolution 'dpi' and extension 'ext' (default ext = '.png' and dpi = 100).
-        - If you give a name, it will be used to save your file; if not, a name will be generated based on the date.
-        - If you give a value for figDir, your file will be saved in cp.DirDataFig//figDir. Else, it will be in cp.DirDataFigToday.
-        - You can also give a value for figSubDir to save your fig in a subfolder of the chosen figDir.
+    # 1. Main save
+    #     - It saves the fig with resolution 'dpi' and extension 'ext' (default ext = '.png' and dpi = 100).
+    #     - If you give a name, it will be used to save your file; if not, a name will be generated based on the date.
+    #     - If you give a value for figDir, your file will be saved in cp.DirDataFig//figDir. Else, it will be in cp.DirDataFigToday.
+    #     - You can also give a value for figSubDir to save your fig in a subfolder of the chosen figDir.
     
-    2. Backup save (optional). cloudSave can have 3 values : 'strict', 'flexible', or 'none'.
-        - If 'strict', this function will attempt to do a cloud save not matter what.
-        - If 'check', this function will check that you enable properly the cloud save in CortexPath before attempting to do a cloud save.
-        - If 'none', this function will not do a cloud save.
-    """
-    # Generate unique name if needed
-    if name == '':
-        dt = datetime.now().strftime("%Y-%m-%d_%Hh%Mm%Ss")
-        name = 'fig_' + dt
-    # Generate default save path if needed
-    if figDir == '':
-        figDir = cp.DirDataFigToday
-        figCloudDir = cp.DirCloudFigToday
-    else:
-        figDir = os.path.join(cp.DirDataFig, figDir)
-        figCloudDir = os.path.join(cp.DirCloudFig, figDir)
-    # Normal save
-    savePath = os.path.join(figDir, figSubDir)
-    simpleSaveFig(fig, name, savePath, ext, dpi)
-    # Cloud save if specified
-    doCloudSave = ((cloudSave == 'strict') or (cloudSave == 'flexible' and cp.CloudSaving != ''))
-    if doCloudSave:
-        cloudSavePath = os.path.join(figCloudDir, figSubDir)
-        simpleSaveFig(fig, name, cloudSavePath, ext, dpi)
+    # 2. Backup save (optional). cloudSave can have 3 values : 'strict', 'flexible', or 'none'.
+    #     - If 'strict', this function will attempt to do a cloud save not matter what.
+    #     - If 'check', this function will check that you enable properly the cloud save in CortexPath before attempting to do a cloud save.
+    #     - If 'none', this function will not do a cloud save.
+    # """
+    # # Generate unique name if needed
+    # if name == '':
+    #     dt = datetime.now().strftime("%Y-%m-%d_%Hh%Mm%Ss")
+    #     name = 'fig_' + dt
+    # # Generate default save path if needed
+    # if figDir == '':
+    #     figDir = cp.DirDataFigToday
+    #     figCloudDir = cp.DirCloudFigToday
+    # else:
+    #     figDir = os.path.join(cp.DirDataFig, figDir)
+    #     figCloudDir = os.path.join(cp.DirCloudFig, figDir)
+    # # Normal save
+    # savePath = os.path.join(figDir, figSubDir)
+    # simpleSaveFig(fig, name, savePath, ext, dpi)
+    # # Cloud save if specified
+    # doCloudSave = ((cloudSave == 'strict') or (cloudSave == 'flexible' and cp.CloudSaving != ''))
+    # if doCloudSave:
+    #     cloudSavePath = os.path.join(figCloudDir, figSubDir)
+    #     simpleSaveFig(fig, name, cloudSavePath, ext, dpi)
         
    
 def setCommonBounds(axes, xb = [0, 'auto'], yb = [0, 'auto'],
@@ -1953,194 +1127,194 @@ def lighten_color(color, amount=0.5):
 
 # %% Test
 
-# %%% Dataset
+# # %%% Dataset
 
-Atrue = +1
-Btrue = 0
-XVarTrue = 1.0
-YVarTrue = 5.0
+# Atrue = +1
+# Btrue = 0
+# XVarTrue = 1.0
+# YVarTrue = 5.0
 
-# Adimension by data spanning? Adimension the variance
+# # Adimension by data spanning? Adimension the variance
 
-Xtrue = np.arange(start = -10, stop = 11, step = 0.2)
-Ytrue = Atrue*Xtrue + Btrue
+# Xtrue = np.arange(start = -10, stop = 11, step = 0.2)
+# Ytrue = Atrue*Xtrue + Btrue
 
-Xr = Xtrue + np.random.normal(loc=0.0, scale=XVarTrue**0.5, size=len(Xtrue))
-Yr = Ytrue + np.random.normal(loc=0.0, scale=YVarTrue**0.5, size=len(Ytrue))
+# Xr = Xtrue + np.random.normal(loc=0.0, scale=XVarTrue**0.5, size=len(Xtrue))
+# Yr = Ytrue + np.random.normal(loc=0.0, scale=YVarTrue**0.5, size=len(Ytrue))
 
-# %%% Function
+# # %%% Function
 
-def fitLineTLS(X, Y, wd=1, we=1):
-    """
+# def fitLineTLS(X, Y, wd=1, we=1):
+#     """
 
-    """
-    def linearFun(B, X):
-        return(B[0]*X + B[1])
-    linear = odr.Model(linearFun)
-    data = odr.Data(X, Y, wd=wd, we=we)
-    fit = odr.ODR(data, linear, beta0=[0, 0])
-    output = fit.run()
-    a, b = output.beta
-    out = ((b, a), output)
-    return(out)
-
-
-#### Test
-Xplot = np.linspace(-10, 10, num = 100)
-
-# OLS - X vs Y
-[b_xy, a_xy], results_xy = fitLine(Xr, Yr)
-Yplot_xy = a_xy * Xplot + b_xy
-
-# OLS - X vs Y
-[B_yx, A_yx], results_yx = fitLine(Yr, Xr)
-a_yx, b_yx = 1/A_yx, -B_yx/A_yx
-Yplot_yx = a_yx * Xplot + b_yx
-
-# ODR - True variances
-[b_odr1, a_odr1], results_odr1 = fitLineTLS(Xr, Yr, wd=1/XVarTrue, we=1/YVarTrue)
-Yplot_odr1 = a_odr1 * Xplot + b_odr1
-
-# ODR - Estimated variances
-[b_odr2, a_odr2], results_odr2 = fitLineTLS(Xr, Yr, wd=1, we=1)
-Yplot_odr2 = a_odr2 * Xplot + b_odr2
-
-# ODR - Force to XvY equivalent ----> Works as intended !
-[b_odr3, a_odr3], results_odr3 = fitLineTLS(Xr, Yr, wd=1, we=0.000001)
-Yplot_odr3 = a_odr3 * Xplot + b_odr3
-
-fig, ax = plt.subplots(1, 1)
-ax.plot(Xr, Yr, 'ko')
-ax.plot(Xplot, Yplot_xy,   'b--', label=f'XvY | a={a_xy:.2f}')
-ax.plot(Xplot, Yplot_yx,   'r--', label=f'YvX | a={a_yx:.2f}')
-ax.plot(Xplot, Yplot_odr1, 'g-',  label=f'TLS true | a={a_odr1:.2f}')
-ax.plot(Xplot, Yplot_odr2, 'k-',  label=f'TLS est | a={a_odr2:.2f}')
-ax.plot(Xplot, Yplot_odr3, 'c-',  label=f'TLS all y | a={a_odr3:.2f}')
-ax.grid()
-ax.legend(fontsize = 11)
+#     """
+#     def linearFun(B, X):
+#         return(B[0]*X + B[1])
+#     linear = odr.Model(linearFun)
+#     data = odr.Data(X, Y, wd=wd, we=we)
+#     fit = odr.ODR(data, linear, beta0=[0, 0])
+#     output = fit.run()
+#     a, b = output.beta
+#     out = ((b, a), output)
+#     return(out)
 
 
-plt.show()
+# #### Test
+# Xplot = np.linspace(-10, 10, num = 100)
+
+# # OLS - X vs Y
+# [b_xy, a_xy], results_xy = fitLine(Xr, Yr)
+# Yplot_xy = a_xy * Xplot + b_xy
+
+# # OLS - X vs Y
+# [B_yx, A_yx], results_yx = fitLine(Yr, Xr)
+# a_yx, b_yx = 1/A_yx, -B_yx/A_yx
+# Yplot_yx = a_yx * Xplot + b_yx
+
+# # ODR - True variances
+# [b_odr1, a_odr1], results_odr1 = fitLineTLS(Xr, Yr, wd=1/XVarTrue, we=1/YVarTrue)
+# Yplot_odr1 = a_odr1 * Xplot + b_odr1
+
+# # ODR - Estimated variances
+# [b_odr2, a_odr2], results_odr2 = fitLineTLS(Xr, Yr, wd=1, we=1)
+# Yplot_odr2 = a_odr2 * Xplot + b_odr2
+
+# # ODR - Force to XvY equivalent ----> Works as intended !
+# [b_odr3, a_odr3], results_odr3 = fitLineTLS(Xr, Yr, wd=1, we=0.000001)
+# Yplot_odr3 = a_odr3 * Xplot + b_odr3
+
+# fig, ax = plt.subplots(1, 1)
+# ax.plot(Xr, Yr, 'ko')
+# ax.plot(Xplot, Yplot_xy,   'b--', label=f'XvY | a={a_xy:.2f}')
+# ax.plot(Xplot, Yplot_yx,   'r--', label=f'YvX | a={a_yx:.2f}')
+# ax.plot(Xplot, Yplot_odr1, 'g-',  label=f'TLS true | a={a_odr1:.2f}')
+# ax.plot(Xplot, Yplot_odr2, 'k-',  label=f'TLS est | a={a_odr2:.2f}')
+# ax.plot(Xplot, Yplot_odr3, 'c-',  label=f'TLS all y | a={a_odr3:.2f}')
+# ax.grid()
+# ax.legend(fontsize = 11)
+
+
+# plt.show()
 
 
 # %%% User Input
 
-class MultiChoiceBox(Qtw.QMainWindow):
-    """
-    A class to display a dialog box with multiple choices. Inherited from Qtw.QMainWindow.
-    """
-    def __init__(self, choicesDict, title = 'Multiple choice box'):
-        super().__init__()
+# class MultiChoiceBox(Qtw.QMainWindow):
+#     """
+#     A class to display a dialog box with multiple choices. Inherited from Qtw.QMainWindow.
+#     """
+#     def __init__(self, choicesDict, title = 'Multiple choice box'):
+#         super().__init__()
         
-        self.choicesDict = choicesDict
-        self.questions = [k for k in choicesDict.keys()]
-        self.nQ = len(self.questions)
+#         self.choicesDict = choicesDict
+#         self.questions = [k for k in choicesDict.keys()]
+#         self.nQ = len(self.questions)
         
-        self.answersDict = {}
-        self.list_rbg = [] # rbg = radio button group
+#         self.answersDict = {}
+#         self.list_rbg = [] # rbg = radio button group
 
-        self.setWindowTitle(title)
+#         self.setWindowTitle(title)
         
-        layout = Qtw.QVBoxLayout()  # layout for the central widget
-        main_widget = Qtw.QWidget(self)  # central widget
-        main_widget.setLayout(layout)
+#         layout = Qtw.QVBoxLayout()  # layout for the central widget
+#         main_widget = Qtw.QWidget(self)  # central widget
+#         main_widget.setLayout(layout)
         
-        for q in self.questions:
-            choices = self.choicesDict[q]
-            label = Qtw.QLabel(q)
-            layout.addWidget(label)
-            rbg = Qtw.QButtonGroup(main_widget)
-            for c in choices:
-                rb = Qtw.QRadioButton(c)
-                rbg.addButton(rb)
-                layout.addWidget(rb)
-                if c == choices[0]:
-                    rb.click()
+#         for q in self.questions:
+#             choices = self.choicesDict[q]
+#             label = Qtw.QLabel(q)
+#             layout.addWidget(label)
+#             rbg = Qtw.QButtonGroup(main_widget)
+#             for c in choices:
+#                 rb = Qtw.QRadioButton(c)
+#                 rbg.addButton(rb)
+#                 layout.addWidget(rb)
+#                 if c == choices[0]:
+#                     rb.click()
                 
-            self.list_rbg.append(rbg)
-            layout.addSpacing(20)
+#             self.list_rbg.append(rbg)
+#             layout.addSpacing(20)
         
-        valid_button = Qtw.QPushButton('OK', main_widget)
-        layout.addWidget(valid_button)
+#         valid_button = Qtw.QPushButton('OK', main_widget)
+#         layout.addWidget(valid_button)
         
-        self.setCentralWidget(main_widget)
+#         self.setCentralWidget(main_widget)
         
-        valid_button.clicked.connect(self.validate_button)
+#         valid_button.clicked.connect(self.validate_button)
 
 
-    def validate_button(self):
-        array_err = np.array([rbg.checkedButton() == None for rbg in self.list_rbg])
-        Err = np.any(array_err)
-        if Err:
-            self.error_dialog()
-        else:
-            for i in range(self.nQ):
-                q = self.questions[i]
-                rbg = self.list_rbg[i]
-                self.answersDict[q] = rbg.checkedButton().text()
+#     def validate_button(self):
+#         array_err = np.array([rbg.checkedButton() == None for rbg in self.list_rbg])
+#         Err = np.any(array_err)
+#         if Err:
+#             self.error_dialog()
+#         else:
+#             for i in range(self.nQ):
+#                 q = self.questions[i]
+#                 rbg = self.list_rbg[i]
+#                 self.answersDict[q] = rbg.checkedButton().text()
                 
-            self.quit_button()
+#             self.quit_button()
             
-    def location_on_the_screen(self):
-        ag = Qtw.QDesktopWidget().availableGeometry()
-        # sg = Qtw.QDesktopWidget().screenGeometry()
+#     def location_on_the_screen(self):
+#         ag = Qtw.QDesktopWidget().availableGeometry()
+#         # sg = Qtw.QDesktopWidget().screenGeometry()
 
-        widget = self.geometry()
-        # x = ag.width() - widget.width()
-        # y = 2 * ag.height() - sg.height() - widget.height()
-        x = int(0.15*ag.width())
-        y = int(0.4*ag.height())
-        self.move(x, y)
+#         widget = self.geometry()
+#         # x = ag.width() - widget.width()
+#         # y = 2 * ag.height() - sg.height() - widget.height()
+#         x = int(0.15*ag.width())
+#         y = int(0.4*ag.height())
+#         self.move(x, y)
             
-    def error_dialog(self):
-        dlg = Qtw.QMessageBox(self)
-        dlg.setWindowTitle("Error")
-        dlg.setText("Please make a choice in each category.")
-        dlg.exec()
+#     def error_dialog(self):
+#         dlg = Qtw.QMessageBox(self)
+#         dlg.setWindowTitle("Error")
+#         dlg.setText("Please make a choice in each category.")
+#         dlg.exec()
         
-    def quit_button(self):
-        Qtw.QApplication.quit()
-        self.close()
+#     def quit_button(self):
+#         Qtw.QApplication.quit()
+#         self.close()
         
-    def closeEvent(self, event):
-        Qtw.QApplication.quit()
+#     def closeEvent(self, event):
+#         Qtw.QApplication.quit()
 
 
-def makeMultiChoiceBox(choicesDict):
-    """
-    Create and show a dialog box with multiple choices.
+# def makeMultiChoiceBox(choicesDict):
+#     """
+#     Create and show a dialog box with multiple choices.
     
 
-    Parameters
-    ----------
-    choicesDict : dict
-        Contains question and possible answers in the form : {Q1 : [A11, A12,...], Q2 : [A21, A22,...], ...},
-        where Qi and Aij are strings.
+#     Parameters
+#     ----------
+#     choicesDict : dict
+#         Contains question and possible answers in the form : {Q1 : [A11, A12,...], Q2 : [A21, A22,...], ...},
+#         where Qi and Aij are strings.
 
-    Returns
-    -------
-    answersDict : dict
-        Contains question and chosen answers in the form : {Q1 : A12, Q2 : A25, ...},
-        where Qi and Aij are strings.
+#     Returns
+#     -------
+#     answersDict : dict
+#         Contains question and chosen answers in the form : {Q1 : A12, Q2 : A25, ...},
+#         where Qi and Aij are strings.
 
-    Example
-    -------
-    >>> choicesDict = {'Is the cell ok?' : ['Yes', 'No'],
-    >>>                'Is the nucleus visible?' : ['Yes', 'No'],}
-    >>> answersDict = makeMultiChoiceBox(choicesDict)
-    >>> print(res)
-    >>> Out: {'Is the cell ok?': 'Yes', 'Is the nucleus visible?': 'No'}
+#     Example
+#     -------
+#     >>> choicesDict = {'Is the cell ok?' : ['Yes', 'No'],
+#     >>>                'Is the nucleus visible?' : ['Yes', 'No'],}
+#     >>> answersDict = makeMultiChoiceBox(choicesDict)
+#     >>> print(res)
+#     >>> Out: {'Is the cell ok?': 'Yes', 'Is the nucleus visible?': 'No'}
 
-    """
+#     """
     
-    app = Qtw.QApplication(sys.argv)
-    MCBox = MultiChoiceBox(choicesDict)
-    MCBox.location_on_the_screen()
-    MCBox.show()
-    app.exec()
+#     app = Qtw.QApplication(sys.argv)
+#     MCBox = MultiChoiceBox(choicesDict)
+#     MCBox.location_on_the_screen()
+#     MCBox.show()
+#     app.exec()
     
-    answersDict = MCBox.answersDict
-    return(answersDict)
+#     answersDict = MCBox.answersDict
+#     return(answersDict)
 
 
 
