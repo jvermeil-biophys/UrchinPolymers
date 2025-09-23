@@ -394,6 +394,11 @@ def containsFilesWithExt(Dir, ext):
             answer = True
     return(answer)
 
+def getFileNamesWithExt(Dir, ext):
+    FilesList = os.listdir(Dir)
+    output = [f for f in FilesList if f.endswith(ext)]
+    return(output)
+
 def softMkdir(path):
     if not os.path.exists(path):
         os.makedirs(path)
