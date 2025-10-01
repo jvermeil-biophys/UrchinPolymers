@@ -11,7 +11,7 @@ import os
 import re
 import pandas as pd
 
-dateFormat1 = re.compile('\d{2}-\d{2}-\d{2}')
+dateFormat1 = re.compile(r'\d{2}-\d{2}-\d{2}')
 #os.rename(r'file path\OLD file name.file type',r'file path\NEW file name.file type')
 
 # -----------------------------------------------------------------------------------------------
@@ -260,6 +260,44 @@ def findAndRemove(path, target_string, target='file', test = True,
     print(renamedListTarget)
     print(len(renamedListTarget))
     return(renamedListTarget)
+
+# -----------------------------------------------------------------------------------------------
+# %% Script Other renaming
+
+# target_pattern = r'M([\d-]+)D([\d-]+)P([\d-]+)'
+# new_pattern = r'M\1-D\2-P\3'
+
+target_pattern = r'M([\d]+)_D([\d]+)_P([\d]+)_([^B])'
+new_pattern = r'M\1_D\2_P\3_B1_\4'
+
+path0 = 'C:/Users/Utilisateur/Desktop/MicroscopeData/Analysis_Pulls/Tracks/25-09-19'
+
+sub = ''
+path = path0 + sub
+
+findPatternAndRename(path, target_pattern, new_pattern, 
+                    target = 'all', test = False, recursiveAction = True, exceptStrings = [])
+
+
+
+# -----------------------------------------------------------------------------------------------
+# %% Script Other renaming
+
+# target_pattern = r'M([\d-]+)D([\d-]+)P([\d-]+)'
+# new_pattern = r'M\1-D\2-P\3'
+
+target_pattern = r'M([\d]+)_D([\d]+)_P([\d]+)_([\w-]+)_Tracks_B([\d]+)'
+new_pattern = r'M\1_D\2_P\3_B\5_\4_Tracks'
+
+path0 = 'C:/Users/Utilisateur/Desktop/MicroscopeData/Analysis_Pulls/Tracks/25-09-19'
+
+sub = ''
+path = path0 + sub
+
+findPatternAndRename(path, target_pattern, new_pattern, 
+                    target = 'all', test = False, recursiveAction = True, exceptStrings = [])
+
+
 
 # -----------------------------------------------------------------------------------------------
 # %% Script Other renaming

@@ -38,6 +38,7 @@ import GraphicStyles as gs
 import UtilityFunctions as ufun
 
 from skimage import io
+from skimage import measure
 
 
 # Unused imports
@@ -138,7 +139,6 @@ def load_stack_region(filepath, time_indices=None, x_slice=None, y_slice=None):
         series = tif.series[0]   # the first image series
         pages = series.pages
         firstFrame = pages[0]
-
         if time_indices is None:
             time_indices = range(0, len(pages))
         if x_slice is None:
@@ -182,16 +182,13 @@ def load_IC_region(listpath, time_indices=None, x_slice=None, y_slice=None):
         series = tif.series[0]   # the first image series
         pages = series.pages
         firstFrame = pages[0]
-    
     if time_indices is None:
         time_indices = np.arange(0, len(listpath))
     if x_slice is None:
         x_slice = slice(0, firstFrame.shape[1])
     if y_slice is None:
         y_slice = slice(0, firstFrame.shape[0])
-    
     cropped_stack = []
-    
     for fp in np.array(listpath)[np.array(time_indices)]:
         with tifffile.TiffFile(fp) as tif:
             series = tif.series[0]   # the first image series
@@ -199,7 +196,6 @@ def load_IC_region(listpath, time_indices=None, x_slice=None, y_slice=None):
             page = pages[0]
             arr = page.asarray()[y_slice, x_slice]  # crop directly
             cropped_stack.append(arr)
-
     return(np.stack(cropped_stack, axis=0))
 
 
@@ -287,7 +283,9 @@ def shape_selection(event, x, y, flags, param):
 
 
 def cropAndCopy(DirSrc, DirDst, allRefPoints, allStackPaths, 
-                mode = 'single file', channel = 'nan', prefix = 'nan'):
+                source_format = 'single file', suffix = '',
+                bin_output = False, bin_N = 1, bin_func = np.mean,
+                channel = 'nan', prefix = 'nan'):
     """
     Using user specified rectangular coordinates from the previous functions,
     Crop cells stack and copy them onto the destination file.
@@ -296,11 +294,12 @@ def cropAndCopy(DirSrc, DirDst, allRefPoints, allStackPaths,
     variables depending on the names of your images. 
     It follows the usual, default metamorph naming system: 'Prefix_Channel_Timepoint0.tif'
     If you are using labview, the default will be 'nan' for both variables.
-    
     """
+    
     count = 0
     N_suffix = 0
-    suffix = ''
+    suffix_1 = ''
+    suffix_2 = suffix
     
     for i in range(len(allStackPaths)):
     # for refPts, stackPath in zip(allRefPoints, allStackPaths):
@@ -317,25 +316,25 @@ def cropAndCopy(DirSrc, DirDst, allRefPoints, allStackPaths,
         try:
             if (allStackPaths[i-1]==allStackPaths[i]):
                 N_suffix = N_suffix + 1
-                suffix = '-' + str(N_suffix)
+                suffix_1 = '-' + str(N_suffix)
             else:
                 N_suffix = 0
-                suffix = ''
+                suffix_1 = ''
         except:
             N_suffix = 0
-            suffix = ''
+            suffix_1 = ''
             
         print(gs.BLUE + 'Loading '+ stackPath +'...' + gs.NORMAL)
         
         try:
-            if mode == 'single file':
-                FilesList = os.listdir(StackFolder)
+            if source_format == 'single file':
+                FilesList = os.listdir(stackPath)
                 TifList = [f for f in FilesList if f.endswith('.tif')]
                 if len(TifList) != 1:
                     print(gs.BRIGHTRED + '/! Several images in the folder in single file mode' + gs.NORMAL)
                     continue
                 else:
-                    stackPath = os.path.join(StackFolder, TifList[0])
+                    stackPath = os.path.join(stackPath, TifList[0])
                     stackShape, stackType = tiff_inspect(stackPath)
                     (nT, nY, nX) = stackShape
 
@@ -344,14 +343,14 @@ def cropAndCopy(DirSrc, DirDst, allRefPoints, allStackPaths,
                     cropped_stack = load_stack_region(stackPath, time_indices=None, 
                                               x_slice=slice(x1,x2,1), y_slice=slice(y1,y2,1))
                     
-            elif mode == 'image collection':
-                FilesList = os.listdir(StackFolder)
+            elif source_format == 'image collection':
+                FilesList = os.listdir(stackPath)
                 TifList = [f for f in FilesList if f.endswith('.tif')]
                 if len(TifList) <= 1:
                     print(gs.BRIGHTRED + '/! Single image in the folder in image collection mode' + gs.NORMAL)
                     continue
                 else:
-                    stackPaths = [os.path.join(StackFolder, f) for f in TifList]
+                    stackPaths = [os.path.join(stackPath, f) for f in TifList]
                     stackShape, stackType = tiff_inspect(stackPaths[0])
                     nT = len(stackPaths)
                     (nY, nX) = stackShape
@@ -360,7 +359,13 @@ def cropAndCopy(DirSrc, DirDst, allRefPoints, allStackPaths,
                     cropped_stack = load_IC_region(stackPaths, time_indices=None, 
                                               x_slice=slice(x1,x2,1), y_slice=slice(y1,y2,1))
             
-            FileDst = stackName + suffix + '.tif'
+            if bin_output:
+                cropped_stack = measure.block_reduce(cropped_stack, 
+                                                     block_size = bin_N, func = bin_func, 
+                                                     cval = 0)
+            
+            
+            FileDst = stackName + suffix_1 + suffix_2 + '.tif'
             io.imsave(os.path.join(DirDst, FileDst), cropped_stack)
             print(gs.GREEN + os.path.join(DirDst, FileDst) + '\nSaved sucessfully' + gs.NORMAL)
         
@@ -374,23 +379,24 @@ def cropAndCopy(DirSrc, DirDst, allRefPoints, allStackPaths,
             print(joke)
             
         count = count + 1
-
+        
 
 
 #%% Define parameters
 
 
 DirSrc = 'C:/Users/Utilisateur/Desktop/MicroscopeData/Leica/25-09-19/M2' #'/M4_patterns_ctrl' // \\M1_depthos
-DirDst = 'C:/Users/Utilisateur/Desktop/MicroscopeData/Leica/25-09-19/M2/Crops'
+DirDst = 'C:/Users/Utilisateur/Desktop/MicroscopeData/Leica/25-09-19/Crops'
+DirDst_bins = 'C:/Users/Utilisateur/Desktop/MicroscopeData/Leica/25-09-19/Binned'
 
 microscope = 'Leica'
-mode = 'single file' # 'image collection'
+source_format = 'single file' # 'image collection'
 # imagePrefix = 'im'
 checkIfAlreadyExist = True
 
 scaleFactor = 1/8
 
-forbiddenWords = ['capture', 'captures', 'crop', 'crops']
+forbiddenWords = ['capture', 'captures', 'crop', 'crops', 'croped']
 compulsaryWords = []
 
 # Disable the Warnings from TiffFile
@@ -405,6 +411,7 @@ logging.getLogger('tifffile').setLevel(logging.ERROR)
 allStackPaths = getListOfSourceFolders(DirSrc,
                                        forbiddenWords = forbiddenWords,
                                        compulsaryWords = compulsaryWords)
+
 allStacks = []
 allStacksToCrop = []
 ref_point = []
@@ -424,7 +431,6 @@ for i in range(len(allStackPaths)):
     StackFolder = allStackPaths[i]
     StackFolderDir, StackFolderName = os.path.split(StackFolder)
     validStackFolder = True
-    print(StackFolderName)
         
     if not ufun.containsFilesWithExt(StackFolder, '.tif'):
         validStackFolder = False
@@ -436,7 +442,7 @@ for i in range(len(allStackPaths)):
         
     if validStackFolder:
         
-        if mode == 'single file':
+        if source_format == 'single file':
             FilesList = os.listdir(StackFolder)
             TifList = [f for f in FilesList if f.endswith('.tif')]
             if len(TifList) != 1:
@@ -450,7 +456,7 @@ for i in range(len(allStackPaths)):
                 stack = load_stack_region(stackPath, time_indices=TT, 
                                           x_slice=None, y_slice=None)
                 
-        elif mode == 'image collection':
+        elif source_format == 'image collection':
             FilesList = os.listdir(StackFolder)
             TifList = [f for f in FilesList if f.endswith('.tif')]
             if len(TifList) <= 1:
@@ -550,13 +556,24 @@ for i in range(min(len(allZimg), limiter)):
             img = np.copy(img_backup)     
         
     count = count + 1
+    print(stackPath)
     
 cv2.destroyAllWindows()
 
+print(allStacksToCrop)
 print(gs.BLUE + 'Saving all tiff stacks...' + gs.NORMAL)
 
-cropAndCopy(DirSrc, DirDst, allRefPoints[:], allStacksToCrop[:], mode = mode)
+cropAndCopy(DirSrc, DirDst, allRefPoints[:], allStacksToCrop[:], 
+            source_format = source_format, suffix = '',
+            bin_output = False, bin_N = 1, bin_func = np.mean,
+            channel = 'nan', prefix = 'nan')
 
+cropAndCopy(DirSrc, DirDst, allRefPoints[:], allStacksToCrop[:], 
+            source_format = source_format, suffix = '_Binned',
+            bin_output = True, bin_N = 3, bin_func = np.mean,
+            channel = 'nan', prefix = 'nan')
+
+# skimage.measure.block_reduce(image, block_size=2, func=<function sum>, cval=0, func_kwargs=None)
 
 
 # %% Tests
@@ -573,7 +590,7 @@ y_slice = slice(700, 800+400, 1)
 
 print(tiff_inspect(stackPath))
 
-I1 = load_stack_region(stackPath, 
+I1 = load_stack_region(stackPath,
                        time_indices=time_indices, x_slice=x_slice, y_slice=y_slice)
 
 I1_median = Zprojection(I1, kind='median', scaleFactor=1, output_type='uint16')

@@ -67,20 +67,34 @@ df_summary.to_csv(os.path.join(mainDir, 'ResultsMacroRheo.csv'), index=False)
 
 # %% 3. Plot Droplet Pulling
 
-mainDir = 'C:/Users/josep/Desktop/Pulls/'
+mainDir = 'C:/Users/Utilisateur/Desktop/MicroscopeData/Analysis_Pulls/Results'
+date = '25-09-19'
 
-df = pd.read_csv(os.path.join(mainDir, 'NaSS_results.csv'))
-df['UV'] = ['']*len(df)
-df['UV'].loc[df['treatment']=='none'] = 'No'
-df['UV'].loc[df['treatment']!='none'] = '20min 100%'
+df = pd.read_csv(os.path.join(mainDir, date + '_NaSS_results.csv'))
+df['UV'] = pd.Series(['']*len(df))
+df.loc[df['treatment']=='none', 'UV'] = 'No'
+df.loc[df['treatment']!='none', 'UV'] = '20min 100%'
 
 fig, ax = plt.subplots(1, 1, figsize = (3, 4))
-sns.swarmplot(ax=ax, data=df, x='UV', y='viscosity', size=10)
-ax.set_ylim([0, 15])
+sns.boxplot(ax=ax, data=df, x='UV', y='viscosity')
+sns.swarmplot(ax=ax, data=df, x='UV', y='viscosity', size=8, edgecolor='k', linewidth=0.5)
+# ax.set_ylim([0, 15])
 ax.grid(axis='y')
 ax.set_xlabel('UV')
 ax.set_ylabel('Viscosity (mPa.s)')
-plt.tight_layout()
+fig.tight_layout()
 plt.show()
 
-fig.savefig(os.path.join(mainDir, 'NaSS_results.png'))
+fig.savefig(os.path.join(mainDir, date + '_NaSS_results.png'))
+
+
+
+
+fig2, ax2 = plt.subplots(1, 1, figsize = (6, 4))
+sns.scatterplot(ax=ax2, data=df, x='bead radius', y='viscosity', hue='treatment', s=40)
+ax2.set_ylim([0, ax2.get_ylim()[1]])
+ax2.grid(axis='y')
+ax2.set_xlabel('Bead radius (µm)')
+ax2.set_ylabel('Viscosity (mPa.s)')
+fig2.tight_layout()
+plt.show()
