@@ -33,33 +33,49 @@ set_default_options_jv(palette = 'Set2')
 
 # %%% Load files
 
-mainDir = 'C:/Users/josep/Desktop/Pulls/RheoMacro'
-listFiles = os.listdir(mainDir)
-listPaths = [os.path.join(mainDir, f) for f in listFiles if f.endswith('.csv')]
+mainDir = 'C:/Users/Joseph/Desktop/RheoMacro'
+
+listFiles = []
+listPaths = []
+for d in os.listdir(mainDir):
+    dP = os.path.join(mainDir, d)
+    if os.path.isdir(dP):
+        lF = [f for f in os.listdir(dP) if f.endswith('.csv')]
+        lP = [os.path.join(dP, f) for f in lF]
+        listFiles += lF
+        listPaths += lP
 
 dictResults = {'date':[],
+               'solvent':[],
                'polymer':[],
                'PI':[],
                'UV':[],
                'viscosity':[],
+               'temperature':[],
                'fileName':[],}
 
-for f in listFiles:
+for f, fp in zip(listFiles, listPaths):
     if f.endswith('.csv') and not f.startswith('Results'):
         blocks = f[:-4].split('_')
         dictResults['date'].append(blocks[0])
-        dictResults['polymer'].append(blocks[1])
-        dictResults['PI'].append(blocks[2])
-        dictResults['UV'].append(blocks[3])
+        dictResults['solvent'].append(blocks[1])
+        dictResults['polymer'].append(blocks[2])
+        dictResults['PI'].append(blocks[3])
+        dictResults['UV'].append(blocks[4])
         dictResults['fileName'].append(f)
         
-        path = os.path.join(mainDir, f)
+        path = fp
         df = pd.read_csv(path, header = 4, sep='\t', #skiprows=2,
                          on_bad_lines='skip', encoding='utf_16_le')
         df = df.drop(df.columns[:2], axis = 1).drop(df.index[:2], axis = 0).reset_index(drop=True)
         viscosity = np.median(df['Viscosity'].astype(float).values)
+        try:
+            temperature = np.median(df['Temperature'].astype(float).values)
+        except:
+            temperature = np.nan
         
         dictResults['viscosity'].append(viscosity)
+        dictResults['temperature'].append(temperature)
         
 df_summary = pd.DataFrame(dictResults)
 df_summary.to_csv(os.path.join(mainDir, 'ResultsMacroRheo.csv'), index=False)
