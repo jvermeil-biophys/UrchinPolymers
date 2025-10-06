@@ -20,15 +20,16 @@ T = 20 + 273.15 # Temperature - K (Kelvin)
 # %% Functions
 
 def Langevin(x):
-    if x == 0:
-        return(0)
-    else:
-        return(coth(x) - (1/x))
+    # if x < 0.1:
+    return(np.tanh(x/3))
+    # else:
+    #     return((1/np.tanh(x)) - (1/x))
     
 def Langevin_A(X):
-    mask = (X != 0)
+    mask = (np.abs(X) < 0.1)
     res = np.zeros_like(X)
-    res[mask] = (coth(X[mask])) - (1/X[mask])
+    res[~mask]= np.tanh(X[~mask]/3)
+    res[mask] = (1/np.tanh(X[mask])) - (1/X[mask])
     return(res)
         
 
@@ -36,7 +37,7 @@ def Magnetization(mu, n, B):
     # try:
     A = mu*n
     X = mu*B / (kB*T)
-    return(A * Langevin_A(X))
+    return(A * Langevin(X))
     # except:
     #     A = mu*n
     #     X = mu*B / (kB*T)
@@ -68,10 +69,15 @@ m1 = 4*np.pi*B1*(R1**3)/mu0 # A.m² (Ampere.metre^2)
 
 # %% Propriétés des billes
 
-mu_b = 8e-3 # Permeabilite magnetique du materiau des billes [µ0.µr] - H/m (Henry/metre)
+mu_b = 8e-4 # Permeabilite magnetique du materiau des billes [µ0.µr] - H/m (Henry/metre)
 n_b = 0.2 # Densite en elements magnetique - % (ratio)
 R_b = 5e-6 # Rayon des billes - m (metre)
 V_b = (4/3)*np.pi*R_b**3
+
+Btest = 10e-3
+A = mu_b*n_b
+X = mu_b*Btest / (kB*T)
+Mtest = A * np.tanh(X)
 
 MagFun_b = lambda B : Magnetization(mu_b, n_b, B)
 
@@ -79,7 +85,7 @@ BB = np.arange(1, 100, 1)*1e-12 # Magnetic Field from -0.1 to +0.1 T
 MM = MagFun_b(BB)
 fig, ax = plt.subplots(1, 1, figsize=(5, 4))
 ax = ax
-ax.plot(BB*1e3, MM, 'g')
+ax.plot(BB*1e3, np.tanh(BB/3), 'g')
 ax.grid()
 ax.set_xlabel('Mag Field (mT)', color = 'b')
 ax.set_ylabel('Bead Magnetization (A/m)', color = 'g')
