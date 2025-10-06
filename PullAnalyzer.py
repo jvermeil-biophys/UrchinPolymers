@@ -630,8 +630,6 @@ def pullAnalyzer(track, df_pulls, pull_id,
     # if np.sum(GlobalFilter) == 0:
     #     error = True
     #     output = ()
-        
-
 
     # --- Release phase ---
     try:
@@ -648,7 +646,6 @@ def pullAnalyzer(track, df_pulls, pull_id,
     speed_med = np.median((dx_pulling[GlobalFilter][1:]-dx_pulling[GlobalFilter][:-1])/time_stp) # µm/s
     force_med = np.median(pull_force[GlobalFilter]) # pN
     
-    
     #### 5. Fit Model
     if mode == 'newton':
         try:
@@ -662,7 +659,6 @@ def pullAnalyzer(track, df_pulls, pull_id,
             error = True
             output = ()
             return(output, error)
-        
         
     elif mode == 'jeffrey':
         try:
@@ -787,12 +783,12 @@ def pullAnalyzer(track, df_pulls, pull_id,
         label2+= r"$a$ = " + f"{a:.2f}\n"
         label2+= r"$\tau$ = " + f"{tau:.2f}"
         ax.plot(trelease, dx_release_n, "s")
-        ax.plot(np.linspace(0, trelease[-1], 1000),
-                 exp_fit([a,tau], np.linspace(0, trelease[-1], 1000)), ls="-", c='darkorange',
-                 label=label2)
+        ax.plot(np.linspace(0, trelease[-1], 1000), exp_fit([a,tau], np.linspace(0, trelease[-1], 1000)), 
+                ls="-", c='darkorange', label=label2)
         ax.legend()
         ax.grid()
-        ax.set_xlabel("t [s]"); plt.ylabel("Normalized displacement")
+        ax.set_xlabel("t [s]")
+        ax.set_ylabel("Normalized displacement")
         ax.set_ylim([0, 1.5])
         plt.tight_layout()
         fig2.savefig(os.path.join(analysisDir, pull_id + "_fits.png"))
