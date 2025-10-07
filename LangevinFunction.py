@@ -10,12 +10,13 @@ Created on Mon Oct  6 14:41:38 2025
 import numpy as np
 import matplotlib.pyplot as plt
 
-from mpmath import coth
+# from mpmath import coth
 
 mu0 = 4*np.pi*1e-7 # Permeabilite magnetique du vide [µ0] - H/m (Henry/metre)
 kB = 1.380649e-23 # Constante de Boltzman - J/K (Joule/Kelvin)
 T = 20 + 273.15 # Temperature - K (Kelvin)
 
+# kB* = 4.0473725435e-21
 
 # %% Functions
 
@@ -37,7 +38,7 @@ def Magnetization(mu, n, B):
     # try:
     A = mu*n
     X = mu*B / (kB*T)
-    return(A * Langevin(X))
+    return(1 * Langevin(X))
     # except:
     #     A = mu*n
     #     X = mu*B / (kB*T)
@@ -69,10 +70,33 @@ m1 = 4*np.pi*B1*(R1**3)/mu0 # A.m² (Ampere.metre^2)
 
 # %% Propriétés des billes
 
-mu_b = 8e-4 # Permeabilite magnetique du materiau des billes [µ0.µr] - H/m (Henry/metre)
+# MyOne Beads
+MS_part = 336e3 # A/m
+R_part = 7.6/2 * 1e-9 # m
+V_part = (4/3)*np.pi*R_part**3 # m3
+
+n_b = 0.255 # Densite M/M en elements magnetique - ratio
+phi_b = 0.119 # Densite V/V en elements magnetique - ratio
+R_b = 1.05 * 1e-6 / 2 # m
+V_b = (4/3)*np.pi*R_b**3 # m3
+rho_b = 1.7 # g/mL or g/cm3 or kg/L
+mass_b = rho_b * V_b * 1000 # kg
+
+N = phi_b*V_b/V_part
+
+mu_b = V_b*phi_b*MS_part
+M0_b = V_b*phi_b*MS_part/mass_b
+M0_b_paper = 23.5 # Am2/kg
+
+Chi_b = N*(V_part*MS_part)**2/(3*kB*T*mass_b)
+Chi_b_paper = 81e-5 # m3/kg
+
+
+mu_b = 2e-19 # Permeabilite magnetique du materiau des billes [µ0.µr] - H/m (Henry/metre)
 n_b = 0.2 # Densite en elements magnetique - % (ratio)
 R_b = 5e-6 # Rayon des billes - m (metre)
 V_b = (4/3)*np.pi*R_b**3
+Chi = mu_b/(kB*T)
 
 Btest = 10e-3
 A = mu_b*n_b
@@ -81,11 +105,12 @@ Mtest = A * np.tanh(X)
 
 MagFun_b = lambda B : Magnetization(mu_b, n_b, B)
 
-BB = np.arange(1, 100, 1)*1e-12 # Magnetic Field from -0.1 to +0.1 T
+BB = np.arange(-100, 100, 1)*1e-3 # Magnetic Field from -0.1 to +0.1 T
 MM = MagFun_b(BB)
 fig, ax = plt.subplots(1, 1, figsize=(5, 4))
 ax = ax
-ax.plot(BB*1e3, np.tanh(BB/3), 'g')
+ax.plot(BB*1000, MM, 'g')
+ax.plot(BB*1000, BB*Chi/3, 'r--')
 ax.grid()
 ax.set_xlabel('Mag Field (mT)', color = 'b')
 ax.set_ylabel('Bead Magnetization (A/m)', color = 'g')
