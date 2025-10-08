@@ -168,6 +168,73 @@ fig.tight_layout()
 plt.show()
 
 
+# %% Estimate B
+
+# Viscosity of glycerol 80% v/v glycerol/water at 21°C [Pa.s]
+viscosity_glycerol = 0.0857  
+# Magnet function distance (µm) to velocity (µm/s) [expected velocity in glycerol]
+mag_d2v = lambda x: 80.23*np.exp(-x/47.49) + 1.03*np.exp(-x/22740.0)
+
+DragC = 6*np.pi*viscosity_glycerol*0.5e-6
+Vb = (4/3)*np.pi*(0.5e-6)**3
+
+C1b = 23.5*1700
+C2b = 3*81e-5/(C1*mu0)
+
+XX = np.linspace(61, 800, 10000)*1e-6
+VV = mag_d2v(XX*1e6)
+VV2 = mag_d2v(XX*1e6 - 60)
+FF = DragC * (VV2*1e-6)
+
+m_mag = 1.8e-7
+BB = ChampMag(m_mag, XX)
+GBGB = GradMag(m_mag, XX)
+MM = L1_A(C1b, C2b, BB)
+mm = MM*Vb
+FFmag = -mm*GBGB
+
+def Fmag(m_mag, XX): 
+    Vb = (4/3)*np.pi*(0.5e-6)**3
+    C1b = 23.5
+    C2b = 3*81e-5/(C1*mu0)
+    
+    BB = ChampMag(m_mag, XX)
+    GBGB = GradMag(m_mag, XX)
+    MM = L1_A(C1b, C2b, BB)
+    mm = MM*Vb/1700
+    FFmag = -mm*GBGB
+    
+
+
+
+
+fig, axes = plt.subplots(2, 2, figsize=(16,12))
+ax = axes[0, 0]
+ax.plot(XX*1e6, VV)
+ax.plot(XX*1e6, VV2)
+ax.grid()
+
+ax = axes[0, 1]
+ax.plot(XX*1e6, FF*1e12, 'darkred')
+ax.grid()
+
+ax = axes[1, 0]
+ax.plot(XX*1e6, BB*1000, 'purple')
+ax.grid()
+axbis = ax.twinx()
+axbis.plot(XX*1e6, GBGB*1000, 'r')
+
+ax = axes[1, 1]
+ax.plot(XX*1e6, FFmag*1e12, 'darkred')
+ax.grid()
+axbis = ax.twinx()
+axbis.plot(XX*1e6, MM, 'g')
+
+fig.tight_layout()
+plt.show()
+
+
+
 # %% Plots
 
 RR = np.arange(100, 500, 1)*1e-6 # From Ri to Rf distance (metre)
