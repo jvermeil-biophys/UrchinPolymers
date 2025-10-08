@@ -128,14 +128,16 @@ def L1_A(a1, a2, X):
     return(res)
 
 
-XX = np.linspace(-5, 5, 1000)
-YYref = L1_A(1, 1, XX)
+a1 = 1
+a2 = 1
+
+XX = np.linspace(-10, 10, 1000)
+YYref = L1_A(a1, a2, XX)
 
 fig, ax = plt.subplots(1, 1)
 
-a1 = 1
-for a2 in [0.8, 0.9, 1, 1.1, 1.2]:
-    ax.plot(XX, L1_A(a1, a2, XX)/YYref)
+for k2 in [0.8, 0.9, 1, 1.1, 1.2]:
+    ax.plot(XX, L1_A(a1, k2*a2, XX)/YYref)
     
 ax.grid()
 fig.tight_layout()
@@ -195,6 +197,9 @@ plt.show()
 
 # %% Estimate B
 
+# Mag Radius
+R_mag = 60*1e-6
+
 # Viscosity of glycerol 80% v/v glycerol/water at 21°C [Pa.s]
 viscosity_glycerol = 0.0857  
 # Magnet function distance (µm) to velocity (µm/s) [expected velocity in glycerol]
@@ -206,9 +211,9 @@ Vb = (4/3)*np.pi*(0.5e-6)**3
 C1b = 23.5*1700
 C2b = 3*81e-5/(C1*mu0)
 
-XX = np.linspace(61, 800, 10000)*1e-6
+XX = np.linspace(R_mag*1e6 + 1, 800, 10000)*1e-6
 VV = mag_d2v(XX*1e6)
-VV2 = mag_d2v(XX*1e6 - 60)
+VV2 = mag_d2v((XX-R_mag)*1e6)
 FF = DragC * (VV2*1e-6)
 
 m_mag = 1.8e-7
@@ -228,32 +233,45 @@ def Fmag(m_mag, XX):
     MM = L1_A(C1b, C2b, BB)
     mm = MM*Vb/1700
     FFmag = -mm*GBGB
-    
+    return(FFmag)
 
 
-
-
-fig, axes = plt.subplots(2, 2, figsize=(16,12))
+fig, axes = plt.subplots(2, 2, figsize=(10,8), sharex=True)
 ax = axes[0, 0]
 ax.plot(XX*1e6, VV)
 ax.plot(XX*1e6, VV2)
-ax.grid()
-
-ax = axes[0, 1]
-ax.plot(XX*1e6, FF*1e12, 'darkred')
+ax.set_ylabel('Bead velocity (µm/s)', color = 'k')
+ax.axvspan(0, R_mag*1e6, color='lightgray', zorder=0)
 ax.grid()
 
 ax = axes[1, 0]
+ax.plot(XX*1e6, FF*1e12, 'darkred')
+ax.set_ylabel('Viscous Force (pN)', color = 'darkred')
+ax.axvspan(0, R_mag*1e6, color='lightgray', zorder=0)
+ax.grid()
+ax.set_xlim([0, 800])
+ax.set_xlabel('X (µm)')
+
+ax = axes[0, 1]
 ax.plot(XX*1e6, BB*1000, 'purple')
+ax.set_ylabel('Mag Field (mT)', color = 'purple')
+ax.axvspan(0, R_mag*1e6, color='lightgray', zorder=0)
 ax.grid()
 axbis = ax.twinx()
-axbis.plot(XX*1e6, GBGB*1000, 'r')
+axbis.plot(XX*1e6, GBGB/1000, 'r')
+axbis.set_ylabel('Mag Gradient (mT/µm)', color = 'r')
+
 
 ax = axes[1, 1]
 ax.plot(XX*1e6, FFmag*1e12, 'darkred')
+ax.set_ylabel('Mag Force (pN)', color = 'darkred')
+ax.axvspan(0, R_mag*1e6, color='lightgray', zorder=0)
 ax.grid()
 axbis = ax.twinx()
-axbis.plot(XX*1e6, MM, 'g')
+axbis.plot(XX*1e6, MM/1000, 'g')
+axbis.set_ylabel('Magnetization (kA/m)', color = 'g')
+ax.set_xlim([0, 800])
+ax.set_xlabel('X (µm)')
 
 fig.tight_layout()
 plt.show()
