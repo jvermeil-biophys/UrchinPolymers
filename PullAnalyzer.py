@@ -1018,8 +1018,8 @@ def pullAnalyzer_V2(track, dict_pull,
                   (magnet_y - Y[pull_index]) * pixel_size], axis=1)
     
     #### Attempt at correcting the effective attractive point
-    # dist = np.linalg.norm(d, axis=1) - magnet_radius # Original behaviour
-    dist = np.linalg.norm(d, axis=1) + (magnet_radius*pixel_size) 
+    dist = np.linalg.norm(d, axis=1) - magnet_radius # Original behaviour
+    # dist = np.linalg.norm(d, axis=1) + (magnet_radius*pixel_size) 
     pull_force = mag_d2f(dist)
     
     tpulling = (t[pull_index] - t[initPullTime]) * time_stp

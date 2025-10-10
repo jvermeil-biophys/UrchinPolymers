@@ -221,11 +221,11 @@ VV1 = mag_d2v((XX-R_mag)*1e6) * 1e-6
 VV2 = mag_d2v_V2((XX-R_mag)*1e6) * 1e-6
 VV3 = mag_d2v_V3(XX) * 1e-6
 
-VV = VV2
+VV = VV1
 FFvisc = DragC * VV
 
-# m_mag = 1.2e-6 # Good for the standard mag_d2v function
-m_mag = 3.35e-6 # Good for the higher mag_d2v function
+m_mag = 1.2e-6 # Good for the standard mag_d2v function
+# m_mag = 3.35e-6 # Good for the higher mag_d2v function
 BB = ChampMag(m_mag, XX)
 GBGB = GradMag(m_mag, XX)
 MM = L1_A(C1b, C2b, BB)

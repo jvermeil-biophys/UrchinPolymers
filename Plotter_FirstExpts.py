@@ -84,7 +84,8 @@ df_summary.to_csv(os.path.join(mainDir, 'ResultsMacroRheo.csv'), index=False)
 # %% 3. Plot Droplet Pulling
 
 mainDir = 'C:/Users/Utilisateur/Desktop/MicroscopeData/Analysis_Pulls/Results'
-date = '25-09-19'
+date = '25-09-04'
+# date = '25-09-19'
 
 df = pd.read_csv(os.path.join(mainDir, date + '_NaSS_results.csv'))
 df['UV'] = pd.Series(['']*len(df))
