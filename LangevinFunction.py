@@ -14,7 +14,7 @@ import matplotlib.pyplot as plt
 
 mu0 = 4*np.pi*1e-7 # Permeabilite magnetique du vide [µ0] - H/m (Henry/metre)
 kB = 1.380649e-23 # Constante de Boltzman - J/K (Joule/Kelvin)
-T = 20 + 273.15 # Temperature - K (Kelvin)
+T = 295 # 20 + 273.15 # Temperature - K (Kelvin)
 
 # kB* = 4.0473725435e-21
 
@@ -136,8 +136,9 @@ YYref = L1_A(a1, a2, XX)
 
 fig, ax = plt.subplots(1, 1)
 
-for k2 in [0.8, 0.9, 1, 1.1, 1.2]:
-    ax.plot(XX, L1_A(a1, k2*a2, XX)/YYref)
+
+for k1, k2 in zip([0.8, 0.9, 1, 1.1, 1.2], [0.8, 0.9, 1, 1.1, 1.2]):
+    ax.plot(XX, L1_A(k1*a1, k2*a2, XX)/YYref)
     
 ax.grid()
 fig.tight_layout()
@@ -155,45 +156,188 @@ plt.show()
 # fig.tight_layout()
 # plt.show()
 
-# %% Computation with the paper values
+# %% Computations with the paper values
 
+# MyOne
 ms_p = 336e3
-D_p = 7.0e-9
+# D_p = 7.6e-9
+D_p = 12.4e-9
 R_p = D_p/2
 V_p = (4/3)*np.pi*R_p**3
-
 rho_b = 1.7
 phi_b = 0.119
 
-M0 = phi_b * ms_p / (rho_b*1000)
+M0_MOneT = phi_b * ms_p
+Chi_MOneT = M0_MOneT * (V_p*ms_p) * (1/(3*kB*T))
+k_MOneT = (V_p*ms_p) * (1/(kB*T))
 
-# Chi = phi_b*ms_p * (V_p*ms_p) * (1/(3*kB*T)) * (1/rho_b*1000)
-Chi = M0 * (V_p*ms_p) * (1/(3*kB*T)) * (mu0/2)
+# M450
+ms_p = 353e3
+# D_p = 8e-9
+D_p = 14e-9
+R_p = D_p/2
+V_p = (4/3)*np.pi*R_p**3
+rho_b = 1.6
+phi_b = 0.0888
 
-A1 = 10.8
-A2 = 3*54e-5/(A1*mu0)
-B1 = 19.6
-B2 = 3*102e-5/(B1*mu0)
-C1 = 23.5
-C2 = 3*81e-5/(C1*mu0)
+M0_M450T = phi_b * ms_p
+Chi_M450T = M0_M450T * (V_p*ms_p) * (1/(3*kB*T))
+k_M450T = (V_p*ms_p) * (1/(kB*T))
 
-def L1_A(a1, a2, X):
-    mask = (np.abs(X) < 0.001)
-    res = np.zeros_like(X)
-    res[mask]= a1*np.tanh(a2*X[mask]/3)
-    res[~mask] = a1*((1/np.tanh(a2*X[~mask])) - (1/(a2*X[~mask])))
+# M280
+ms_p = 336e3
+# D_p = 8e-9
+D_p = 14e-9
+R_p = D_p/2
+V_p = (4/3)*np.pi*R_p**3
+rho_b = 1.4
+phi_b = 0.045
+
+M0_M280T = phi_b * ms_p
+Chi_M280T = M0_M280T * (V_p*ms_p) * (1/(3*kB*T))
+k_M280T = (V_p*ms_p) * (1/(kB*T))
+
+
+# Valeurs papier
+M0_M280M = 1400*10.8
+Chi_M280M = 1400*54e-5/(mu0)
+k_M280M = 3*Chi_M280M/M0_M280M
+M0_M450M = 1600*19.6
+Chi_M450M = 1600*102e-5/(mu0)
+k_M450M = 3*Chi_M450M/M0_M450M
+M0_MOneM = 1700*23.5
+Chi_MOneM = 1700*81e-5/(mu0)
+k_MOneM = 3*Chi_MOneM/M0_MOneM
+
+# M0 = M0_MOne
+# Chi = Chi_MOne
+
+# def L1_A(a1, a2, X):
+#     mask = (np.abs(X) < 0.001)
+#     res = np.zeros_like(X)
+#     res[mask]= a1*np.tanh(a2*X[mask]/3)
+#     res[~mask] = a1*((1/np.tanh(a2*X[~mask])) - (1/(a2*X[~mask])))
+#     return(res)
+
+def L1_A(BB, M0, Chi):
+    XX = 3*Chi*BB/M0
+    mask = (np.abs(XX) < 0.05)
+    res = np.zeros_like(XX)
+    res[mask]= M0*np.tanh(XX[mask]/3)
+    res[~mask] = M0*((1/np.tanh(XX[~mask])) - (1/XX[~mask]))
     return(res)
 
-XX = np.linspace(-1, 1, 1000)
+def L1_A_V2(BB, M0, k):
+    XX = k*BB
+    mask = (np.abs(XX) < 0.05)
+    res = np.zeros_like(XX)
+    res[mask]= M0*np.tanh(XX[mask]/3)
+    res[~mask] = M0*((1/np.tanh(XX[~mask])) - (1/XX[~mask]))
+    return(res)
+
+XX1 = np.linspace(-1, 1, 1000)
+XX2 = np.linspace(-0.015, 0.015, 1000)
 # XX = np.linspace(-0.015, 0.015, 1000)
 
-fig, ax = plt.subplots(1, 1)
-ax.plot(XX, L1_A(A1, A2, XX))
-    
+fig, axes = plt.subplots(1, 2, figsize=(10, 5))
+ax = axes[0]
+ax.plot(XX1, L1_A(XX1, M0_MOneM, Chi_MOneM))
+ax.plot(XX1, L1_A(XX1, M0_MOneT, Chi_MOneT))
 ax.grid()
+
+ax = axes[1]
+ax.plot(XX2, L1_A(XX2, M0_MOneM, Chi_MOneM))
+ax.plot(XX2, L1_A(XX2, M0_MOneT, Chi_MOneT))
+ax.grid()
+
+ax = axes[0]
+ax.plot(XX1, L1_A(XX1, M0_M450M, Chi_M450M))
+ax.plot(XX1, L1_A(XX1, M0_M450T, Chi_M450T))
+ax.grid()
+
+ax = axes[1]
+ax.plot(XX2, L1_A(XX2, M0_M450M, Chi_M450M))
+ax.plot(XX2, L1_A(XX2, M0_M450T, Chi_M450T))
+ax.grid()
+
+ax = axes[0]
+ax.plot(XX1, L1_A(XX1, M0_M280M, Chi_M280M))
+ax.plot(XX1, L1_A(XX1, M0_M280T, Chi_M280T))
+ax.grid()
+
+ax = axes[1]
+ax.plot(XX2, L1_A(XX2, M0_M280M, Chi_M280M))
+ax.plot(XX2, L1_A(XX2, M0_M280T, Chi_M280T))
+ax.grid()
+
 fig.tight_layout()
 plt.show()
 
+
+# %% 
+
+M0_MOneM = 1700*23.5
+Chi_MOneM = 1700*81e-5/(mu0)
+k_MOneM = 3*Chi_MOneM/M0_MOneM
+
+def L1_A_V2(BB, M0, k):
+    XX = k*BB
+    mask = (np.abs(XX) < 0.05)
+    res = np.zeros_like(XX)
+    res[mask]= M0*np.tanh(XX[mask]/3)
+    res[~mask] = M0*((1/np.tanh(XX[~mask])) - (1/XX[~mask]))
+    return(res)
+
+
+XX1 = np.linspace(-1, 1, 1000)
+XX2 = np.linspace(-0.05, 0.05, 1000)
+# XX = np.linspace(-0.015, 0.015, 1000)
+
+fig, axes = plt.subplots(1, 3, figsize=(15, 5))
+ax = axes[0]
+ax.plot(XX1, L1_A_V2(XX1, M0_MOneM, k_MOneM))
+ax.plot(XX1, L1_A_V2(XX1, M0_MOneM*0.5, k_MOneM*0.5))
+ax.grid()
+
+ax = axes[1]
+ax.plot(XX2*1000, L1_A_V2(XX2, M0_MOneM, k_MOneM))
+ax.plot(XX2*1000, L1_A_V2(XX2, M0_MOneM*0.5, k_MOneM*0.5))
+ax.grid()
+
+ax = axes[2]
+ax.plot(XX2*1000, L1_A_V2(XX2, M0_MOneM*0.5, k_MOneM*0.5)/L1_A_V2(XX2, M0_MOneM, k_MOneM))
+ax.grid()
+
+# ----
+
+X_max = 600*1e-6 # µm
+R_mag = 50*1e-6 # Mag Radius
+XX = np.linspace(R_mag + 1*1e-6, X_max, 5000)
+m_mag = 1*1e-6
+
+BB = ChampMag(m_mag, XX)
+
+X0 = 400e-6
+B0 = np.array([ChampMag(m_mag, X0)])
+
+MM1 = L1_A_V2(BB, M0_MOneM, k_MOneM)
+MM2 = L1_A_V2(BB, M0_MOneM*0.5, k_MOneM*0.5)
+M10 = L1_A_V2(B0, M0_MOneM, k_MOneM)[0]
+M20 = L1_A_V2(B0, M0_MOneM*0.5, k_MOneM*0.5)[0]
+
+fig, axes = plt.subplots(1, 3, figsize=(15, 5))
+ax = axes[0]
+ax.plot(XX*1e6, MM1)
+ax.plot(XX*1e6, MM2)
+ax.grid()
+
+ax = axes[1]
+ax.plot(XX*1e6, MM2/MM1)
+ax.grid()
+
+ax = axes[2]
+ax.plot(XX*1e6, (M10/M20)*(MM2/MM1))
+ax.grid()
 
 # %% Estimate B
 
@@ -212,8 +356,8 @@ mag_d2v_V3 = lambda x: 2.6e-25/x**7
 DragC = 6*np.pi*viscosity_glycerol*0.5e-6
 Vb = (4/3)*np.pi*(0.5e-6)**3
 
-C1b = 23.5*1700
-C2b = 3*81e-5/(C1*mu0)
+M0 = 1700*23.5
+Chi = 1700*81e-5/(mu0)
 
 XX = np.linspace(R_mag*1e6 + 1, X_max, 5000)*1e-6
 # VV = mag_d2v((XX-R_mag)*1e6)
@@ -221,28 +365,29 @@ VV1 = mag_d2v((XX-R_mag)*1e6) * 1e-6
 VV2 = mag_d2v_V2((XX-R_mag)*1e6) * 1e-6
 VV3 = mag_d2v_V3(XX) * 1e-6
 
-VV = VV1
+VV = VV2
 FFvisc = DragC * VV
 
-m_mag = 1.2e-6 # Good for the standard mag_d2v function
+  # m_mag = 1.2e-6 # Good for the standard mag_d2v function
 # m_mag = 3.35e-6 # Good for the higher mag_d2v function
+m_mag = 8e-6 # Good for the higher mag_d2v function
 BB = ChampMag(m_mag, XX)
 GBGB = GradMag(m_mag, XX)
-MM = L1_A(C1b, C2b, BB)
+MM = L1_A(BB, M0, Chi)
 mm = MM*Vb
 FFmag = -mm*GBGB
 
 BB2 = np.linspace(0, 0.2, 500)
-MM2 = L1_A(C1b, C2b, BB2)
+MM2 = L1_A(BB2, M0, Chi)
 
 def Fmag(m_mag, XX): 
     Vb = (4/3)*np.pi*(0.5e-6)**3
-    C1b = 23.5
-    C2b = 3*81e-5/(C1*mu0)
+    M0 = 1700*23.5
+    Chi = 1700*81e-5/(mu0)
     
     BB = ChampMag(m_mag, XX)
     GBGB = GradMag(m_mag, XX)
-    MM = L1_A(C1b, C2b, BB)
+    MM = L1_A(BB, M0, Chi)
     mm = MM*Vb/1700
     FFmag = -mm*GBGB
     return(FFmag)
