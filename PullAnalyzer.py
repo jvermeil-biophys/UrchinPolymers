@@ -858,7 +858,9 @@ def pullAnalyzer_multiFiles_V2(mainDir, date, prefix_id,
     id_cols = ['pull_id']
     co_cols = ['type', 'solution', 'bead type', 'bead radius', 'treatment', 'magnet']
     if mode == 'newton':
-        result_cols = ['fit_mode', 'viscosity', 'R2', 'median speed', 'median force']
+        result_cols = ['fit_mode', 'viscosity', 'R2', 
+                       'median speed', 'median force', 
+                       'R min', 'R max', 'theta']
     elif mode == 'jeffrey':
         result_cols = ['fit_mode', 'k', 'gamma1', 'gamma2', 'tempo1', 'tempo2', 'R2_p', 
                        'median pull speed', 'median pull force',
@@ -880,8 +882,9 @@ def pullAnalyzer_multiFiles_V2(mainDir, date, prefix_id,
                 pass
             
             track = trackSelection(tracks, mode = 'longest')
+            dict_pull = Df2Dict(df_pulls[df_pulls['id'] == P_id])
             
-            output, error = pullAnalyzer(track, df_pulls, P_id,
+            output, error = pullAnalyzer_V2(track, dict_pull, 
                                          mode = 'newton', 
                                          PLOT = PLOT, SHOW = SHOW)
             if not error:
@@ -896,15 +899,19 @@ def pullAnalyzer_multiFiles_V2(mainDir, date, prefix_id,
                 results_dict['magnet'].append(co_dict['magnet'][0])
                 
                 if mode == 'newton':
-                    visco, R2, speed_med, force_med = output
+                    visco, R2, speed_med, force_med, theta, r_min, r_max = output
                     results_dict['fit_mode'].append('newton')
                     results_dict['viscosity'].append(visco*1000)
                     results_dict['R2'].append(R2)
                     results_dict['median speed'].append(speed_med)
                     results_dict['median force'].append(force_med)
+                    results_dict['theta'].append(speed_med)
+                    results_dict['R min'].append(force_med)
+                    results_dict['R max'].append(speed_med)
+                    
                     
                 elif mode == 'jeffrey':
-                    k, gamma1, gamma2, R2_p, speed_med, force_med, a, tau, R2_r = output
+                    k, gamma1, gamma2, R2_p, speed_med, force_med, a, tau, R2_r, theta, r_min, r_max = output
                     results_dict['fit_mode'].append('jeffrey')
                     results_dict['k'].append(visco*1000)
                     results_dict['gamma1'].append(gamma1)
@@ -1048,6 +1055,7 @@ def pullAnalyzer_V2(track, dict_pull,
     # --- Measures ---
     speed_med = np.median((dx_pulling[GlobalFilter][1:]-dx_pulling[GlobalFilter][:-1])/time_stp) # µm/s
     force_med = np.median(pull_force[GlobalFilter]) # pN
+    r_min, r_max = min(dist), max(dist)
     
     #### 5. Fit Model
     if mode == 'newton':
@@ -1057,7 +1065,7 @@ def pullAnalyzer_V2(track, dict_pull,
             gamma = params[1]
             visco = 1/(6*np.pi*bead_radius*gamma)
             R2 = results.rsquared
-            output = (visco, R2, speed_med, force_med)
+            output = (visco, R2, speed_med, force_med, theta, r_min, r_max)
         except:
             error = True
             output = ()
@@ -1100,7 +1108,7 @@ def pullAnalyzer_V2(track, dict_pull,
             Yfit = exp_fit((a, tau), trelease)
             R2_r = get_R2(Ymeas, Yfit) 
             
-            output = (k, gamma1, gamma2, R2_p, speed_med, force_med, a, tau, R2_r)
+            output = (k, gamma1, gamma2, R2_p, speed_med, force_med, a, tau, R2_r, theta, r_min, r_max)
     
         except:
             error = True
