@@ -10,6 +10,8 @@ Created on Mon Oct  6 14:41:38 2025
 import numpy as np
 import matplotlib.pyplot as plt
 
+from scipy.optimize import curve_fit
+
 # from mpmath import coth
 
 mu0 = 4*np.pi*1e-7 # Permeabilite magnetique du vide [µ0] - H/m (Henry/metre)
@@ -61,11 +63,46 @@ def ForceMag(m_magnet, V_b, MagFun_b, r):
 
 # %% Proprietes de l'aimant
 
-# Disons que le champ magnetique dans l'axe de l'aimant est de 5 mT à 200 µm
+# Disons que le champ magnetique dans l'axe de l'aimant est de 10 mT à 200 µm
 
-B1 = 10*1e-3 # T
+B1 = 100*1e-3 # T
 R1 = 200*1e-6 # m
 m1 = 4*np.pi*B1*(R1**3)/mu0 # A.m² (Ampere.metre^2)
+
+
+# %% Fit new function on old one
+
+d2v = lambda x: 80.23*np.exp(-x/47.49) + 1.03*np.exp(-x/22740.0)
+
+def Langevin(x):
+    # if x < 0.05:
+    #     return(np.tanh(x/3))
+    # else:
+    return((1/np.tanh(x)) - (1/x))
+
+def New_D2V(x, A, B, x0):
+    return(A * Langevin(B/(x-x0)**3) * 1/(x-x0)**4)
+
+# def New_D2V(x, A, x0):
+#     return(A*np.exp(-x/x0))
+
+XX = np.linspace(50, 500, 100) #* 1e-6
+YY1 = d2v(XX)
+
+fig, ax = plt.subplots(1,1)
+ax.plot(XX, YY1, 'wo', mec='k', lw=0.5)
+plt.show()
+
+popt, pcov = curve_fit(New_D2V, XX, YY1, p0=[2e8, 8e13, 20]) # p0=[80, 47, 1]
+
+# ax.plot(XX, New_D2V(XX, *[2e8, 8e4, 20]), 'g-', lw=1)
+ax.plot(XX, New_D2V(XX, *popt), 'r-', lw=1)
+
+new_d2v = lambda x: New_D2V(x, 2.75379e+10, 6.87603e+21, -124.896)
+
+
+
+
 
 
 # %% Propriétés des billes
@@ -352,33 +389,24 @@ viscosity_glycerol = 0.0857
 mag_d2v = lambda x: 80.23*np.exp(-x/47.49) + 1.03*np.exp(-x/22740.0)
 mag_d2v_V2 = lambda x: 3*80.23*np.exp(-x/(47.49)) + 1.03*np.exp(-x/(22740.0))
 mag_d2v_V3 = lambda x: 2.6e-25/x**7
+mag_d2v_V4 = lambda x: 80.23*np.exp((R_mag*1e6-x)/47.49) + 1.5e17/x**7
+# mag_d2v_V4 = lambda x: 80.23*np.exp((R_mag*1e6-x)/47.49) + 5e14/x**7
+mag_d2v_V5 = new_d2v
 
-DragC = 6*np.pi*viscosity_glycerol*0.5e-6
-Vb = (4/3)*np.pi*(0.5e-6)**3
 
-M0 = 1700*23.5
-Chi = 1700*81e-5/(mu0)
+M0_MOneM = 1700*23.5
+Chi_MOneM = 1700*81e-5/(mu0)
+k_MOneM = 3*Chi_MOneM/M0_MOneM
+M0 = M0_MOneM
+Chi = Chi_MOneM
 
-XX = np.linspace(R_mag*1e6 + 1, X_max, 5000)*1e-6
-# VV = mag_d2v((XX-R_mag)*1e6)
-VV1 = mag_d2v((XX-R_mag)*1e6) * 1e-6
-VV2 = mag_d2v_V2((XX-R_mag)*1e6) * 1e-6
-VV3 = mag_d2v_V3(XX) * 1e-6
-
-VV = VV2
-FFvisc = DragC * VV
-
-  # m_mag = 1.2e-6 # Good for the standard mag_d2v function
-# m_mag = 3.35e-6 # Good for the higher mag_d2v function
-m_mag = 8e-6 # Good for the higher mag_d2v function
-BB = ChampMag(m_mag, XX)
-GBGB = GradMag(m_mag, XX)
-MM = L1_A(BB, M0, Chi)
-mm = MM*Vb
-FFmag = -mm*GBGB
-
-BB2 = np.linspace(0, 0.2, 500)
-MM2 = L1_A(BB2, M0, Chi)
+def L1_A(BB, M0, Chi):
+    XX = 3*Chi*BB/M0
+    mask = (np.abs(XX) < 0.05)
+    res = np.zeros_like(XX)
+    res[mask]= M0*np.tanh(XX[mask]/3)
+    res[~mask] = M0*((1/np.tanh(XX[~mask])) - (1/XX[~mask]))
+    return(res)
 
 def Fmag(m_mag, XX): 
     Vb = (4/3)*np.pi*(0.5e-6)**3
@@ -392,16 +420,46 @@ def Fmag(m_mag, XX):
     FFmag = -mm*GBGB
     return(FFmag)
 
+DragC = 6*np.pi*viscosity_glycerol*0.5e-6
+Vb = (4/3)*np.pi*(0.5e-6)**3
+
+XX = np.linspace(R_mag*1e6 + 1, X_max, 5000)*1e-6
+# VV = mag_d2v((XX-R_mag)*1e6)
+VV1 = mag_d2v((XX-R_mag)*1e6) * 1e-6
+VV2 = mag_d2v_V2((XX-R_mag)*1e6) * 1e-6
+VV3 = mag_d2v_V3(XX) * 1e-6
+VV4 = mag_d2v_V4((XX)*1e6) * 1e-6
+VV5 = mag_d2v_V5((XX-R_mag)*1e6) * 1e-6
+
+VV = VV5
+FFvisc1= DragC * VV1
+FFvisc = DragC * VV
+
+# m_mag = 1.2e-6 # Good for the standard mag_d2v function
+# m_mag = 3.35e-6 # Good for the higher mag_d2v function
+# m_mag = 3.35e-6 # Good for the mag_d2v_V4 function
+m_mag = 3.35e-6 # Good for the mag_d2v_V5 function
+
+BB = ChampMag(m_mag, XX)
+GBGB = GradMag(m_mag, XX)
+MM = L1_A(BB, M0, Chi)
+mm = MM*Vb
+FFmag = -mm*GBGB
+
+BB2 = np.linspace(0, 0.2, 500)
+MM2 = L1_A(BB2, M0, Chi)
+
 
 fig, axes = plt.subplots(2, 3, figsize=(15,8), sharex=True)
 ax = axes[0, 0]
 ax.plot(XX*1e6, VV*1e6)
-# ax.plot(XX*1e6, VV3*1e6)
+ax.plot(XX*1e6, VV1*1e6)
 ax.set_ylabel('Bead velocity (µm/s)', color = 'k')
 ax.axvspan(0, R_mag*1e6, color='lightgray', zorder=0)
 ax.grid()
 
 ax = axes[1, 0]
+ax.plot(XX*1e6, FFvisc1*1e12, 'darkorange')
 ax.plot(XX*1e6, FFvisc*1e12, 'darkred')
 ax.set_ylabel('Viscous Force (pN)', color = 'darkred')
 ax.axvspan(0, R_mag*1e6, color='lightgray', zorder=0)

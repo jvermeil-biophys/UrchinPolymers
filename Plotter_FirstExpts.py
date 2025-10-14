@@ -84,7 +84,7 @@ df_summary.to_csv(os.path.join(mainDir, 'ResultsMacroRheo.csv'), index=False)
 # %% 3. Plot Droplet Pulling
 
 mainDir = 'C:/Users/Utilisateur/Desktop/MicroscopeData/Analysis_Pulls/Results'
-date = '25-09-04'
+date = '25-09-19'
 # date = '25-09-19'
 
 df = pd.read_csv(os.path.join(mainDir, date + '_NaSS_results.csv'))
@@ -92,7 +92,8 @@ df['UV'] = pd.Series(['']*len(df))
 df.loc[df['treatment']=='none', 'UV'] = 'No'
 df.loc[df['treatment']!='none', 'UV'] = '20min 100%'
 
-fig, ax = plt.subplots(1, 1, figsize = (3, 4))
+fig1, ax1 = plt.subplots(1, 1, figsize = (3, 4))
+fig, ax = fig1, ax1
 sns.boxplot(ax=ax, data=df, x='UV', y='viscosity')
 sns.swarmplot(ax=ax, data=df, x='UV', y='viscosity', size=8, edgecolor='k', linewidth=0.5)
 # ax.set_ylim([0, 15])
@@ -105,13 +106,36 @@ plt.show()
 fig.savefig(os.path.join(mainDir, date + '_NaSS_results.png'))
 
 
-
-
 fig2, ax2 = plt.subplots(1, 1, figsize = (6, 4))
-sns.scatterplot(ax=ax2, data=df, x='bead radius', y='viscosity', hue='treatment', s=40)
-ax2.set_ylim([0, ax2.get_ylim()[1]])
-ax2.grid(axis='y')
-ax2.set_xlabel('Bead radius (µm)')
-ax2.set_ylabel('Viscosity (mPa.s)')
-fig2.tight_layout()
+fig, ax = fig2, ax2
+sns.scatterplot(ax=ax, data=df, x='bead radius', y='viscosity', hue='treatment', s=40)
+ax.set_ylim([0, ax2.get_ylim()[1]])
+ax.grid(axis='y')
+ax.set_xlabel('Bead radius (µm)')
+ax.set_ylabel('Viscosity (mPa.s)')
+fig.tight_layout()
+plt.show()
+
+
+fig3, ax3 = plt.subplots(1, 1, figsize = (6, 4))
+fig, ax = fig3, ax3
+sns.scatterplot(ax=ax, data=df, x='R min', y='viscosity', hue='treatment', s=40)
+ax.set_ylim([0, ax2.get_ylim()[1]])
+ax.grid(axis='y')
+ax.set_xlabel('Min dist to magnet tip (µm)')
+ax.set_ylabel('Viscosity (mPa.s)')
+fig.tight_layout()
+plt.show()
+
+fig.savefig(os.path.join(mainDir, date + '_NaSS_biasWithR.png'))
+
+
+fig4, ax4 = plt.subplots(1, 1, figsize = (6, 4))
+fig, ax = fig4, ax4
+sns.scatterplot(ax=ax, data=df, x='theta', y='viscosity', hue='treatment', s=40)
+ax.set_ylim([0, ax2.get_ylim()[1]])
+ax.grid(axis='y')
+ax.set_xlabel('Angle with the horiz (rad)')
+ax.set_ylabel('Viscosity (mPa.s)')
+fig.tight_layout()
 plt.show()
