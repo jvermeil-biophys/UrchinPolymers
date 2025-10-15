@@ -65,14 +65,14 @@ def ForceMag(m_magnet, V_b, MagFun_b, r):
 
 # Disons que le champ magnetique dans l'axe de l'aimant est de 10 mT à 200 µm
 
-B1 = 100*1e-3 # T
+B1 = 100*1e-3 # T  
 R1 = 200*1e-6 # m
 m1 = 4*np.pi*B1*(R1**3)/mu0 # A.m² (Ampere.metre^2)
 
 
 # %% Fit new function on old one
 
-d2v = lambda x: 80.23*np.exp(-x/47.49) + 1.03*np.exp(-x/22740.0)
+d2v = lambda x: 80.23*np.exp((-x)/47.49) + 1.03*np.exp((-x)/22740.0)
 
 def Langevin(x):
     # if x < 0.05:
@@ -80,26 +80,27 @@ def Langevin(x):
     # else:
     return((1/np.tanh(x)) - (1/x))
 
-def New_D2V(x, A, B, x0):
-    return(A * Langevin(B/(x-x0)**3) * 1/(x-x0)**4)
+# def New_D2V(x, A, B, x0):
+#     return(A * Langevin(B/(x-x0)**3) * 1/(x-x0)**4)
 
-# def New_D2V(x, A, x0):
-#     return(A*np.exp(-x/x0))
+def New_D2V(x, A, B):
+    X0 = -100
+    return(A * Langevin(B/(x-X0)**3) * 1/(x-X0)**4)
 
-XX = np.linspace(50, 500, 100) #* 1e-6
+XX = np.linspace(100, 250, 100) #* 1e-6
 YY1 = d2v(XX)
 
 fig, ax = plt.subplots(1,1)
 ax.plot(XX, YY1, 'wo', mec='k', lw=0.5)
 plt.show()
 
-popt, pcov = curve_fit(New_D2V, XX, YY1, p0=[2e8, 8e13, 20]) # p0=[80, 47, 1]
+popt, pcov = curve_fit(New_D2V, XX, YY1, p0=[1e10, 1e14]) # p0=[1e10, 1e21, -100]
 
 # ax.plot(XX, New_D2V(XX, *[2e8, 8e4, 20]), 'g-', lw=1)
 ax.plot(XX, New_D2V(XX, *popt), 'r-', lw=1)
 
-new_d2v = lambda x: New_D2V(x, 2.75379e+10, 6.87603e+21, -124.896)
-
+# new_d2v = lambda x: New_D2V(x, 2.75379e+10, 6.87603e+21, -124.896)
+new_d2v = lambda x: New_D2V(x, 1.7435e+10, 4.65859e+19)
 
 
 
@@ -354,13 +355,13 @@ m_mag = 1*1e-6
 
 BB = ChampMag(m_mag, XX)
 
-X0 = 400e-6
+X0 = 300e-6
 B0 = np.array([ChampMag(m_mag, X0)])
 
 MM1 = L1_A_V2(BB, M0_MOneM, k_MOneM)
-MM2 = L1_A_V2(BB, M0_MOneM*0.5, k_MOneM*0.5)
+MM2 = L1_A_V2(BB, M0_MOneM*0.4, k_MOneM*0.4)
 M10 = L1_A_V2(B0, M0_MOneM, k_MOneM)[0]
-M20 = L1_A_V2(B0, M0_MOneM*0.5, k_MOneM*0.5)[0]
+M20 = L1_A_V2(B0, M0_MOneM*0.4, k_MOneM*0.4)[0]
 
 fig, axes = plt.subplots(1, 3, figsize=(15, 5))
 ax = axes[0]

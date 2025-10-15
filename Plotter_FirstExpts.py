@@ -13,6 +13,8 @@ import pandas as pd
 import seaborn as sns
 import matplotlib.pyplot as plt
 
+from scipy.optimize import curve_fit
+
 def set_default_options_jv(palette = 'Set2'):
     SMALLER_SIZE = 9
     SMALL_SIZE = 13
@@ -139,3 +141,76 @@ ax.set_xlabel('Angle with the horiz (rad)')
 ax.set_ylabel('Viscosity (mPa.s)')
 fig.tight_layout()
 plt.show()
+
+
+# %% 4. Plot Maribel's calibration
+
+# %%%
+
+mainDir = 'C:/Users/Utilisateur/Desktop/Data From Maribel/Magnet_Calibration/dynabeads'
+fileName = 'dist-speed_ALL.txt'
+filePath = os.path.join(mainDir, fileName)
+
+df = pd.read_csv(filePath, sep = ' ', engine='python', names = ['id', 'r', 'v'])
+
+fig, ax = plt.subplots(1, 1)
+sns.scatterplot(data=df, ax=ax, x='r', y='v', s = 10)
+
+ax.grid()
+fig.tight_layout()
+
+plt.show()
+
+# %%%
+
+d2v = lambda x: 80.23*np.exp((-x)/47.49) + 1.03*np.exp((-x)/22740.0)
+
+def Classic_D2V(x, A1, k1, A2, k2):
+    return(A1*np.exp(-x/k1) + A2*np.exp(-x/k2))
+
+
+def Langevin(x):
+    # if x < 0.05:
+    #     return(np.tanh(x/3))
+    # else:
+    return((1/np.tanh(x)) - (1/x))
+
+# def New_D2V(x, A, B, x0):
+#     return(A * Langevin(B/(x-x0)**3) * 1/(x-x0)**4)
+
+def New_D2V(x, A, B):
+    X0 = -100
+    return(A * Langevin(B/(x-X0)**3) * 1/(x-X0)**4)
+
+Filter = df['r'] > 10
+
+XX = df[Filter]['r'].values
+YY = df[Filter]['v'].values
+
+popt1, pcov1 = curve_fit(Classic_D2V, XX, YY, p0=[80, 40, 0.5, 2000]) # p0=[1e10, 1e21, -100]
+popt2, pcov2 = curve_fit(New_D2V, XX, YY, p0=[1e10, 1e14]) # p0=[1e10, 1e21, -100]
+
+Xfit = np.linspace(min(XX), max(XX), 1000)
+Yfit1 = Classic_D2V(Xfit, *popt1)
+Yfit2 = New_D2V(Xfit, *popt2)
+
+fig, ax = plt.subplots(1, 1)
+sns.scatterplot(data=df, ax=ax, x='r', y='v', s = 10)
+ax.plot(Xfit, Yfit1, c='darkred', ls='-', lw=1)
+ax.plot(Xfit, Yfit2, c='darkorange', ls='-', lw=1)
+ax.grid()
+fig.tight_layout()
+
+
+# new_d2v = lambda x: New_D2V(x, 2.75379e+10, 6.87603e+21, -124.896)
+new_d2v = lambda x: New_D2V(x, 1.7435e+10, 4.65859e+19)
+
+# With X0 = 0
+# popt = [6.46079e+10, 1.09389e+21]
+
+# With X0 free
+# popt = [5.18837e+11, 9.3768e+20, -183.281]
+
+# With X0 = -100
+# popt = [5.18837e+11, 9.3768e+20]
+
