@@ -318,15 +318,15 @@ findPatternAndRename(path, target_pattern, new_pattern,
 # -----------------------------------------------------------------------------------------------
 # %% Script Other renaming
 
-s1 = '250826'
-s2 = '25-08-26'
+s1 = '2025-'
+s2 = '25-'
 
-path0 = 'C:/Users/Utilisateur/Desktop/MicroscopeData/Leica'
+path0 = 'C:/Users/Joseph/Desktop/RheoMacro/25-10-08+09+10_Rheology'
 sub = ''
 path = path0 + sub
 
 findAndRename(path, s1, s2, 
-              target = 'all', test = False, recursiveAction = True, exceptStrings = [])
+              target = 'file', test = False, recursiveAction = False, exceptStrings = [])
 
 # -----------------------------------------------------------------------------------------------
 # %% Script Other renaming
