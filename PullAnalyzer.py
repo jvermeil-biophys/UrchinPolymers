@@ -648,8 +648,9 @@ def pullAnalyzer_V2(track, dict_pull,
     # Magnet function distance (µm) to velocity (µm/s) [expected velocity in glycerol]
     mag_d2v = lambda x: 80.23*np.exp(-x/47.49) + 1.03*np.exp(-x/22740.0)
     new_d2v = lambda x: New_D2V(x, 2.75379e+10, 6.87603e+21, -124.896)
-    new_d2v = lambda x: New_D2V(x, 1.7435e+10, 4.65859e+19, -100)
-    new_d2v = lambda x: New_D2V(x, 6.46079e+10, 1.09389e+21, 0)
+    new_d2v = lambda x: New_D2V(x, 3.56905e+11, 3.76308e+25, -140)
+    # new_d2v = lambda x: New_D2V(x, 1.7435e+10, 4.65859e+19, -100)
+    # new_d2v = lambda x: New_D2V(x, 6.46079e+10, 1.09389e+21, 0)
     
        
     if fit_V == 'DoubleExpo':
@@ -723,8 +724,9 @@ def pullAnalyzer_V2(track, dict_pull,
     
     #### Filters
     # Filter1 = (dist > 500) # bead further than 550 µm from magnet center
+    Filter1 = (tpulling >= 1)
     # Filter2 = (tpulling <= 15) # remove the first 2 seconds of filming
-    Filter2 = (tpulling <= 30)
+    Filter2 = (tpulling <= 10)
     GlobalFilter = Filter2 # Filter1 & Filter2
     # if np.sum(GlobalFilter) == 0:
     #     error = True
@@ -868,11 +870,12 @@ def pullAnalyzer_V2(track, dict_pull,
         
         fig2.savefig(os.path.join(plotsDir, pull_id + "_fits.png"))
         
+        i_select = np.abs(dist - dist[0]) < 50
         
         fig3, axes3 = plt.subplots(1, 1, figsize = (5,5))
         ax = axes3
         axbis = axes3.twinx()
-        dist_spline = make_splrep(tpulling, dist, s=len(t)/20)
+        dist_spline = make_splrep(tpulling, dist, s=len(t)/2)
         ax.plot(tpulling, dist, 'go', ms = 3, zorder=4)
         ax.plot(tpulling, dist_spline(tpulling), 'k-', zorder=5)
         ax.set_xlabel("t [s]")
@@ -892,13 +895,14 @@ def pullAnalyzer_V2(track, dict_pull,
         dist_spline = make_splrep(tpulling, dist, s=len(t)/2)
         speed_spline = dist_spline.derivative(nu=1)
         speed = np.abs(speed_spline(tpulling))
-        parms, results = fitLine(speed, pull_force)
+        parms, results = fitLine(speed[i_select], pull_force[i_select])
         a, b = parms[1], parms[0]
         eta2 = a/(6*np.pi*bead_radius)
-        xfit = np.linspace(min(speed), max(speed), 100)
+        xfit = np.linspace(0, max(speed), 100)
         yfit = b + a*xfit
         
-        ax.plot(speed, pull_force, 'co', ms = 3, zorder=4)
+        ax.plot(speed, pull_force, 'go', ms = 3, zorder=4)
+        ax.plot(speed[i_select], pull_force[i_select], 'co', ms = 3, zorder=4)
         ax.plot(xfit, yfit, 'r--', label=r'$\eta$ = ' + f'{eta2*1000:.2f} mPa.s', zorder=5)
         ax.set_xlabel("V [µm/s]")
         ax.set_ylabel("F [pN]")
@@ -906,6 +910,30 @@ def pullAnalyzer_V2(track, dict_pull,
         ax.legend(fontsize = 11).set_zorder(6)
         fig4.suptitle(pull_id, fontsize=12)
         fig4.tight_layout()
+        
+        fig5, axes5 = plt.subplots(1, 1, figsize = (5,5))
+        dist2 = dist
+        ax = axes5
+        axbis = axes5.twinx()
+        ax.set_xscale('log')
+        ax.set_yscale('log')
+        axbis.set_yscale('log')
+        dist_spline = make_splrep(tpulling, dist2, s=len(t)/2)
+        speed_spline = dist_spline.derivative(nu=1)
+        speed = np.abs(speed_spline(tpulling))
+        # ax.plot(tpulling, dist2, 'go', ms = 3, zorder=4)
+        ax.plot(dist2, speed, 'k-', zorder=5)
+        ax.set_xlabel("X [µm]")
+        ax.set_ylabel("V [µm/s]")
+        axbis.plot(dist2, pull_force, 'r-', zorder=5)
+        ax.plot(dist2, (dist2/dist2[0])**(-7), 'b-', zorder=5)
+        ax.plot(dist2, (dist2/dist2[0])**(-4), 'g-', zorder=5)
+        ax.plot(dist2, (dist2/dist2[0])**(-2), 'c-', zorder=5)
+        axbis.set_ylabel('Pulling force [pN]')
+        ax.grid(axis='both')
+        ax.legend(fontsize = 11).set_zorder(6)
+        fig5.suptitle(pull_id, fontsize=12)
+        fig5.tight_layout()
         
         if SHOW:
             plt.show()
@@ -1001,7 +1029,8 @@ tracksDir = os.path.join(analysisDir, 'Tracks', date) # where the tracks are
 resultsDir = os.path.join(analysisDir, 'Results')
 plotsDir = os.path.join(analysisDir, 'Plots', date)
 
-P_id = '25-09-19_M2_D4_P1_B1' # used to select a subset of the track files if needed
+P_id = '25-09-19_M1_D5_P1_B1'
+# P_id = '25-09-19_M2_D4_P1_B1' # used to select a subset of the track files if needed
 
 df_manips = pd.read_csv(os.path.join(analysisDir, 'md_manips.csv'))
 df_pulls = pd.read_csv(os.path.join(analysisDir, date + '_md_pulls.csv'))

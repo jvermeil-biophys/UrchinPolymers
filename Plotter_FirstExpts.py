@@ -257,7 +257,7 @@ def Langevin(x):
 #     return(A * Langevin(B/(x-x0)**3) * 1/(x-x0)**4)
 
 def New_D2V(x, A, B):
-    X0 = -100
+    X0 = -140
     return(A * Langevin(B/(x-X0)**3) * 1/(x-X0)**4)
 
 Filter = df['r'] > 10
@@ -266,7 +266,7 @@ XX = df[Filter]['r'].values
 YY = df[Filter]['v'].values
 
 popt1, pcov1 = curve_fit(Classic_D2V, XX, YY, p0=[80, 40, 0.5, 2000]) # p0=[1e10, 1e21, -100]
-popt2, pcov2 = curve_fit(New_D2V, XX, YY, p0=[1e10, 1e14]) # p0=[1e10, 1e21, -100]
+popt2, pcov2 = curve_fit(New_D2V, XX, YY, p0=[1e10, 1e18]) # p0=[1e10, 1e21, -100]
 
 Xfit = np.linspace(min(XX), max(XX), 1000)
 Yfit1 = Classic_D2V(Xfit, *popt1)
