@@ -212,7 +212,7 @@ def set_defense_options_jv(palette = 'Set2'):
     sns.set_palette(sns.color_palette(palette))
 
 
-def set_default_options_jv():
+def set_default_options_jv(palette = 'Set2'):
     SMALLER_SIZE = 8
     SMALL_SIZE = 12
     MEDIUM_SIZE = 16
@@ -224,6 +224,7 @@ def set_default_options_jv():
     plt.rc('ytick', labelsize=SMALL_SIZE)    # fontsize of the tick labels
     plt.rc('legend', fontsize=SMALLER_SIZE)  # legend fontsize
     plt.rc('figure', titlesize=BIGGER_SIZE)  # fontsize of the figure title
+    sns.set_palette(sns.color_palette(palette))
     
     
 def set_mediumText_options_jv():
