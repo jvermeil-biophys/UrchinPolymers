@@ -1056,6 +1056,44 @@ visco, R2, speed_med, force_med, theta, r_min, r_max, XY = output
 
 # %% 101. Tests & Legacy
 
+# %%% Little test fitting
+
+def jeffrey_model(params, x):
+    k, gamma1, gamma2 = params
+    return (1 - np.exp(-k*x/gamma1))/k + x/gamma2
+
+tt = np.arange(0, 10, 0.25)
+trueParms = [200, 100, 500]
+true_xx = jeffrey_model(trueParms, tt)
+xx = 0, true_xx * (1 + 0.1*(1 - 2*np.random.rand(len(tt)))) + 0.005*(1 - 2*np.random.rand(len(tt)))
+
+fig, ax = plt.subplots(1,1, figsize=(5,5))
+ax.plot(tt, xx, marker='o', markersize=4, ls='', mew=0.75, fillstyle='none', mec='k')
+ax.plot(tt, true_xx, 'c-')
+plt.show()
+
+start1 = [5, 100, 500]
+obj1 = lambda params: np.linalg.norm(jeffrey_model(params, tt) - xx)
+res1 = minimize(obj1, start1, method="Nelder-Mead", tol=1e-10,
+                options={"maxfev": 500})
+k, gamma1, gamma2 = res1.x
+fitParms = [k, gamma1, gamma2]
+fit_xx = jeffrey_model(fitParms, tt)
+
+tau = gamma1/k
+print(tau)
+print(np.array(fitParms).astype(int))
+
+ax.plot(tt, fit_xx, 'r-')
+
+ax.grid()
+plt.show()
+
+# Ymeas = dx_pulling_n
+# Yfit = jeffrey_model((k, gamma1, gamma2), tpulling)
+# R2_p = get_R2(Ymeas, Yfit) 
+
+
 # %%% Test step 4.
 filepath = os.path.join(directory, tracks_name)
 

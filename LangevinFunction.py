@@ -355,7 +355,7 @@ m_mag = 1*1e-6
 
 BB = ChampMag(m_mag, XX)
 
-X0 = 300e-6
+X0 = 200e-6
 B0 = np.array([ChampMag(m_mag, X0)])
 
 MM1 = L1_A_V2(BB, M0_MOneM, k_MOneM)
