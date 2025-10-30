@@ -321,7 +321,7 @@ findPatternAndRename(path, target_pattern, new_pattern,
 s1 = '2025-'
 s2 = '25-'
 
-path0 = 'C:/Users/Joseph/Desktop/RheoMacro/25-10-08+09+10_Rheology'
+path0 = 'C:/Users/Joseph/Desktop/RheoMacro/25-10-30_Rheology'
 sub = ''
 path = path0 + sub
 

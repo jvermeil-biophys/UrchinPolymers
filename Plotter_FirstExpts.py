@@ -41,7 +41,7 @@ listFiles = []
 listPaths = []
 for d in os.listdir(mainDir):
     dP = os.path.join(mainDir, d)
-    if os.path.isdir(dP): # and '2025-10-08' in dP
+    if os.path.isdir(dP) and '25-10-30' in dP:
         lF = [f for f in os.listdir(dP) if f.endswith('.csv')]
         lP = [os.path.join(dP, f) for f in lF]
         listFiles += lF
@@ -80,12 +80,14 @@ for f, fp in zip(listFiles, listPaths):
         dictResults['temperature'].append(temperature)
         
 df_summary = pd.DataFrame(dictResults)
-df_summary.to_csv(os.path.join(mainDir, 'ResultsMacroRheo.csv'), index=False)
+df_summary.to_csv(os.path.join(mainDir, 'ResultsMacroRheo_Round04.csv'), index=False)
 
 # %%% Split single big file
 
-mainDir = 'C:/Users/Joseph/Desktop/RheoMacro/2025-10-08+09+10_Rheology/'
-fileName = '2025-10-08+09+10_AllMeasures.csv'
+# mainDir = 'C:/Users/Joseph/Desktop/RheoMacro/2025-10-08+09+10_Rheology/'
+# fileName = '2025-10-08+09+10_AllMeasures.csv'
+mainDir = 'C:/Users/Joseph/Desktop/RheoMacro/25-10-30_Rheology/'
+fileName = '2025-10-30_AllMeasures.csv'
 filePath = os.path.join(mainDir, fileName)
 
 Names = []
@@ -113,54 +115,6 @@ with open(filePath, mode='r', encoding='utf_16_le') as f:
                 nf.write(fL)
                 
             
-    
-    
-# listFiles = []
-# listPaths = []
-# for d in os.listdir(mainDir):
-#     dP = os.path.join(mainDir, d)
-#     if os.path.isdir(dP):
-#         lF = [f for f in os.listdir(dP) if f.endswith('.csv')]
-#         lP = [os.path.join(dP, f) for f in lF]
-#         listFiles += lF
-#         listPaths += lP
-
-# dictResults = {'date':[],
-#                'solvent':[],
-#                'polymer':[],
-#                'PI':[],
-#                'UV':[],
-#                'viscosity':[],
-#                'temperature':[],
-#                'fileName':[],}
-
-# for f, fp in zip(listFiles, listPaths):
-#     if f.endswith('.csv') and not f.startswith('Results'):
-#         blocks = f[:-4].split('_')
-#         dictResults['date'].append(blocks[0])
-#         dictResults['solvent'].append(blocks[1])
-#         dictResults['polymer'].append(blocks[2])
-#         dictResults['PI'].append(blocks[3])
-#         dictResults['UV'].append(blocks[4])
-#         dictResults['fileName'].append(f)
-        
-#         path = fp
-#         df = pd.read_csv(path, header = 4, sep='\t', #skiprows=2,
-#                          on_bad_lines='skip', encoding='utf_16_le')
-#         df = df.drop(df.columns[:2], axis = 1).drop(df.index[:2], axis = 0).reset_index(drop=True)
-#         viscosity = np.median(df['Viscosity'].astype(float).values)
-#         try:
-#             temperature = np.median(df['Temperature'].astype(float).values)
-#         except:
-#             temperature = np.nan
-        
-#         dictResults['viscosity'].append(viscosity)
-#         dictResults['temperature'].append(temperature)
-        
-# df_summary = pd.DataFrame(dictResults)
-# df_summary.to_csv(os.path.join(mainDir, 'ResultsMacroRheo.csv'), index=False)
-    
-
 # %% 3. Plot Droplet Pulling
 
 mainDir = 'C:/Users/Utilisateur/Desktop/MicroscopeData/Analysis_Pulls/Results'
