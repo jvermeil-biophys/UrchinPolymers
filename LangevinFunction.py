@@ -83,9 +83,15 @@ def Langevin(x):
 # def New_D2V(x, A, B, x0):
 #     return(A * Langevin(B/(x-x0)**3) * 1/(x-x0)**4)
 
-def New_D2V(x, A, B):
-    X0 = -100
-    return(A * Langevin(B/(x-X0)**3) * 1/(x-X0)**4)
+# def New_D2V(x, A, B):
+#     X0 = -100
+#     return(A * Langevin(B/(x-X0)**3) * 1/(x-X0)**4)
+
+def New_D2V(x, A, x0, alpha):
+    return(A * (x-x0)**(-2.5))
+
+def New_D2V(x, A, x0, alpha):
+    return(A * (x-x0)**(-alpha))
 
 XX = np.linspace(100, 250, 100) #* 1e-6
 YY1 = d2v(XX)
@@ -94,13 +100,20 @@ fig, ax = plt.subplots(1,1)
 ax.plot(XX, YY1, 'wo', mec='k', lw=0.5)
 plt.show()
 
-popt, pcov = curve_fit(New_D2V, XX, YY1, p0=[1e10, 1e14]) # p0=[1e10, 1e21, -100]
+# For Langevin
+# popt, pcov = curve_fit(New_D2V, XX, YY1, p0=[1e10, 1e14]) # p0=[1e10, 1e21, -100]
+
+# For power-law
+popt, pcov = curve_fit(New_D2V, XX, YY1, p0=[1e7, 0, 2.5]) # [1e7, 70]
 
 # ax.plot(XX, New_D2V(XX, *[2e8, 8e4, 20]), 'g-', lw=1)
 ax.plot(XX, New_D2V(XX, *popt), 'r-', lw=1)
 
 # new_d2v = lambda x: New_D2V(x, 2.75379e+10, 6.87603e+21, -124.896)
-new_d2v = lambda x: New_D2V(x, 1.7435e+10, 4.65859e+19)
+# new_d2v = lambda x: New_D2V(x, 1.7435e+10, 4.65859e+19)
+
+
+print(*popt)
 
 
 
@@ -312,7 +325,7 @@ fig.tight_layout()
 plt.show()
 
 
-# %% 
+# %% Test relevance of magnetization correction
 
 M0_MOneM = 1700*23.5
 Chi_MOneM = 1700*81e-5/(mu0)
@@ -334,17 +347,19 @@ XX2 = np.linspace(-0.05, 0.05, 1000)
 fig, axes = plt.subplots(1, 3, figsize=(15, 5))
 ax = axes[0]
 ax.plot(XX1, L1_A_V2(XX1, M0_MOneM, k_MOneM))
-ax.plot(XX1, L1_A_V2(XX1, M0_MOneM*0.5, k_MOneM*0.5))
+ax.plot(XX1, L1_A_V2(XX1, M0_MOneM*1.5, k_MOneM*0.5))
 ax.grid()
 
 ax = axes[1]
 ax.plot(XX2*1000, L1_A_V2(XX2, M0_MOneM, k_MOneM))
-ax.plot(XX2*1000, L1_A_V2(XX2, M0_MOneM*0.5, k_MOneM*0.5))
+ax.plot(XX2*1000, L1_A_V2(XX2, M0_MOneM*1.5, k_MOneM*0.5))
 ax.grid()
 
 ax = axes[2]
-ax.plot(XX2*1000, L1_A_V2(XX2, M0_MOneM*0.5, k_MOneM*0.5)/L1_A_V2(XX2, M0_MOneM, k_MOneM))
+ax.plot(XX2*1000, L1_A_V2(XX2, M0_MOneM*1.5, k_MOneM*0.5)/L1_A_V2(XX2, M0_MOneM, k_MOneM))
 ax.grid()
+
+plt.show()
 
 # ----
 
@@ -359,9 +374,9 @@ X0 = 200e-6
 B0 = np.array([ChampMag(m_mag, X0)])
 
 MM1 = L1_A_V2(BB, M0_MOneM, k_MOneM)
-MM2 = L1_A_V2(BB, M0_MOneM*0.4, k_MOneM*0.4)
+MM2 = L1_A_V2(BB, M0_MOneM*0.4, k_MOneM*0.8)
 M10 = L1_A_V2(B0, M0_MOneM, k_MOneM)[0]
-M20 = L1_A_V2(B0, M0_MOneM*0.4, k_MOneM*0.4)[0]
+M20 = L1_A_V2(B0, M0_MOneM*0.4, k_MOneM*0.8)[0]
 
 fig, axes = plt.subplots(1, 3, figsize=(15, 5))
 ax = axes[0]
@@ -371,11 +386,15 @@ ax.grid()
 
 ax = axes[1]
 ax.plot(XX*1e6, MM2/MM1)
+# ax.set_ylim([0, ax.get_ylim()[1]])
 ax.grid()
 
 ax = axes[2]
 ax.plot(XX*1e6, (M10/M20)*(MM2/MM1))
+ax.set_ylim([0.5, ax.get_ylim()[1]])
 ax.grid()
+
+plt.show()
 
 # %% Estimate B
 

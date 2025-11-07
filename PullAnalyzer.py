@@ -20,6 +20,8 @@ from scipy.interpolate import make_splrep
 from scipy.io import savemat
 from scipy.optimize import minimize
 
+from copy import deepcopy
+
 
 # %% 2. Subfunctions
 
@@ -475,13 +477,7 @@ print(k, gamma1, gamma2, a, tau)
 
 # %% 11. A function to analyze multiple files
 
-
-
-
-
-
-
-def pullAnalyzer_multiFiles_V2(mainDir, date, prefix_id,
+def pullAnalyzer_multiFiles(mainDir, date, prefix_id,
                             analysisDir, tracksDir, resultsDir, plotsDir,
                             mode = 'newton', resultsFileName = 'results',
                             Redo = False, PLOT = True, SHOW = False):
@@ -534,7 +530,7 @@ def pullAnalyzer_multiFiles_V2(mainDir, date, prefix_id,
             track = trackSelection(tracks, mode = 'longest')
             dict_pull = Df2Dict(df_pulls[df_pulls['id'] == P_id])
             
-            output, error = pullAnalyzer_V2(track, dict_pull, 
+            output, error = pullAnalyzer(track, dict_pull, 
                                          mode = 'newton', 
                                          PLOT = PLOT, SHOW = SHOW, plotsDir = plotsDir)
             if not error:
@@ -582,7 +578,8 @@ def pullAnalyzer_multiFiles_V2(mainDir, date, prefix_id,
     df_res = pd.concat([df_res,new_df_res]).drop_duplicates(subset='pull_id', keep='last').reset_index(drop=True)
     
     if mode == 'newton':
-        selected_XY = [xy for xy in all_XY if np.abs(np.median(xy[:,1])) > 75]
+        selected_XY = deepcopy(all_XY)
+        # selected_XY = [xy for xy in all_XY if np.abs(np.median(xy[:,1])) > 75]
         selected_XY = [xy for xy in selected_XY if len(xy) > 75]
         fits_XY = []
         for xy in selected_XY:
@@ -613,7 +610,9 @@ def pullAnalyzer_multiFiles_V2(mainDir, date, prefix_id,
     return(df_res, all_XY)
 
 
-def pullAnalyzer_V2(track, dict_pull,
+
+
+def pullAnalyzer(track, dict_pull,
                     mode = 'newton', fit_V = 'DoubleExpo',
                     PLOT = True, SHOW = False, plotsDir = ''):
     if SHOW:
@@ -648,15 +647,15 @@ def pullAnalyzer_V2(track, dict_pull,
     # Magnet function distance (µm) to velocity (µm/s) [expected velocity in glycerol]
     mag_d2v = lambda x: 80.23*np.exp(-x/47.49) + 1.03*np.exp(-x/22740.0)
     new_d2v = lambda x: New_D2V(x, 2.75379e+10, 6.87603e+21, -124.896)
-    new_d2v = lambda x: New_D2V(x, 3.56905e+11, 3.76308e+25, -140)
+    # new_d2v = lambda x: New_D2V(x, 3.56905e+11, 3.76308e+25, -140)
     # new_d2v = lambda x: New_D2V(x, 1.7435e+10, 4.65859e+19, -100)
     # new_d2v = lambda x: New_D2V(x, 6.46079e+10, 1.09389e+21, 0)
     
-       
-    if fit_V == 'DoubleExpo':
+    if fit_V == 'DoubleExpo': # Original behavior
         mag_d2v = mag_d2v
-    elif fit_V == 'LangevinFun':
+    elif fit_V == 'LangevinFun': # Test
         mag_d2v = new_d2v
+        
     # Speed at 200 mu as um/s
     v_interp = mag_d2v(200)
     # Aggregate force coefficient (c) in f=cR^3
@@ -713,9 +712,9 @@ def pullAnalyzer_V2(track, dict_pull,
     XY = XY * (-1)
     XY[:,0] -=  magnet_radius
     
-    #### Attempt at correcting the effective attractive point
+    #### Definition of the distance and the force
     dist = np.linalg.norm(d, axis=1) - (magnet_radius) # Original behaviour
-    # dist = np.linalg.norm(d, axis=1) + (magnet_radius) 
+    # dist = np.linalg.norm(d, axis=1) + (magnet_radius) # Test
     pull_force = mag_d2f(dist)
     
     tpulling = (t[pull_index] - t[initPullTime]) * time_stp
@@ -724,39 +723,16 @@ def pullAnalyzer_V2(track, dict_pull,
     
     #### Filters
     # Filter1 = (dist > 500) # bead further than 550 µm from magnet center
-    Filter1 = (tpulling >= 1)
+    # Filter1 = (tpulling >= 1) & (tpulling <= 10)
+    Filter1 = tpulling >= 0.5
     # Filter2 = (tpulling <= 15) # remove the first 2 seconds of filming
-    Filter2 = (tpulling <= 10)
-    GlobalFilter = Filter2 # Filter1 & Filter2
-    # if np.sum(GlobalFilter) == 0:
-    #     error = True
-    #     output = ()
+    Filter2 = (dist <= 350) & (dist >= 250)
+    GlobalFilter = Filter1 & Filter2
+    if np.sum(GlobalFilter) == 0:
+        error = True
+        output = ()
     
-# =============================================================================
-#     # #### TEST
-#     # xtest = (np.linalg.norm(d, axis=1) + (magnet_radius)) * 1e-6
-#     # xtest_0 = xtest[0]
-#     # yy = xtest**8 - xtest_0**8
-#     # params, results = fitLineHuber(tpulling, yy)
-#     # a, b = params[1], params[0]
-#     # fig, ax = plt.subplots(1,1)
-#     # ax.plot(tpulling, yy, 'go')
-#     # ax.plot(tpulling, a*tpulling + b, 'r-', lw=1)
-#     
-#     # R0 = a / ((8/3) * 2.75379e-8 * 6.87603e-4)
-#     # print(R0)
-#     
-#     # fig, ax = plt.subplots(1,1)
-#     # AAA, BBB = 1e-22/xtest**7, pull_force
-#     # print(AAA, BBB)
-#     # ax.plot(AAA, BBB, 'go')
-#     # params, results = fitLineHuber(AAA[:30], BBB[:30])
-#     # a, b = params[1], params[0]
-#     # print(a)
-#     # ax.plot(AAA[:], a*AAA[:] + b, 'r-', lw=1)
-#     # plt.show()
-# =============================================================================
-
+    
     # --- Release phase ---
     try:
         release_index = np.arange(finPullTime, len(track))
@@ -774,7 +750,7 @@ def pullAnalyzer_V2(track, dict_pull,
     r_min, r_max = min(dist), max(dist)
     
     #### 5. Fit Model
-    if mode == 'newton':
+    if mode == 'newton' and np.sum(GlobalFilter) > 0:
         # try:
         params, results = fitLine(tpulling[GlobalFilter], dx_pulling_n[GlobalFilter])
         # params, results = fitLineHuber(tpulling, dx_pulling_n)
@@ -1000,31 +976,31 @@ def pullAnalyzer_V2(track, dict_pull,
 
 # %%% ... on many files
 
-mainDir = os.path.join("C:/Users/Utilisateur/Desktop/MicroscopeData/")
+mainDir = os.path.join("C:/Users/Utilisateur/Desktop/")
 date = '25-09-19'
 
 
-analysisDir = os.path.join(mainDir, 'Analysis_Pulls') # where the csv tables are
+analysisDir = os.path.join(mainDir, 'AnalysisPulls') # where the csv tables are
 tracksDir = os.path.join(analysisDir, 'Tracks', date) # where the tracks are
 resultsDir = os.path.join(analysisDir, 'Results')
 plotsDir = os.path.join(analysisDir, 'Plots', date)
 
 prefix_id = '25-09-19' # used to select a subset of the track files if needed
 
-res, all_XY = pullAnalyzer_multiFiles_V2(mainDir, date, prefix_id,
+res, all_XY = pullAnalyzer_multiFiles(mainDir, date, prefix_id,
                         analysisDir, tracksDir, resultsDir, plotsDir,
-                        mode = 'newton', resultsFileName = date + '_NaSS_results',
+                        mode = 'newton', resultsFileName = date + '_NaSS_results_TEST',
                         Redo = True, PLOT = False, SHOW = False)
 
 # plt.close('all')
 
 # %%% ... on one file
 
-mainDir = os.path.join("C:/Users/Utilisateur/Desktop/MicroscopeData/")
+mainDir = os.path.join("C:/Users/Utilisateur/Desktop/")
 date = '25-09-19'
 
 
-analysisDir = os.path.join(mainDir, 'Analysis_Pulls') # where the csv tables are
+analysisDir = os.path.join(mainDir, 'AnalysisPulls') # where the csv tables are
 tracksDir = os.path.join(analysisDir, 'Tracks', date) # where the tracks are
 resultsDir = os.path.join(analysisDir, 'Results')
 plotsDir = os.path.join(analysisDir, 'Plots', date)
@@ -1040,10 +1016,10 @@ trackFileName = [f for f in os.listdir(tracksDir) if f.startswith(P_id)][0]
 tracks = importTrackMateTracks(os.path.join(tracksDir, trackFileName))
 track = trackSelection(tracks, mode = 'longest')
 
-fit_V = 'LangevinFun'
-# fit_V = 'DoubleExpo'
+# fit_V = 'LangevinFun'
+fit_V = 'DoubleExpo'
 
-output, error = pullAnalyzer_V2(track, dict_pull,
+output, error = pullAnalyzer(track, dict_pull,
                                 mode = 'newton', fit_V = fit_V,
                                 PLOT = True, SHOW = True, plotsDir = plotsDir)
 
