@@ -120,6 +120,60 @@ def fitLineHuber(X, Y, with_wlm_results = False):
     return(out)
 
 
+def fitPower(X, Y):
+    """
+    returns: results.params, results \n
+    Y=A*X^k ; params[0] = b,  params[1] = a
+    NB:
+        R2 = results.rsquared \n
+        ci = results.conf_int(alpha=0.05) \n
+        CovM = results.cov_params() \n
+        p = results.pvalues \n
+    This is how one should compute conf_int:
+        bse = results.bse \n
+        dist = stats.t \n
+        alpha = 0.05 \n
+        q = dist.ppf(1 - alpha / 2, results.df_resid) \n
+        params = results.params \n
+        lower = params - q * bse \n
+        upper = params + q * bse \n
+    """
+    X2, Y2 = np.log(X), np.log(Y)
+    X2 = sm.add_constant(X2)
+    model = sm.OLS(Y2, X2)
+    results = model.fit()
+    raw_params = results.params
+    pow_params = [np.exp(raw_params[0]), raw_params[1]]
+    return(pow_params, raw_params, results)
+
+
+def fitPowerHuber(X, Y, with_wlm_results = False):
+    """
+    returns: results.params, results \n
+    Y=a*X+b ; params[0] = b,  params[1] = a
+    NB:
+        R2 = results.rsquared \n
+        ci = results.conf_int(alpha=0.05) \n
+        CovM = results.cov_params() \n
+        p = results.pvalues \n
+    This is how one should compute conf_int:
+        bse = results.bse \n
+        dist = stats.t \n
+        alpha = 0.05 \n
+        q = dist.ppf(1 - alpha / 2, results.df_resid) \n
+        params = results.params \n
+        lower = params - q * bse \n
+        upper = params + q * bse \n
+    """
+    X2, Y2 = np.log(X), np.log(Y)
+    X2 = sm.add_constant(X2)
+    model = sm.RLM(Y2, X2, M=sm.robust.norms.HuberT())
+    results = model.fit()
+    raw_params = results.params
+    pow_params = [np.exp(raw_params[0]), raw_params[1]]
+    return(pow_params, raw_params, results)
+
+
 def get_R2(Ymeas, Ymodel):
     meanY = np.mean(Ymeas)
     meanYarray = meanY*np.ones(len(Ymeas))
@@ -580,7 +634,7 @@ def pullAnalyzer_multiFiles(mainDir, date, prefix_id,
     if mode == 'newton':
         selected_XY = deepcopy(all_XY)
         # selected_XY = [xy for xy in all_XY if np.abs(np.median(xy[:,1])) > 75]
-        selected_XY = [xy for xy in selected_XY if len(xy) > 75]
+        # selected_XY = [xy for xy in selected_XY if len(xy) > 75]
         fits_XY = []
         for xy in selected_XY:
             params, results = fitLineHuber(xy[:,0], xy[:,1])
@@ -726,8 +780,8 @@ def pullAnalyzer(track, dict_pull,
     # Filter1 = (tpulling >= 1) & (tpulling <= 10)
     Filter1 = tpulling >= 0.5
     # Filter2 = (tpulling <= 15) # remove the first 2 seconds of filming
-    Filter2 = (dist <= 350) & (dist >= 250)
-    GlobalFilter = Filter1 & Filter2
+    # Filter2 = (dist <= 350) & (dist >= 250)
+    GlobalFilter = Filter1 #& Filter2
     if np.sum(GlobalFilter) == 0:
         error = True
         output = ()
@@ -846,70 +900,91 @@ def pullAnalyzer(track, dict_pull,
         
         fig2.savefig(os.path.join(plotsDir, pull_id + "_fits.png"))
         
-        i_select = np.abs(dist - dist[0]) < 50
+        # i_select = np.abs(dist - dist[0]) < 50
         
-        fig3, axes3 = plt.subplots(1, 1, figsize = (5,5))
-        ax = axes3
-        axbis = axes3.twinx()
-        dist_spline = make_splrep(tpulling, dist, s=len(t)/2)
-        ax.plot(tpulling, dist, 'go', ms = 3, zorder=4)
-        ax.plot(tpulling, dist_spline(tpulling), 'k-', zorder=5)
-        ax.set_xlabel("t [s]")
-        ax.set_ylabel("X [µm]")
-        axbis.plot(tpulling, pull_force, 'r--', zorder=5)
-        axbis.set_ylabel('Pulling force [pN]')
-        ax.grid(axis='both')
-        ax.legend(fontsize = 11).set_zorder(6)
-        fig3.suptitle(pull_id, fontsize=12)
-        fig3.tight_layout()
+        # fig3, axes3 = plt.subplots(1, 1, figsize = (5,5))
+        # ax = axes3
+        # axbis = axes3.twinx()
+        # dist_spline = make_splrep(tpulling, dist, s=len(t)/2)
+        # ax.plot(tpulling, dist, 'go', ms = 3, zorder=4)
+        # ax.plot(tpulling, dist_spline(tpulling), 'k-', zorder=5)
+        # ax.set_xlabel("t [s]")
+        # ax.set_ylabel("X [µm]")
+        # axbis.plot(tpulling, pull_force, 'r--', zorder=5)
+        # axbis.set_ylabel('Pulling force [pN]')
+        # ax.grid(axis='both')
+        # ax.legend(fontsize = 11).set_zorder(6)
+        # fig3.suptitle(pull_id, fontsize=12)
+        # fig3.tight_layout()
         
         # fig3.savefig(os.path.join(plotsDir, pull_id + "_fits.png"))
         
-        fig4, axes4 = plt.subplots(1, 1, figsize = (5,5))
-        ax = axes4
+        # fig4, axes4 = plt.subplots(1, 1, figsize = (5,5))
+        # ax = axes4
         
+        # dist_spline = make_splrep(tpulling, dist, s=len(t)/2)
+        # speed_spline = dist_spline.derivative(nu=1)
+        # speed = np.abs(speed_spline(tpulling))
+        # parms, results = fitLine(speed[i_select], pull_force[i_select])
+        # a, b = parms[1], parms[0]
+        # eta2 = a/(6*np.pi*bead_radius)
+        # xfit = np.linspace(0, max(speed), 100)
+        # yfit = b + a*xfit
+        
+        # ax.plot(speed, pull_force, 'go', ms = 3, zorder=4)
+        # ax.plot(speed[i_select], pull_force[i_select], 'co', ms = 3, zorder=4)
+        # ax.plot(xfit, yfit, 'r--', label=r'$\eta$ = ' + f'{eta2*1000:.2f} mPa.s', zorder=5)
+        # ax.set_xlabel("V [µm/s]")
+        # ax.set_ylabel("F [pN]")
+        # ax.grid(axis='both')
+        # ax.legend(fontsize = 11).set_zorder(6)
+        # fig4.suptitle(pull_id, fontsize=12)
+        # fig4.tight_layout()
+        
+        # fig5, axes5 = plt.subplots(1, 1, figsize = (5,5))
+        # ax = axes5
+        # axbis = axes5.twinx()
+        # ax.set_xscale('log')
+        # ax.set_yscale('log')
+        # axbis.set_yscale('log')
+        # dist_spline = make_splrep(tpulling, dist, s=len(t)/2)
+        # speed_spline = dist_spline.derivative(nu=1)
+        # speed = np.abs(speed_spline(tpulling))
+        # # ax.plot(tpulling, dist, 'go', ms = 3, zorder=4)
+        # ax.plot(dist, speed, 'k-', zorder=5)
+        # ax.set_xlabel("X [µm]")
+        # ax.set_ylabel("V [µm/s]")
+        # axbis.plot(dist, pull_force, 'r-', zorder=5)
+        # ax.plot(dist, (dist/dist[0])**(-7), 'b-', zorder=5)
+        # ax.plot(dist, (dist/dist[0])**(-4), 'g-', zorder=5)
+        # ax.plot(dist, (dist/dist[0])**(-2), 'c-', zorder=5)
+        # axbis.set_ylabel('Pulling force [pN]')
+        # ax.grid(axis='both')
+        # ax.legend(fontsize = 11).set_zorder(6)
+        # fig5.suptitle(pull_id, fontsize=12)
+        # fig5.tight_layout()
+        
+        fig6, axes6 = plt.subplots(1, 1, figsize = (5,5))
+        fig, ax = fig6, axes6
+        ax.set_xscale('log')
+        ax.set_yscale('log')
         dist_spline = make_splrep(tpulling, dist, s=len(t)/2)
         speed_spline = dist_spline.derivative(nu=1)
         speed = np.abs(speed_spline(tpulling))
-        parms, results = fitLine(speed[i_select], pull_force[i_select])
-        a, b = parms[1], parms[0]
-        eta2 = a/(6*np.pi*bead_radius)
-        xfit = np.linspace(0, max(speed), 100)
-        yfit = b + a*xfit
-        
-        ax.plot(speed, pull_force, 'go', ms = 3, zorder=4)
-        ax.plot(speed[i_select], pull_force[i_select], 'co', ms = 3, zorder=4)
-        ax.plot(xfit, yfit, 'r--', label=r'$\eta$ = ' + f'{eta2*1000:.2f} mPa.s', zorder=5)
-        ax.set_xlabel("V [µm/s]")
-        ax.set_ylabel("F [pN]")
-        ax.grid(axis='both')
-        ax.legend(fontsize = 11).set_zorder(6)
-        fig4.suptitle(pull_id, fontsize=12)
-        fig4.tight_layout()
-        
-        fig5, axes5 = plt.subplots(1, 1, figsize = (5,5))
-        dist2 = dist
-        ax = axes5
-        axbis = axes5.twinx()
-        ax.set_xscale('log')
-        ax.set_yscale('log')
-        axbis.set_yscale('log')
-        dist_spline = make_splrep(tpulling, dist2, s=len(t)/2)
-        speed_spline = dist_spline.derivative(nu=1)
-        speed = np.abs(speed_spline(tpulling))
-        # ax.plot(tpulling, dist2, 'go', ms = 3, zorder=4)
-        ax.plot(dist2, speed, 'k-', zorder=5)
+        parms, raw_parms, results = fitPower(dist, speed)
+        A, k = parms
+        d_plot = np.linspace(min(dist), max(dist), 100)
+        v_plot = A*(d_plot**k)
+        ax.plot(dist, speed, 'wo', mec='k', ms = 4, zorder=5)
+        ax.plot(d_plot, v_plot, 'r-', zorder=6, label=f'k = {k:.2f}')
         ax.set_xlabel("X [µm]")
         ax.set_ylabel("V [µm/s]")
-        axbis.plot(dist2, pull_force, 'r-', zorder=5)
-        ax.plot(dist2, (dist2/dist2[0])**(-7), 'b-', zorder=5)
-        ax.plot(dist2, (dist2/dist2[0])**(-4), 'g-', zorder=5)
-        ax.plot(dist2, (dist2/dist2[0])**(-2), 'c-', zorder=5)
-        axbis.set_ylabel('Pulling force [pN]')
-        ax.grid(axis='both')
+        ax.set_xlim([100, 1000])
+        ax.set_ylim([1, 15])
+        ax.grid(axis='both', which='both')
         ax.legend(fontsize = 11).set_zorder(6)
-        fig5.suptitle(pull_id, fontsize=12)
-        fig5.tight_layout()
+        fig.suptitle(pull_id, fontsize=12)
+        fig.tight_layout()
         
         if SHOW:
             plt.show()
@@ -1005,7 +1080,12 @@ tracksDir = os.path.join(analysisDir, 'Tracks', date) # where the tracks are
 resultsDir = os.path.join(analysisDir, 'Results')
 plotsDir = os.path.join(analysisDir, 'Plots', date)
 
-P_id = '25-09-19_M1_D5_P1_B1'
+# P_id = '25-09-19_M1_D5_P1_B1'
+# P_id = '25-09-19_M1_D9_P1_B1'
+P_id = '25-09-19_M1_D8_P1_B1'
+P_id = '25-09-19_M1_D7_P1_B1'
+P_id = '25-09-19_M1_D6_P2_B1'
+P_id = '25-09-19_M1_D5_P1_B3'
 # P_id = '25-09-19_M2_D4_P1_B1' # used to select a subset of the track files if needed
 
 df_manips = pd.read_csv(os.path.join(analysisDir, 'md_manips.csv'))
@@ -1031,6 +1111,116 @@ visco, R2, speed_med, force_med, theta, r_min, r_max, XY = output
 # %% ---------------
 
 # %% 101. Tests & Legacy
+
+# %%% Test work on many tracks
+
+# %%%% Import
+
+mainDir = 'C://Users//Utilisateur//Desktop//AnalysisPulls//Tracks//25-10-11'
+fileName = 'Data_10fps8_Tracks.xml'
+filePath = os.path.join(mainDir, fileName)
+
+SCALE = 0.451
+MagX = 227 * SCALE
+MagY = 479 * SCALE
+MagR = (224 / 2) * SCALE
+Rb = 0.5 # µm
+
+all_tracks_raw = importTrackMateTracks(filePath)
+all_tracks = deepcopy(all_tracks_raw)
+
+for T in all_tracks:
+    T[:, 0] *= 0.1
+    T[:, 1] *= SCALE
+    T[:, 2] *= SCALE
+
+fig1, ax1 = plt.subplots(1, 1)
+fig, ax = fig1, ax1
+for T in all_tracks:
+    X, Y = T[:, 1], T[:, 2]
+    X2, Y2 = X-MagX, Y-MagY
+    ax.plot(X2, Y2)
+
+ax.grid()
+ax.set_xlabel('X [µm]')
+ax.set_ylabel('Y [µm]')
+ax.set_xlim([0, ax.get_xlim()[1]])
+plt.show()
+
+# %%%% Compute infos
+
+fig2, axes2 = plt.subplots(1, 1, figsize = (5,5))
+fig, ax = fig2, axes2
+# ax.set_xscale('log')
+# ax.set_yscale('log')
+
+
+# theta = np.arctan2(Y[initPullTime] - Y[finPullTime],
+#                    X[initPullTime] - X[finPullTime])
+# rotation_mat = np.array([[np.cos(-theta), -np.sin(-theta)],
+#                          [np.sin(-theta),  np.cos(-theta)]])
+
+all_D = []
+all_V = []
+
+for T in all_tracks:
+    X, Y = T[:, 1], T[:, 2]
+    t = T[:, 0]
+    X2, Y2 = X-MagX, Y-MagY
+    D = ((X2**2 + Y2**2)**0.5)
+    D -= MagR
+    t=np.ascontiguousarray(t)
+    D=np.ascontiguousarray(D)
+    # try:
+    D_spline = make_splrep(t, D, s=len(t)/4)
+    V_spline = D_spline.derivative(nu=1)
+    V = np.abs(V_spline(t))
+    # ax.plot(D, V, marker='.', ms=1, ls='', zorder=5)
+    # except:
+    #     pass
+    all_D += list(D)
+    all_V += list(V)
+    
+all_D = np.array(all_D)
+all_V = np.array(all_V)
+filter_01 = all_D<600
+all_D = all_D[filter_01]
+all_V = all_V[filter_01]
+
+ax.plot(all_D, all_V, marker='.', ms=1, ls='', zorder=5)
+
+parms, raw_parms, results = fitPowerHuber(all_D, all_V)
+A, k = parms
+d_plot = np.linspace(min(all_D), max(all_D), 100)
+v_plot = A*(d_plot**k)
+ax.plot(d_plot, v_plot, 'r-', zorder=6, label=f'k = {k:.2f}')
+ax.plot(d_plot, 71171154451.30064 * d_plot**(-4.379997905229558), 'g--', zorder=6, label=f'k = {k:.2f}')
+ 
+
+ax.grid(axis='both',which='both')
+
+print(A, k)
+
+# dist_spline = make_splrep(tpulling, dist, s=len(t)/2)
+# speed_spline = dist_spline.derivative(nu=1)
+# speed = np.abs(speed_spline(tpulling))
+# parms, raw_parms, results = fitPower(dist, speed)
+# A, k = parms
+# d_plot = np.linspace(min(dist), max(dist), 100)
+# v_plot = A*(d_plot**k)
+# ax.plot(dist, speed, 'wo', mec='k', ms = 4, zorder=5)
+# ax.plot(d_plot, v_plot, 'r-', zorder=6, label=f'k = {k:.2f}')
+# ax.set_xlabel("X [µm]")
+# ax.set_ylabel("V [µm/s]")
+# ax.set_xlim([100, 1000])
+# ax.set_ylim([1, 15])
+# ax.grid(axis='both', which='both')
+# ax.legend(fontsize = 11).set_zorder(6)
+# fig.suptitle(pull_id, fontsize=12)
+
+fig.tight_layout()
+plt.show()
+
 
 # %%% Little test fitting
 
