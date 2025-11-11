@@ -15,21 +15,9 @@ import matplotlib.pyplot as plt
 
 from scipy.optimize import curve_fit
 
-def set_default_options_jv(palette = 'Set2'):
-    SMALLER_SIZE = 9
-    SMALL_SIZE = 13
-    MEDIUM_SIZE = 16
-    BIGGER_SIZE = 20
-    plt.rc('font', size=SMALL_SIZE)          # controls default text sizes
-    plt.rc('axes', titlesize=MEDIUM_SIZE)     # fontsize of the axes title
-    plt.rc('axes', labelsize=MEDIUM_SIZE)    # fontsize of the x and y labels
-    plt.rc('xtick', labelsize=SMALL_SIZE)    # fontsize of the tick labels
-    plt.rc('ytick', labelsize=SMALL_SIZE)    # fontsize of the tick labels
-    plt.rc('legend', fontsize=SMALLER_SIZE)  # legend fontsize
-    plt.rc('figure', titlesize=BIGGER_SIZE)  # fontsize of the figure title
-    sns.set_palette(sns.color_palette(palette))
-
-set_default_options_jv(palette = 'Set2')
+import PlotMaker as pm
+import UtilityFunctions as ufun
+pm.setGraphicOptions(mode = 'screen', palette = 'Set2', colorList = pm.colorList10)
 
 # %% 2. Plot Rheometer
 
@@ -117,11 +105,12 @@ with open(filePath, mode='r', encoding='utf_16_le') as f:
             
 # %% 3. Plot Droplet Pulling
 
-mainDir = 'C:/Users/Utilisateur/Desktop/MicroscopeData/Analysis_Pulls/Results'
+# mainDir = 'C:/Users/Utilisateur/Desktop/AnalysisPulls/Results'
+mainDir = 'C:/Users/josep/Desktop/Seafile/AnalysisPulls/Results'
 date = '25-09-19'
 # date = '25-09-19'
 
-df = pd.read_csv(os.path.join(mainDir, date + '_NaSS_results.csv'))
+df = pd.read_csv(os.path.join(mainDir, date + '_NaSS_results_newCalib02.csv'))
 df['UV'] = pd.Series(['']*len(df))
 df.loc[df['treatment']=='none', 'UV'] = 'No'
 df.loc[df['treatment']!='none', 'UV'] = '20min 100%'
@@ -147,6 +136,7 @@ ax.set_ylim([0, ax2.get_ylim()[1]])
 ax.grid(axis='y')
 ax.set_xlabel('Bead radius (µm)')
 ax.set_ylabel('Viscosity (mPa.s)')
+fig.legend()
 fig.tight_layout()
 plt.show()
 

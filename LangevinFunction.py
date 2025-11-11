@@ -368,33 +368,166 @@ R_mag = 50*1e-6 # Mag Radius
 XX = np.linspace(R_mag + 1*1e-6, X_max, 5000)
 m_mag = 1*1e-6
 
+BBmodel = np.linspace(-100, 100, 2000)/1e3
 BB = ChampMag(m_mag, XX)
 
 X0 = 200e-6
 B0 = np.array([ChampMag(m_mag, X0)])
 
-MM1 = L1_A_V2(BB, M0_MOneM, k_MOneM)
-MM2 = L1_A_V2(BB, M0_MOneM*0.4, k_MOneM*0.8)
-M10 = L1_A_V2(B0, M0_MOneM, k_MOneM)[0]
-M20 = L1_A_V2(B0, M0_MOneM*0.4, k_MOneM*0.8)[0]
+ratioM0 = 0.4
+ratiok = 0.8
 
-fig, axes = plt.subplots(1, 3, figsize=(15, 5))
+MM1model = L1_A_V2(BBmodel, M0_MOneM, k_MOneM)/1e3
+MM2model = L1_A_V2(BBmodel, M0_MOneM*ratioM0, k_MOneM*ratiok)/1e3
+MM1 = L1_A_V2(BB, M0_MOneM, k_MOneM)/1e3
+MM2 = L1_A_V2(BB, M0_MOneM*ratioM0, k_MOneM*ratiok)/1e3
+M10 = L1_A_V2(B0, M0_MOneM, k_MOneM)[0]/1e3
+M20 = L1_A_V2(B0, M0_MOneM*ratioM0, k_MOneM*ratiok)[0]/1e3
+
+fig, axes = plt.subplots(1, 2, figsize=(10, 6))
 ax = axes[0]
-ax.plot(XX*1e6, MM1)
-ax.plot(XX*1e6, MM2)
+ax.plot(BBmodel*1e3, MM1model, zorder = 10,
+        label = 'with $M_{01}$ and $K_1$')
+ax.plot(BBmodel*1e3, MM2model, zorder = 10,
+        label = 'with $M_{02}$ = ' + f'{ratioM0:.2f}' + ' $\cdot M_{01}$ \nand $K_2$ = ' + f'{ratiok:.2f}' + ' $\cdot K_1$')
+# ax.set_ylim([0, ax.get_ylim()[1]])
+ax.set_ylabel('$M$ [kA/m]')
+ax.legend(title = r'$\bf{M(x) = M_0 \cdot L(KB(x)/k_b T)}$')
 ax.grid()
+ax.set_xlabel('B [mT]')
+
+ax = axes[1]
+ax.plot(XX*1e6, BB*1e3)
+ax.set_title('')
+ax.grid()
+ax.set_ylabel('B [mT]')
+ax.set_xlabel('x [µm]')
+
+fig.suptitle('Simulating a reasonable situation with $B(x) \propto x^{-3}$')
+
+# ----
+
+fig, axes = plt.subplots(1, 3, figsize=(15, 6))
+ax = axes[0]
+ax.plot(XX*1e6, MM1, label = 'with $M_{01}$ and $K_1$')
+ax.plot(XX*1e6, MM2, label = 'with $M_{02}$ = ' + f'{ratioM0:.2f}' + ' $\cdot M_{01}$ \nand $K_2$ = ' + f'{ratiok:.2f}' + ' $\cdot K_1$')
+ax.set_title('Magnetization functions')
+ax.grid()
+ax.legend(title = r'$\bf{M(x) = M_0 \cdot L(KB(x)/k_b T)}$')
+ax.set_ylabel('$M(x)$ [kA/m]')
+ax.set_xlabel('x [µm]')
 
 ax = axes[1]
 ax.plot(XX*1e6, MM2/MM1)
 # ax.set_ylim([0, ax.get_ylim()[1]])
+ax.set_title(r'$M_2/M_1$')
 ax.grid()
+ax.set_xlabel('x [µm]')
 
 ax = axes[2]
 ax.plot(XX*1e6, (M10/M20)*(MM2/MM1))
 ax.set_ylim([0.5, ax.get_ylim()[1]])
+ax.set_title(r'$M_1(x_0)/M_2(x_0) \cdot M_2/M_1$ with $x_0$ = ' + f'{X0*1e6:.0f} µm')
 ax.grid()
+ax.set_xlabel('x [µm]')
+
+fig.suptitle('Assessing the Magnetization correction [case $B(x) \propto x^{-3}$]')
 
 plt.show()
+
+# %% Test relevance of magnetization correction V2
+
+M0_MOneM = 1700*23.5
+Chi_MOneM = 1700*81e-5/(mu0)
+k_MOneM = 3*Chi_MOneM/M0_MOneM
+
+def L1_A_V2(BB, M0, k):
+    XX = k*BB
+    mask = (np.abs(XX) < 0.05)
+    res = np.zeros_like(XX)
+    res[mask]= M0*np.tanh(XX[mask]/3)
+    res[~mask] = M0*((1/np.tanh(XX[~mask])) - (1/XX[~mask]))
+    return(res)
+
+
+def ChampMagEffective(m, r):
+    return((mu0/(4*np.pi))*(m/(r**0.6)))
+
+# ----
+
+X_max = 600*1e-6 # µm
+R_mag = 50*1e-6 # Mag Radius
+XX = np.linspace(R_mag + 1*1e-6, X_max, 5000)
+m_mag = 0.5*1e3
+
+BBmodel = np.linspace(-100, 100, 1000)/1e3
+BB = ChampMagEffective(m_mag, XX)
+
+X0 = 200e-6
+B0 = np.array([ChampMagEffective(m_mag, X0)])
+
+ratioM0 = 0.4
+ratiok = 0.8
+
+MM1model = L1_A_V2(BBmodel, M0_MOneM, k_MOneM)/1e3
+MM2model = L1_A_V2(BBmodel, M0_MOneM*ratioM0, k_MOneM*ratiok)/1e3
+MM1 = L1_A_V2(BB, M0_MOneM, k_MOneM)/1e3
+MM2 = L1_A_V2(BB, M0_MOneM*ratioM0, k_MOneM*ratiok)/1e3
+M10 = L1_A_V2(B0, M0_MOneM, k_MOneM)[0]/1e3
+M20 = L1_A_V2(B0, M0_MOneM*ratioM0, k_MOneM*ratiok)[0]/1e3
+
+fig, axes = plt.subplots(1, 2, figsize=(10, 6))
+ax = axes[0]
+ax.plot(BBmodel*1e3, MM1model, zorder = 10,
+        label = 'with $M_{01}$ and $K_1$')
+ax.plot(BBmodel*1e3, MM2model, zorder = 10,
+        label = 'with $M_{02}$ = ' + f'{ratioM0:.2f}' + ' $\cdot M_{01}$ \nand $K_2$ = ' + f'{ratiok:.2f}' + ' $\cdot K_1$')
+# ax.set_ylim([0, ax.get_ylim()[1]])
+ax.set_ylabel('$M$ [kA/m]')
+ax.legend(title = r'$\bf{M(x) = M_0 \cdot L(KB(x)/k_b T)}$')
+ax.grid()
+ax.set_xlabel('B [mT]')
+
+ax = axes[1]
+ax.plot(XX*1e6, BB*1e3)
+ax.set_title('')
+ax.grid()
+ax.set_ylabel('B [mT]')
+ax.set_xlabel('x [µm]')
+
+fig.suptitle('Attempt at simulating a reasonable situation with $B(x) \propto x^{-0.6}$')
+
+#### 
+
+fig, axes = plt.subplots(1, 3, figsize=(15, 6))
+ax = axes[0]
+ax.plot(XX*1e6, MM1, label = 'with $M_{01}$ and $K_1$')
+ax.plot(XX*1e6, MM2, label = 'with $M_{02}$ = ' + f'{ratioM0:.2f}' + ' $\cdot M_{01}$ \nand $K_2$ = ' + f'{ratiok:.2f}' + ' $\cdot K_1$')
+ax.set_title('Magnetization functions')
+ax.grid()
+ax.legend(title = r'$\bf{M(x) = M_0 \cdot L(KB(x)/k_b T)}$')
+ax.set_ylabel('$M$ [kA/m]')
+ax.set_xlabel('x [µm]')
+
+ax = axes[1]
+ax.plot(XX*1e6, MM2/MM1)
+# ax.set_ylim([0, ax.get_ylim()[1]])
+ax.set_title(r'$M_2/M_1$')
+ax.grid()
+ax.set_xlabel('x [µm]')
+
+ax = axes[2]
+ax.plot(XX*1e6, (M10/M20)*(MM2/MM1))
+ax.set_ylim([0.5, ax.get_ylim()[1]*1.1])
+ax.set_title(r'$M_1(x_0)/M_2(x_0) \cdot M_2/M_1$ with $x_0$ = ' + f'{X0*1e6:.0f} µm')
+ax.grid()
+ax.set_xlabel('x [µm]')
+
+fig.suptitle('Assessing the Magnetization correction [case $B(x) \propto x^{-0.6}$]')
+
+plt.show()
+
+
 
 # %% Estimate B
 

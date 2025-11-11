@@ -15,12 +15,15 @@ import statsmodels.api as sm
 import matplotlib.pyplot as plt
 import xml.etree.ElementTree as ET
 
+from copy import deepcopy
+from scipy.io import savemat
+from scipy.optimize import minimize, curve_fit
 from scipy.interpolate import make_splrep
 
-from scipy.io import savemat
-from scipy.optimize import minimize
-
-from copy import deepcopy
+# Local imports
+import PlotMaker as pm
+import UtilityFunctions as ufun
+pm.setGraphicOptions(mode = 'screen', palette = 'Set2', colorList = pm.colorList10)
 
 
 # %% 2. Subfunctions
@@ -211,18 +214,28 @@ def Df2Dict(df):
 # df2 = pd.DataFrame(d2)
 # d22 = Df2Dict(df2)
 
+# %%% Physics
+
 def Langevin(x):
     # if x < 0.05:
     #     return(np.tanh(x/3))
     # else:
     return((1/np.tanh(x)) - (1/x))
 
-def New_D2V(x, A, B, x0):
+def Langevin_D2V(x, A, B, x0):
     return(A * Langevin(B/(x-x0)**3) * 1/(x-x0)**4)
 
-# def New_D2V(x, A, x0):
+# def Langevin_D2V(x, A, x0):
 #     return(A*np.exp(-x/x0))
 
+def doubleExpo(x, A, k1, B, k2):
+    return(A*np.exp(-x/k1) + B*np.exp(-x/k2))
+
+def powerLaw(x, A, k):
+    return(A*(x**k))
+
+def powerLawShifted(x, A, k, x0):
+    return(A*((x-x0)**k))
 
 # %% 3. Parameters
 
@@ -697,18 +710,32 @@ def pullAnalyzer(track, dict_pull,
     X, Y, t = track[:,1] * pixel_size, track[:,2] * pixel_size, track[:,0]
     
     # Viscosity of glycerol 80% v/v glycerol/water at 21°C [Pa.s]
-    viscosity_glycerol = 0.0857  
+    viscosity_glycerol = 0.0857
+    
+    # Viscosity of glycerol 75% v/v glycerol/water at 20°C [Pa.s]
+    viscosity_glycerol = 0.055270
+    
     # Magnet function distance (µm) to velocity (µm/s) [expected velocity in glycerol]
-    mag_d2v = lambda x: 80.23*np.exp(-x/47.49) + 1.03*np.exp(-x/22740.0)
-    new_d2v = lambda x: New_D2V(x, 2.75379e+10, 6.87603e+21, -124.896)
-    # new_d2v = lambda x: New_D2V(x, 3.56905e+11, 3.76308e+25, -140)
-    # new_d2v = lambda x: New_D2V(x, 1.7435e+10, 4.65859e+19, -100)
-    # new_d2v = lambda x: New_D2V(x, 6.46079e+10, 1.09389e+21, 0)
+    # parms_2exp = [80.23, 47.49, 1.03, 22740.0] # Maribel Calib
+    # parms_2exp = [146, 107, 0.93, 6.38e7] # Maribel Calib 2
+    parms_2exp = [1138.18, 37.2887, 2.01482, 296.243] # Joseph Calib
+    mag_d2v_2exp = lambda x: doubleExpo(x, *parms_2exp)
+    
+    parms_langevin = [2.75379e+10, 6.87603e+21, -124.896]
+    # parms_langevin = [3.56905e+11, 3.76308e+25, -140]
+    # parms_langevin = [1.7435e+10, 4.65859e+19, -100]
+    # parms_langevin = [6.46079e+10, 1.09389e+21, 0]
+    mag_d2v_langevin = lambda x: Langevin_D2V(x, *parms_langevin)
+    
+    parms_powerLaw = [310320, -2.19732]
+    mag_d2v_powerLaw = lambda x: powerLaw(x, *parms_powerLaw)
     
     if fit_V == 'DoubleExpo': # Original behavior
-        mag_d2v = mag_d2v
+        mag_d2v = mag_d2v_2exp
     elif fit_V == 'LangevinFun': # Test
-        mag_d2v = new_d2v
+        mag_d2v = mag_d2v_langevin
+    elif fit_V == 'PowerLaw': # Test
+        mag_d2v = mag_d2v_powerLaw
         
     # Speed at 200 mu as um/s
     v_interp = mag_d2v(200)
@@ -776,12 +803,9 @@ def pullAnalyzer(track, dict_pull,
     dx_pulling_n = dx_pulling / pull_force
     
     #### Filters
-    # Filter1 = (dist > 500) # bead further than 550 µm from magnet center
-    # Filter1 = (tpulling >= 1) & (tpulling <= 10)
-    Filter1 = tpulling >= 0.5
-    # Filter2 = (tpulling <= 15) # remove the first 2 seconds of filming
-    # Filter2 = (dist <= 350) & (dist >= 250)
-    GlobalFilter = Filter1 #& Filter2
+    Filter1 = tpulling > 0.5
+    Filter2 = (np.abs(dx_pulling[0] - dx_pulling[:]) <= 60) # keep only first 60 µm of movement
+    GlobalFilter = Filter1 & Filter2
     if np.sum(GlobalFilter) == 0:
         error = True
         output = ()
@@ -980,7 +1004,7 @@ def pullAnalyzer(track, dict_pull,
         ax.set_xlabel("X [µm]")
         ax.set_ylabel("V [µm/s]")
         ax.set_xlim([100, 1000])
-        ax.set_ylim([1, 15])
+        ax.set_ylim([0.1, 15])
         ax.grid(axis='both', which='both')
         ax.legend(fontsize = 11).set_zorder(6)
         fig.suptitle(pull_id, fontsize=12)
@@ -1040,6 +1064,8 @@ def pullAnalyzer(track, dict_pull,
         
         if SHOW:
             plt.show()
+        else:
+            plt.close('all')
             
         plt.ion()
         
@@ -1051,7 +1077,8 @@ def pullAnalyzer(track, dict_pull,
 
 # %%% ... on many files
 
-mainDir = os.path.join("C:/Users/Utilisateur/Desktop/")
+# mainDir = os.path.join("C:/Users/Utilisateur/Desktop/")
+mainDir = os.path.join("C:/Users/josep/Desktop/Seafile")
 date = '25-09-19'
 
 
@@ -1064,8 +1091,8 @@ prefix_id = '25-09-19' # used to select a subset of the track files if needed
 
 res, all_XY = pullAnalyzer_multiFiles(mainDir, date, prefix_id,
                         analysisDir, tracksDir, resultsDir, plotsDir,
-                        mode = 'newton', resultsFileName = date + '_NaSS_results_TEST',
-                        Redo = True, PLOT = False, SHOW = False)
+                        mode = 'newton', resultsFileName = date + '_NaSS_results_newCalib02',
+                        Redo = True, PLOT = True, SHOW = False)
 
 # plt.close('all')
 
@@ -1114,9 +1141,10 @@ visco, R2, speed_med, force_med, theta, r_min, r_max, XY = output
 
 # %%% Test work on many tracks
 
-# %%%% Import
+# %%%% Import Data 1
 
-mainDir = 'C://Users//Utilisateur//Desktop//AnalysisPulls//Tracks//25-10-11'
+# mainDir = 'C://Users//Utilisateur//Desktop//AnalysisPulls//Tracks//25-10-11'
+mainDir = 'C://Users//josep//Desktop//Seafile//AnalysisPulls//Tracks//25-10-11'
 fileName = 'Data_10fps8_Tracks.xml'
 filePath = os.path.join(mainDir, fileName)
 
@@ -1126,22 +1154,49 @@ MagY = 479 * SCALE
 MagR = (224 / 2) * SCALE
 Rb = 0.5 # µm
 
+wall_L = 385*SCALE - MagX
+wall_R = (385+280)*SCALE - MagX
 all_tracks_raw = importTrackMateTracks(filePath)
 all_tracks = deepcopy(all_tracks_raw)
+
+# %%%% Import Data 2
+
+# mainDir = 'C://Users//Utilisateur//Desktop//AnalysisPulls//Tracks//25-10-11'
+mainDir = 'C://Users//josep//Desktop//Seafile//AnalysisPulls//Tracks//25-10-11'
+fileName = 'Data_10fps8_InvCroped_Tracks.xml'
+filePath = os.path.join(mainDir, fileName)
+
+SCALE = 0.451
+MagX = 150.5 * SCALE
+MagY = 396.5 * SCALE
+MagR = (223 / 2) * SCALE
+Rb = 0.5 # µm
+
+wall_L = 307*SCALE - MagX
+wall_R = (307+280)*SCALE - MagX
+all_tracks_raw = importTrackMateTracks(filePath)
+all_tracks = deepcopy(all_tracks_raw)
+
+
+# %%%% First check
 
 for T in all_tracks:
     T[:, 0] *= 0.1
     T[:, 1] *= SCALE
     T[:, 2] *= SCALE
 
-fig1, ax1 = plt.subplots(1, 1)
+fig1, ax1 = plt.subplots(1, 1, figsize = (12, 8))
 fig, ax = fig1, ax1
 for T in all_tracks:
     X, Y = T[:, 1], T[:, 2]
     X2, Y2 = X-MagX, Y-MagY
     ax.plot(X2, Y2)
 
+circle1 = plt.Circle((0, 0), MagR, color='dimgrey')
+ax.add_patch(circle1)
+ax.axvspan(wall_L, wall_R, color='lightgray', zorder=0)
 ax.grid()
+ax.axis('equal')
 ax.set_xlabel('X [µm]')
 ax.set_ylabel('Y [µm]')
 ax.set_xlim([0, ax.get_xlim()[1]])
@@ -1183,9 +1238,9 @@ for T in all_tracks:
     
 all_D = np.array(all_D)
 all_V = np.array(all_V)
-filter_01 = all_D<600
-all_D = all_D[filter_01]
-all_V = all_V[filter_01]
+# filter_01 = all_D<600
+# all_D = all_D[filter_01]
+# all_V = all_V[filter_01]
 
 ax.plot(all_D, all_V, marker='.', ms=1, ls='', zorder=5)
 
@@ -1197,7 +1252,7 @@ ax.plot(d_plot, v_plot, 'r-', zorder=6, label=f'k = {k:.2f}')
 ax.plot(d_plot, 71171154451.30064 * d_plot**(-4.379997905229558), 'g--', zorder=6, label=f'k = {k:.2f}')
  
 
-ax.grid(axis='both',which='both')
+ax.grid(axis='both', which='both')
 
 print(A, k)
 
@@ -1221,6 +1276,254 @@ print(A, k)
 fig.tight_layout()
 plt.show()
 
+# %%%% Test spline
+
+T = all_tracks[15]
+X, Y = T[:, 1], T[:, 2]
+t = T[:, 0]
+X2, Y2 = X-MagX, Y-MagY
+D = ((X2**2 + Y2**2)**0.5)
+D -= MagR
+t=np.ascontiguousarray(t)
+D=np.ascontiguousarray(D)
+
+D = D - min(D)
+D_spline = make_splrep(t, D, s=6)
+V_spline = D_spline.derivative(nu=1)
+V = V_spline(t)
+
+fig0, ax1 = plt.subplots(1, 1)
+ax2 = ax1.twinx()
+ax1.plot(t, D, marker='.', ls='', zorder=5)
+ax1.plot(t, D_spline(t), ls='-', zorder=5)
+ax2.plot(t, V, zorder=5)
+plt.show()
+
+#### Second way
+parms, res = fitLineHuber(X2, Y2)
+b, a = parms
+theta = np.atan(a)
+rotation_mat = np.array([[np.cos(-theta), -np.sin(-theta)],
+                         [np.sin(-theta),  np.cos(-theta)]])
+coords = np.vstack((X2, Y2)).T @ rotation_mat.T
+X3, Y3 = coords[:,0], coords[:,1]
+D = X3[::4]
+t2 = t[::4]
+D -= MagR
+t2=np.ascontiguousarray(t2)
+D=np.ascontiguousarray(D)
+
+fig, axes = plt.subplots(1, 2, figsize=(10, 5))
+axes[0].plot(X2, Y2, 'b.')
+xf = np.array([min(X2), max(X2)])
+yf = a*xf + b
+axes[0].plot(xf, yf, 'r-')
+axes[1].plot(X3, Y3, 'g.')
+plt.show()
+
+D = D - min(D)
+D_spline = make_splrep(t2, D, s=6)
+V_spline = D_spline.derivative(nu=1)
+V = V_spline(t2)
+
+
+ax1.plot(t2, D, marker='.', ls='', zorder=5)
+ax1.plot(t2, D_spline(t2), ls='-', zorder=5)
+ax2.plot(t2, V, zorder=5)
+
+plt.show()
+
+# %%%% Plots
+
+
+# theta = np.arctan2(Y[initPullTime] - Y[finPullTime],
+#                    X[initPullTime] - X[finPullTime])
+# rotation_mat = np.array([[np.cos(-theta), -np.sin(-theta)],
+#                          [np.sin(-theta),  np.cos(-theta)]])
+
+all_D = []
+all_V = []
+
+for T in all_tracks:
+    X, Y = T[:, 1], T[:, 2]
+    t = T[:, 0]
+    X2, Y2 = X-MagX, Y-MagY
+    D = ((X2**2 + Y2**2)**0.5)
+    D -= MagR
+    t=np.ascontiguousarray(t)
+    D=np.ascontiguousarray(D)
+    # try:
+    D_spline = make_splrep(t, D, s=5)
+    V_spline = D_spline.derivative(nu=1)
+    V = np.abs(V_spline(t))
+    # ax.plot(D, V, marker='.', ms=1, ls='', zorder=5)
+    # except:
+    #     pass
+    all_D += list(D)
+    all_V += list(V)
+    
+all_D = np.array(all_D)
+all_V = np.array(all_V)
+filter_01 = all_V>0
+all_D = all_D[filter_01]
+all_V = all_V[filter_01]
+
+
+D_plot = np.linspace(1, 5000, 500)
+
+def doubleExpo(x, A, k1, B, k2):
+    return(A*np.exp(-x/k1) + B*np.exp(-x/k2))
+
+popt_2exp, pcov_2exp = curve_fit(doubleExpo, all_D, all_V, 
+                       p0 = [1000, 50, 100, 1000], 
+                       bounds=([0, 0, 0, 0], [np.inf, np.inf, np.inf, np.inf]))
+V_fit_2exp = doubleExpo(D_plot, *popt_2exp)
+label_2exp = r'$\bf{A \cdot exp(-x/k_1) + B \cdot exp(-x/k_2)}$' + '\n'
+label_2exp += '$A$ = {:.2e} | $k_1$ = {:.2f}\n$B$ = {:.2f} | $k_2$ = {:.2e}'.format(*popt_2exp)
+
+def powerLaw(x, A, k):
+    return(A*(x**k))
+
+popt_pL, pcov_pL = curve_fit(powerLaw, all_D, all_V, 
+                       p0 = [1000, -2], 
+                       bounds=([0, -10], [np.inf, 0]))
+V_fit_pL = powerLaw(D_plot, *popt_pL)
+label_pL = r'$\bf{A \cdot x^k}$' + '\n'
+label_pL += '$A$ = {:.2e} | $k$ = {:.2f}'.format(*popt_pL)
+
+
+# V_th = powerLaw(all_D, *popt_pL)
+# ratio_fit = all_V/V_th
+# fig11, ax11 = plt.subplots(1,1)
+# ax11.plot(all_D, ratio_fit, ls='', marker='.', alpha=0.3)
+# plt.show()
+
+# def powerLawShifted(x, A, k, x0):
+#     return(A*((x-x0)**k))
+
+# popt_pLS, pcov_pLS = curve_fit(powerLawShifted, all_D, all_V, 
+#                        p0 = [1e6, -7, -600], 
+#                        bounds=([0, -10, -1000], [np.inf, 0, 0]),
+#                        maxfev = 10000) # 
+# V_fit_pLS = powerLawShifted(D_plot, *popt_pLS)
+# label_pLS = r'$\bf{A \cdot (x - x_0)^k}$' + '\n'
+# label_pLS += '$A$ = {:.2e} | $k$ = {:.2f}\n$x_0$ = {:.2f}'.format(*popt_pLS)
+
+
+
+fig, axes = plt.subplots(1, 2, figsize=(15, 6))
+ax = axes[0]
+ax.plot(all_D, all_V, ls='', marker='.', alpha=0.3)
+ax.plot(D_plot, V_fit_2exp, 'r-', label = label_2exp)
+ax.plot(D_plot, V_fit_pL, ls='-', color='darkorange', label = label_pL)
+# ax.plot(D_plot, V_fit_pLS, 'c-', label = label_pLS)
+ax.grid()
+ax.set_xlim([0, 1000])
+ax.set_ylim([0, 5])
+ax.set_xlabel('d [µm]')
+ax.set_ylabel('v [µm/s]')
+# ax.legend()
+
+ax = axes[1]
+ax.set_xscale('log')
+ax.set_yscale('log')
+ax.plot(all_D, all_V, ls='', marker='.', alpha=0.3)
+ax.plot(D_plot, V_fit_2exp, 'r-', label = label_2exp)
+ax.plot(D_plot, V_fit_pL, ls='-', color='darkorange', label = label_pL)
+# ax.plot(D_plot, V_fit_pLS, 'c-', label = label_pLS)
+ax.grid()
+ax.set_xlim([50, 5000])
+ax.set_ylim([0.01, 100])
+ax.set_xlabel('d [µm]')
+ax.set_ylabel('v [µm/s]')
+ax.legend(loc="center left",
+          bbox_to_anchor=(1, 0, 0.5, 1))
+
+fig.suptitle("Joseph's calibration data")
+fig.tight_layout()
+plt.show()
+
+# popt_2exp = [1138.18, 37.2887, 2.01482, 296.243]
+# popt_pL = [310320, -2.19732]
+
+
+# %%% Plotting Maribel's calibration
+
+mainDir = "C:/Users/josep/Desktop/Seafile/DownloadedFromSeafile"
+fileName = 'dist-speed_ALL.txt'
+filePath = os.path.join(mainDir, fileName)
+
+df = pd.read_csv(filePath, sep=' ', names=['Id', 'D', 'V'])
+all_D = df['D'].values
+all_V = df['V'].values
+
+D_plot = np.linspace(1, 5000, 500)
+
+def doubleExpo(x, A, k1, B, k2):
+    return(A*np.exp(-x/k1) + B*np.exp(-x/k2))
+
+popt_2exp, pcov_2exp = curve_fit(doubleExpo, all_D, all_V, 
+                       p0 = [1000, 50, 100, 1000], 
+                       bounds=([0, 0, 0, 0], [np.inf, np.inf, np.inf, np.inf]))
+V_fit_2exp = doubleExpo(D_plot, *popt_2exp)
+label_2exp = r'$\bf{A \cdot exp(-x/k_1) + B \cdot exp(-x/k_2)}$' + '\n'
+label_2exp += '$A$ = {:.2e} | $k_1$ = {:.2f}\n$B$ = {:.2f} | $k_2$ = {:.2e}'.format(*popt_2exp)
+
+
+def powerLaw(x, A, k):
+    return(A*(x**k))
+
+popt_pL, pcov_pL = curve_fit(powerLaw, all_D, all_V, 
+                       p0 = [1000, -2], 
+                       bounds=([0, -10], [np.inf, 0]))
+V_fit_pL = powerLaw(D_plot, *popt_pL)
+label_pL = r'$\bf{A \cdot x^k}$' + '\n'
+label_pL += '$A$ = {:.2e} | $k$ = {:.2f}'.format(*popt_pL)
+
+
+# def powerLawShifted(x, A, k, x0):
+#     return(A*((x-x0)**k))
+
+# popt_pLS, pcov_pLS = curve_fit(powerLawShifted, all_D, all_V, 
+#                        p0 = [1e6, -2.5, 0], 
+#                        maxfev = 10000) # bounds=([0, -10, -200], [np.inf, 0, 200])
+# V_fit_pLS = powerLawShifted(D_plot, *popt_pLS)
+# label_pLS = r'$\bf{A \cdot (x - x_0)^k}$' + '\n'
+# label_pLS += '$A$ = {:.2e} | $k$ = {:.2f}\n$x_0$ = {:.2f}'.format(*popt_pLS)
+
+
+
+fig, axes = plt.subplots(1, 2, figsize=(15, 6))
+ax = axes[0]
+ax.plot(all_D, all_V, ls='', marker='.', alpha=0.3)
+ax.plot(D_plot, V_fit_2exp, 'r-', label = label_2exp)
+ax.plot(D_plot, V_fit_pL, ls='-', color='darkorange', label = label_pL)
+# ax.plot(D_plot, V_fit_pLS, 'c-', label = label_pLS)
+ax.grid()
+ax.set_xlim([0, 1000])
+ax.set_ylim([0, 30])
+ax.set_xlabel('d [µm]')
+ax.set_ylabel('v [µm/s]')
+# ax.legend()
+
+ax = axes[1]
+ax.set_xscale('log')
+ax.set_yscale('log')
+ax.plot(all_D, all_V, ls='', marker='.', alpha=0.3)
+ax.plot(D_plot, V_fit_2exp, 'r-', label = label_2exp)
+ax.plot(D_plot, V_fit_pL, ls='-', color='darkorange', label = label_pL)
+# ax.plot(D_plot, V_fit_pLS, 'c-', label = label_pLS)
+ax.grid()
+ax.set_xlim([50, 5000])
+ax.set_ylim([0.1, 1000])
+ax.set_xlabel('d [µm]')
+ax.set_ylabel('v [µm/s]')
+ax.legend(loc="center left",
+          bbox_to_anchor=(1, 0, 0.5, 1))
+
+fig.suptitle("Maribel's calibration data")
+fig.tight_layout()
+plt.show()
 
 # %%% Little test fitting
 
@@ -1670,4 +1973,4 @@ for particle in root.findall('particle'):
 #         plt.ion()
         
 #     #### 7. Output
-#     return(output, error)
+#     return(output, error
