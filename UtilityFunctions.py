@@ -1130,6 +1130,80 @@ def lighten_color(color, amount=0.5):
     c = colorsys.rgb_to_hls(*mc.to_rgb(c))
     return(colorsys.hls_to_rgb(c[0], 1 - amount * (1 - c[1]), c[2]))
 
+# %%% Geometry / design
+
+def volumeRheoPlanPlan(D, h=1e-3):
+    R = D/2
+    V = np.pi * R**2 * h
+    return(V)
+
+def volumeRheoConePlan(D, alpha, a=0):
+    R = D/2
+    V1 = (2/3) * np.pi * R**3 * np.tan(alpha*np.pi/180)
+    V2 = np.pi * R**2 * a
+    V = V1 + V2
+    return(V)
+
+#### PP40
+# D = 40e-3 # m
+# V = volumeRheoPlanPlan(D)
+# V_µL = V*1e9 # m3 to µL
+# V_µL = 1256.6 # µL
+
+#### CP50-1, a = 0µm
+# D = 50e-3 # m
+# alpha = 1 # °
+# V = volumeRheoConePlan(D, alpha)
+# V_µL = V*1e9 # m3 to µL
+# V_µL = 571.2 # µL
+
+#### CP25-1, a = 0µm
+# D = 25e-3 # m
+# alpha = 1 # °
+# V = volumeRheoConePlan(D, alpha)
+# V_µL = V*1e9 # m3 to µL
+# V_µL = 71.4 # µL
+
+#### CP25-1, a = 50µm
+# D = 25e-3 # m
+# alpha = 1 # °
+# a = 50 * 1e-6
+# V = volumeRheoConePlan(D, alpha, a)
+# V_µL = V*1e9 # m3 to µL
+# V_µL = 95.9 # µL
+
+#### CP25-1, a = 100µm
+# D = 25e-3 # m
+# alpha = 1 # °
+# a = 100 * 1e-6
+# V = volumeRheoConePlan(D, alpha, a)
+# V_µL = V*1e9 # m3 to µL
+# V_µL = 120.5 # µL
+
+#### CP25-0.5 , a = 0µm
+# D = 25e-3 # m
+# alpha = 0.5 # °
+# V = volumeRheoConePlan(D, alpha)
+# V_µL = V*1e9 # m3 to µL
+# V_µL = 35.7 # µL
+
+#### CP25-0.5 , a = 50µm
+# D = 25e-3 # m
+# alpha = 0.5 # °
+# a = 50 * 1e-6
+# V = volumeRheoConePlan(D, alpha, a)
+# V_µL = V*1e9 # m3 to µL
+# V_µL = 60.2 # µL
+
+#### CP25-0.5 , a = 100µm
+# D = 25e-3 # m
+# alpha = 0.5 # °
+# a = 100 * 1e-6
+# V = volumeRheoConePlan(D, alpha, a)
+# V_µL = V*1e9 # m3 to µL
+# V_µL = 84.8 # µL
+
+
 # %% Test
 
 # # %%% Dataset

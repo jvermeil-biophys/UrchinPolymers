@@ -19,6 +19,7 @@ from copy import deepcopy
 from scipy.io import savemat
 from scipy.optimize import minimize, curve_fit
 from scipy.interpolate import make_splrep
+from derivative import dxdt
 
 # Local imports
 import PlotMaker as pm
@@ -718,7 +719,9 @@ def pullAnalyzer(track, dict_pull,
     # Magnet function distance (µm) to velocity (µm/s) [expected velocity in glycerol]
     # parms_2exp = [80.23, 47.49, 1.03, 22740.0] # Maribel Calib
     # parms_2exp = [146, 107, 0.93, 6.38e7] # Maribel Calib 2
-    parms_2exp = [1138.18, 37.2887, 2.01482, 296.243] # Joseph Calib
+    # parms_2exp = [1138.18, 37.2887, 2.01482, 296.243] # Joseph Calib
+    # parms_2exp = [255.07,  45.81,   1.42, 401.66] # Joseph Calib Better
+    parms_2exp = [2683, 30.33, 2.440, 314.54] # Joseph Calib Good
     mag_d2v_2exp = lambda x: doubleExpo(x, *parms_2exp)
     
     parms_langevin = [2.75379e+10, 6.87603e+21, -124.896]
@@ -1062,12 +1065,12 @@ def pullAnalyzer(track, dict_pull,
         plt.tight_layout()
         fig2.savefig(os.path.join(analysisDir, pull_id + "_fits.png"))
         
-        if SHOW:
-            plt.show()
-        else:
-            plt.close('all')
+    if SHOW:
+        plt.show()
+    else:
+        plt.close('all')
             
-        plt.ion()
+    plt.ion()
         
     #### 7. Output
     return(output, error)
@@ -1091,7 +1094,7 @@ prefix_id = '25-09-19' # used to select a subset of the track files if needed
 
 res, all_XY = pullAnalyzer_multiFiles(mainDir, date, prefix_id,
                         analysisDir, tracksDir, resultsDir, plotsDir,
-                        mode = 'newton', resultsFileName = date + '_NaSS_results_newCalib02',
+                        mode = 'newton', resultsFileName = date + '_NaSS_results_newCalib03',
                         Redo = True, PLOT = True, SHOW = False)
 
 # plt.close('all')
@@ -1139,241 +1142,250 @@ visco, R2, speed_med, force_med, theta, r_min, r_max, XY = output
 
 # %% 101. Tests & Legacy
 
-# %%% Test work on many tracks
+# %%% Make a calibratiuon curve by myself
+
+
+# %%%% Pretreatment, as a function
+
+def tracks_pretreatment(all_tracks,
+                        SCALE, FPS, 
+                        MagX, MagY, MagR, Rb):
+
+    tracks_data = []
+    
+    for i, track in enumerate(all_tracks):
+        #### Conversion in um and sec
+        T = track[:, 0] * (1/FPS)
+        X = track[:, 1] * SCALE
+        Y = track[:, 2] * SCALE
+        tracks_data.append({'T':T, 'X':X, 'Y':Y})
+        #### Origin as the magnet center
+        X2, Y2 = X-MagX, MagY-Y
+        # NB: inversion of Y so that the plt trajectories look like the Fiji ones
+        medX2, medY2 = np.median(X2), np.median(Y2)
+        tracks_data[i].update({'X2':X2, 'Y2':Y2,
+                               'medX2':medX2, 'medY2':medY2})
+        #### Rotate the trajectory by its own angle
+        parms, res, wlm_res = fitLineHuber(X2, Y2, with_wlm_results=True)
+        b_fit, a_fit = parms
+        r2 = wlm_res.rsquared
+        theta = np.atan(a_fit)
+        rotation_mat = np.array([[np.cos(-theta), -np.sin(-theta)],
+                                 [np.sin(-theta),  np.cos(-theta)]])
+        rotated_XY = np.vstack((X2, Y2)).T @ rotation_mat.T
+        X3, Y3 = rotated_XY[:,0], rotated_XY[:,1]
+        tracks_data[i].update({'a_fit':a_fit, 'b_fit':b_fit, 'r2':r2,
+                               'theta':theta,
+                               'X3':X3, 'Y3':Y3})
+        #### Rotate the trajectory by its angle with the magnet
+        phi = np.atan(medY2/medX2)
+        delta = theta-phi
+        rotation_mat = np.array([[np.cos(-phi), -np.sin(-phi)],
+                                 [np.sin(-phi),  np.cos(-phi)]])
+        rotated_XY = np.vstack((X2, Y2)).T @ rotation_mat.T
+        X4, Y4 = rotated_XY[:,0], rotated_XY[:,1]
+        tracks_data[i].update({'phi':phi, 'delta':delta,
+                               'X4':X4, 'Y4':Y4})
+        #### Compute distances
+        D2 = np.array(((X2**2 + Y2**2)**0.5) - MagR)
+        D3 = np.array(X3 - MagR)
+        D4 = np.array(X4 - MagR) # Note: D4 == D2
+        tracks_data[i].update({'D2':D2, 'D3':D3, 'D4':D4,
+                               })
+        
+        #### Compute splines
+        # Chose distance definition
+        D = D2 
+        # Make spline
+        spline_D = make_splrep(T, D, s=6)
+        spline_V = spline_D.derivative(nu=1)
+        # Compute V and chose definition
+        V_spline = np.abs(spline_V(T))
+        # V_savgol = dxdt(D, T, kind="savitzky_golay", 
+        #                 left=10, right=10, order=3)
+        # V_kalman = dxdt(D, T, kind="kalman", alpha=1)
+        V = V_spline
+        #
+        medD, medV = np.median(D), np.median(V)
+        tracks_data[i].update({'D':D, 'V':V, 
+                               'medD':medD, 'medV':medV,
+                               })
+        
+    return(tracks_data)
+        
+        # fig2, ax2 = plt.subplots(1, 1, figsize = (8, 6))
+        # fig, ax = fig2, ax2
+        # all_medX2 = [track['medX2'] for track in tracks_data]
+        # all_delta = [track['delta']*180/np.pi for track in tracks_data]
+        # ax.plot(all_medX2, all_delta, ls='', marker='.')
+        # ax.grid()
+        # ax.set_xlabel('median(X) [µm]')
+        # ax.set_ylabel(r'$\theta - \phi$ [°]')
+            
+        # plt.show()
+        
+        
+        # fig3, axes3 = plt.subplots(1, 2, figsize = (8, 12))
+        # fig = fig3
+        # for track in tracks_data:
+        #     if np.abs(track['delta']*180/np.pi) < 10:
+        #         X2, Y2 = track['X2'], track['Y2']
+        #         D2 = np.array(((X2**2 + Y2**2)**0.5) - MagR)
+        #         X3 = track['X3']
+        #         D3 = np.array(X3 - MagR)
+        #         X4 = track['X4']
+        #         D4 = np.array(X4 - MagR)
+        #         ax = axes3[0]
+        #         ax.plot(X2, D3/D2, ls='', marker='.')
+        #         ax = axes3[1]
+        #         ax.plot(X2, D4/D2, ls='', marker='.')
+                
+        # for ax in axes3:
+        #     ax.set_ylim([1-10e-3, 1+10e-3])
+        #     ax.grid()
+            
+        # plt.show()
+        
+        # fig4, axes4 = plt.subplots(1, 4, figsize = (20, 6), 
+        #                            sharey=True)
+        # fig = fig1
+        # for i in range(len(axes4)):
+        #     ax = axes4[i]
+        #     track = tracks_data[20+i]
+        #     D = track['D']
+        #     ax.plot(D, track['V_spline'])
+        #     ax.plot(D, track['V_savgol'])
+        #     ax.plot(D, track['V_kalman'])
 
 # %%%% Import Data 1
 
 # mainDir = 'C://Users//Utilisateur//Desktop//AnalysisPulls//Tracks//25-10-11'
 mainDir = 'C://Users//josep//Desktop//Seafile//AnalysisPulls//Tracks//25-10-11'
-fileName = 'Data_10fps8_Tracks.xml'
+fileName = 'BeadPulling10_10fps_InvCroped_Tracks.xml'
 filePath = os.path.join(mainDir, fileName)
 
 SCALE = 0.451
-MagX = 227 * SCALE
-MagY = 479 * SCALE
-MagR = (224 / 2) * SCALE
-Rb = 0.5 # µm
+FPS = 10
+MagX = 150.5 * SCALE
+MagY = 396.5 * SCALE
+MagR = (223 / 2) * SCALE
+Rb = 0.5 # µm
 
-wall_L = 385*SCALE - MagX
-wall_R = (385+280)*SCALE - MagX
-all_tracks_raw = importTrackMateTracks(filePath)
-all_tracks = deepcopy(all_tracks_raw)
+wall_L = 307*SCALE - MagX
+wall_R = (307+280)*SCALE - MagX
+all_tracks1 = importTrackMateTracks(filePath)
+tracks_data1 = tracks_pretreatment(all_tracks1,
+                        SCALE, FPS, 
+                        MagX, MagY, MagR, Rb)
 
 # %%%% Import Data 2
 
 # mainDir = 'C://Users//Utilisateur//Desktop//AnalysisPulls//Tracks//25-10-11'
 mainDir = 'C://Users//josep//Desktop//Seafile//AnalysisPulls//Tracks//25-10-11'
-fileName = 'Data_10fps8_InvCroped_Tracks.xml'
+fileName = 'BeadPulling05_5fps_Inv_Tracks.xml'
 filePath = os.path.join(mainDir, fileName)
 
 SCALE = 0.451
-MagX = 150.5 * SCALE
-MagY = 396.5 * SCALE
-MagR = (223 / 2) * SCALE
-Rb = 0.5 # µm
-
-wall_L = 307*SCALE - MagX
-wall_R = (307+280)*SCALE - MagX
-all_tracks_raw = importTrackMateTracks(filePath)
-all_tracks = deepcopy(all_tracks_raw)
+FPS = 5
+MagX = 168.5 * SCALE
+MagY = 262.5 * SCALE
+MagR = (217 / 2) * SCALE
+Rb = 0.5 # µm
 
 
-# %%%% First check
+wall_L = 408*SCALE - MagX
+wall_R = (408+288)*SCALE - MagX
+all_tracks2 = importTrackMateTracks(filePath)
+tracks_data2 = tracks_pretreatment(all_tracks2,
+                        SCALE, FPS, 
+                        MagX, MagY, MagR, Rb)
 
-for T in all_tracks:
-    T[:, 0] *= 0.1
-    T[:, 1] *= SCALE
-    T[:, 2] *= SCALE
+# %%%% Import Data 3
 
-fig1, ax1 = plt.subplots(1, 1, figsize = (12, 8))
-fig, ax = fig1, ax1
-for T in all_tracks:
-    X, Y = T[:, 1], T[:, 2]
-    X2, Y2 = X-MagX, Y-MagY
-    ax.plot(X2, Y2)
+# mainDir = 'C://Users//Utilisateur//Desktop//AnalysisPulls//Tracks//25-10-11'
+mainDir = 'C://Users//josep//Desktop//Seafile//AnalysisPulls//Tracks//25-10-11'
+fileName = 'BeadPulling03_5fps_Inv_Tracks.xml'
+filePath = os.path.join(mainDir, fileName)
 
-circle1 = plt.Circle((0, 0), MagR, color='dimgrey')
-ax.add_patch(circle1)
-ax.axvspan(wall_L, wall_R, color='lightgray', zorder=0)
+SCALE = 0.451
+FPS = 5
+MagX = 129 * SCALE
+MagY = 376 * SCALE
+MagR = (234 / 2) * SCALE
+Rb = 0.5 # µm
+
+wall_L = 365*SCALE - MagX
+wall_R = (365+290)*SCALE - MagX
+all_tracks3 = importTrackMateTracks(filePath)
+tracks_data3 = tracks_pretreatment(all_tracks3,
+                        SCALE, FPS, 
+                        MagX, MagY, MagR, Rb)
+
+# %%%% Concatenate all tracks
+
+# tracks_data = tracks_data1 + tracks_data2 + tracks_data3
+
+# tracks_data = tracks_data2 + tracks_data3
+
+tracks_data = tracks_data1
+
+# %%%% First filter
+
+tracks_data_f1 = []
+for track in tracks_data:
+    crit1 = (np.abs(track['delta']*180/np.pi) < 15)
+    crit2 = (np.abs(track['r2'] > 0.85))
+    bypass1 = (np.min(track['X2'] < 300))
+    if (crit1 and crit2) or bypass1:
+        tracks_data_f1.append(track)
+    
+
+fig1, axes1 = plt.subplots(2, 1, figsize = (10, 14), 
+                           sharex=True)
+fig = fig1
+ax = axes1[0]
+ax.set_title(f'All tracks, N = {len(tracks_data)}')
+for track in tracks_data:
+    X, Y = track['X2'], track['Y2']
+    ax.plot(X, Y)
+    
+ax = axes1[1]
+ax.set_title(f'Validated tracks, N = {len(tracks_data_f1)}')
+for track in tracks_data_f1:
+    X, Y = track['X2'], track['Y2']
+    ax.plot(X, Y)
+
+for ax in axes1:
+    circle1 = plt.Circle((0, 0), MagR, color='dimgrey')
+    ax.add_patch(circle1)
+    # ax.axvspan(wall_L, wall_R, color='lightgray', zorder=0)
+    ax.grid()
+    ax.axis('equal')
+    ax.set_xlabel('X [µm]')
+    ax.set_ylabel('Y [µm]')
+    ax.set_xlim([0, ax.get_xlim()[1]])
+    
+plt.show()
+
+# %%%% Second filter
+
+fig2, ax2 = plt.subplots(1, 1, figsize = (8, 6))
+fig, ax = fig2, ax2
+all_medD = np.array([track['medD'] for track in tracks_data_f1])
+all_medV = np.array([track['medV'] for track in tracks_data_f1])
+all_D = np.concat([track['D'] for track in tracks_data_f1])
+all_V = np.concat([track['V'] for track in tracks_data_f1])
+# ax.plot(all_medD, all_medV, ls='', marker='.')
+ax.plot(all_D, all_V, ls='', marker='.', alpha=0.05)
 ax.grid()
-ax.axis('equal')
-ax.set_xlabel('X [µm]')
-ax.set_ylabel('Y [µm]')
-ax.set_xlim([0, ax.get_xlim()[1]])
-plt.show()
-
-# %%%% Compute infos
-
-fig2, axes2 = plt.subplots(1, 1, figsize = (5,5))
-fig, ax = fig2, axes2
-# ax.set_xscale('log')
-# ax.set_yscale('log')
-
-
-# theta = np.arctan2(Y[initPullTime] - Y[finPullTime],
-#                    X[initPullTime] - X[finPullTime])
-# rotation_mat = np.array([[np.cos(-theta), -np.sin(-theta)],
-#                          [np.sin(-theta),  np.cos(-theta)]])
-
-all_D = []
-all_V = []
-
-for T in all_tracks:
-    X, Y = T[:, 1], T[:, 2]
-    t = T[:, 0]
-    X2, Y2 = X-MagX, Y-MagY
-    D = ((X2**2 + Y2**2)**0.5)
-    D -= MagR
-    t=np.ascontiguousarray(t)
-    D=np.ascontiguousarray(D)
-    # try:
-    D_spline = make_splrep(t, D, s=len(t)/4)
-    V_spline = D_spline.derivative(nu=1)
-    V = np.abs(V_spline(t))
-    # ax.plot(D, V, marker='.', ms=1, ls='', zorder=5)
-    # except:
-    #     pass
-    all_D += list(D)
-    all_V += list(V)
+ax.set_xlabel('D [µm]')
+ax.set_ylabel('V [µm/s]')
     
-all_D = np.array(all_D)
-all_V = np.array(all_V)
-# filter_01 = all_D<600
-# all_D = all_D[filter_01]
-# all_V = all_V[filter_01]
-
-ax.plot(all_D, all_V, marker='.', ms=1, ls='', zorder=5)
-
-parms, raw_parms, results = fitPowerHuber(all_D, all_V)
-A, k = parms
-d_plot = np.linspace(min(all_D), max(all_D), 100)
-v_plot = A*(d_plot**k)
-ax.plot(d_plot, v_plot, 'r-', zorder=6, label=f'k = {k:.2f}')
-ax.plot(d_plot, 71171154451.30064 * d_plot**(-4.379997905229558), 'g--', zorder=6, label=f'k = {k:.2f}')
- 
-
-ax.grid(axis='both', which='both')
-
-print(A, k)
-
-# dist_spline = make_splrep(tpulling, dist, s=len(t)/2)
-# speed_spline = dist_spline.derivative(nu=1)
-# speed = np.abs(speed_spline(tpulling))
-# parms, raw_parms, results = fitPower(dist, speed)
-# A, k = parms
-# d_plot = np.linspace(min(dist), max(dist), 100)
-# v_plot = A*(d_plot**k)
-# ax.plot(dist, speed, 'wo', mec='k', ms = 4, zorder=5)
-# ax.plot(d_plot, v_plot, 'r-', zorder=6, label=f'k = {k:.2f}')
-# ax.set_xlabel("X [µm]")
-# ax.set_ylabel("V [µm/s]")
-# ax.set_xlim([100, 1000])
-# ax.set_ylim([1, 15])
-# ax.grid(axis='both', which='both')
-# ax.legend(fontsize = 11).set_zorder(6)
-# fig.suptitle(pull_id, fontsize=12)
-
-fig.tight_layout()
 plt.show()
-
-# %%%% Test spline
-
-T = all_tracks[15]
-X, Y = T[:, 1], T[:, 2]
-t = T[:, 0]
-X2, Y2 = X-MagX, Y-MagY
-D = ((X2**2 + Y2**2)**0.5)
-D -= MagR
-t=np.ascontiguousarray(t)
-D=np.ascontiguousarray(D)
-
-D = D - min(D)
-D_spline = make_splrep(t, D, s=6)
-V_spline = D_spline.derivative(nu=1)
-V = V_spline(t)
-
-fig0, ax1 = plt.subplots(1, 1)
-ax2 = ax1.twinx()
-ax1.plot(t, D, marker='.', ls='', zorder=5)
-ax1.plot(t, D_spline(t), ls='-', zorder=5)
-ax2.plot(t, V, zorder=5)
-plt.show()
-
-#### Second way
-parms, res = fitLineHuber(X2, Y2)
-b, a = parms
-theta = np.atan(a)
-rotation_mat = np.array([[np.cos(-theta), -np.sin(-theta)],
-                         [np.sin(-theta),  np.cos(-theta)]])
-coords = np.vstack((X2, Y2)).T @ rotation_mat.T
-X3, Y3 = coords[:,0], coords[:,1]
-D = X3[::4]
-t2 = t[::4]
-D -= MagR
-t2=np.ascontiguousarray(t2)
-D=np.ascontiguousarray(D)
-
-fig, axes = plt.subplots(1, 2, figsize=(10, 5))
-axes[0].plot(X2, Y2, 'b.')
-xf = np.array([min(X2), max(X2)])
-yf = a*xf + b
-axes[0].plot(xf, yf, 'r-')
-axes[1].plot(X3, Y3, 'g.')
-plt.show()
-
-D = D - min(D)
-D_spline = make_splrep(t2, D, s=6)
-V_spline = D_spline.derivative(nu=1)
-V = V_spline(t2)
-
-
-ax1.plot(t2, D, marker='.', ls='', zorder=5)
-ax1.plot(t2, D_spline(t2), ls='-', zorder=5)
-ax2.plot(t2, V, zorder=5)
-
-plt.show()
-
-# %%%% Plots
-
-
-# theta = np.arctan2(Y[initPullTime] - Y[finPullTime],
-#                    X[initPullTime] - X[finPullTime])
-# rotation_mat = np.array([[np.cos(-theta), -np.sin(-theta)],
-#                          [np.sin(-theta),  np.cos(-theta)]])
-
-all_D = []
-all_V = []
-
-for T in all_tracks:
-    X, Y = T[:, 1], T[:, 2]
-    t = T[:, 0]
-    X2, Y2 = X-MagX, Y-MagY
-    D = ((X2**2 + Y2**2)**0.5)
-    D -= MagR
-    t=np.ascontiguousarray(t)
-    D=np.ascontiguousarray(D)
-    # try:
-    D_spline = make_splrep(t, D, s=5)
-    V_spline = D_spline.derivative(nu=1)
-    V = np.abs(V_spline(t))
-    # ax.plot(D, V, marker='.', ms=1, ls='', zorder=5)
-    # except:
-    #     pass
-    all_D += list(D)
-    all_V += list(V)
-    
-all_D = np.array(all_D)
-all_V = np.array(all_V)
-filter_01 = all_V>0
-all_D = all_D[filter_01]
-all_V = all_V[filter_01]
-
 
 D_plot = np.linspace(1, 5000, 500)
 
-def doubleExpo(x, A, k1, B, k2):
-    return(A*np.exp(-x/k1) + B*np.exp(-x/k2))
-
+#### Double Expo
 popt_2exp, pcov_2exp = curve_fit(doubleExpo, all_D, all_V, 
                        p0 = [1000, 50, 100, 1000], 
                        bounds=([0, 0, 0, 0], [np.inf, np.inf, np.inf, np.inf]))
@@ -1381,9 +1393,7 @@ V_fit_2exp = doubleExpo(D_plot, *popt_2exp)
 label_2exp = r'$\bf{A \cdot exp(-x/k_1) + B \cdot exp(-x/k_2)}$' + '\n'
 label_2exp += '$A$ = {:.2e} | $k_1$ = {:.2f}\n$B$ = {:.2f} | $k_2$ = {:.2e}'.format(*popt_2exp)
 
-def powerLaw(x, A, k):
-    return(A*(x**k))
-
+#### Power Law
 popt_pL, pcov_pL = curve_fit(powerLaw, all_D, all_V, 
                        p0 = [1000, -2], 
                        bounds=([0, -10], [np.inf, 0]))
@@ -1391,12 +1401,60 @@ V_fit_pL = powerLaw(D_plot, *popt_pL)
 label_pL = r'$\bf{A \cdot x^k}$' + '\n'
 label_pL += '$A$ = {:.2e} | $k$ = {:.2f}'.format(*popt_pL)
 
+expected_medV = powerLaw(all_medD, *popt_pL)
+ratio_fitV = all_medV/expected_medV
+high_cut = 1.7
+low_cut = 0.5
 
-# V_th = powerLaw(all_D, *popt_pL)
-# ratio_fit = all_V/V_th
-# fig11, ax11 = plt.subplots(1,1)
-# ax11.plot(all_D, ratio_fit, ls='', marker='.', alpha=0.3)
-# plt.show()
+fig21, ax21 = plt.subplots(1,1)
+fig, ax = fig21, ax21
+ax.plot(all_medD, ratio_fitV, ls='', marker='.', alpha=0.3)
+ax.axhline(high_cut, color = 'k', ls='-.')
+ax.axhline(low_cut, color = 'k', ls='-.')
+plt.show()
+
+tracks_data_f2 = []
+removed_tracks = []
+for i, track in enumerate(tracks_data_f1):
+    if (ratio_fitV[i] > low_cut) and (ratio_fitV[i] < high_cut):
+        tracks_data_f2.append(track)
+    else:
+        removed_tracks.append(track)
+        
+all_D = np.concat([track['D'] for track in tracks_data_f2])
+all_V = np.concat([track['V'] for track in tracks_data_f2])
+all_removedD = np.concat([track['D'] for track in removed_tracks])
+all_removedV = np.concat([track['V'] for track in removed_tracks])   
+
+     
+fig22, ax22 = plt.subplots(1, 1, figsize = (8, 6))
+fig, ax = fig22, ax22
+# ax.plot(all_medD, all_medV, ls='', marker='.')
+ax.plot(all_D, all_V, ls='', marker='.', alpha=0.05)
+ax.plot(all_removedD, all_removedV, ls='', marker='.', alpha=0.05)
+ax.grid()
+ax.set_xlabel('D [µm]')
+ax.set_ylabel('V [µm/s]')
+        
+# %%%% Final fits
+
+D_plot = np.linspace(1, 5000, 500)
+
+# Double Expo
+popt_2exp, pcov_2exp = curve_fit(doubleExpo, all_D, all_V, 
+                       p0 = [1000, 50, 100, 1000], 
+                       bounds=([0, 0, 0, 0], [np.inf, np.inf, np.inf, np.inf]))
+V_fit_2exp = doubleExpo(D_plot, *popt_2exp)
+label_2exp = r'$\bf{A \cdot exp(-x/k_1) + B \cdot exp(-x/k_2)}$' + '\n'
+label_2exp += '$A$ = {:.2e} | $k_1$ = {:.2f}\n$B$ = {:.2f} | $k_2$ = {:.2e}'.format(*popt_2exp)
+
+#### Power Law
+popt_pL, pcov_pL = curve_fit(powerLaw, all_D, all_V, 
+                       p0 = [1000, -2], 
+                       bounds=([0, -10], [np.inf, 0]))
+V_fit_pL = powerLaw(D_plot, *popt_pL)
+label_pL = r'$\bf{A \cdot x^k}$' + '\n'
+label_pL += '$A$ = {:.2e} | $k$ = {:.2f}'.format(*popt_pL)
 
 # def powerLawShifted(x, A, k, x0):
 #     return(A*((x-x0)**k))
@@ -1410,10 +1468,9 @@ label_pL += '$A$ = {:.2e} | $k$ = {:.2f}'.format(*popt_pL)
 # label_pLS += '$A$ = {:.2e} | $k$ = {:.2f}\n$x_0$ = {:.2f}'.format(*popt_pLS)
 
 
-
 fig, axes = plt.subplots(1, 2, figsize=(15, 6))
 ax = axes[0]
-ax.plot(all_D, all_V, ls='', marker='.', alpha=0.3)
+ax.plot(all_D, all_V, ls='', marker='.', alpha=0.01)
 ax.plot(D_plot, V_fit_2exp, 'r-', label = label_2exp)
 ax.plot(D_plot, V_fit_pL, ls='-', color='darkorange', label = label_pL)
 # ax.plot(D_plot, V_fit_pLS, 'c-', label = label_pLS)
@@ -1427,7 +1484,7 @@ ax.set_ylabel('v [µm/s]')
 ax = axes[1]
 ax.set_xscale('log')
 ax.set_yscale('log')
-ax.plot(all_D, all_V, ls='', marker='.', alpha=0.3)
+ax.plot(all_D, all_V, ls='', marker='.', alpha=0.01)
 ax.plot(D_plot, V_fit_2exp, 'r-', label = label_2exp)
 ax.plot(D_plot, V_fit_pL, ls='-', color='darkorange', label = label_pL)
 # ax.plot(D_plot, V_fit_pLS, 'c-', label = label_pLS)
@@ -1444,6 +1501,8 @@ fig.tight_layout()
 plt.show()
 
 # popt_2exp = [1138.18, 37.2887, 2.01482, 296.243]
+# popt_2exp = [2683, 30.33, 2.440, 314.54]
+popt_2exp = [255.07,  45.81,   1.42, 401.66]
 # popt_pL = [310320, -2.19732]
 
 
@@ -1561,6 +1620,7 @@ plt.show()
 # Ymeas = dx_pulling_n
 # Yfit = jeffrey_model((k, gamma1, gamma2), tpulling)
 # R2_p = get_R2(Ymeas, Yfit) 
+
 
 
 # %%% Test step 4.

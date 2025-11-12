@@ -543,8 +543,8 @@ mag_d2v = lambda x: 80.23*np.exp(-x/47.49) + 1.03*np.exp(-x/22740.0)
 mag_d2v_V2 = lambda x: 3*80.23*np.exp(-x/(47.49)) + 1.03*np.exp(-x/(22740.0))
 mag_d2v_V3 = lambda x: 2.6e-25/x**7
 mag_d2v_V4 = lambda x: 80.23*np.exp((R_mag*1e6-x)/47.49) + 1.5e17/x**7
-# mag_d2v_V4 = lambda x: 80.23*np.exp((R_mag*1e6-x)/47.49) + 5e14/x**7
-mag_d2v_V5 = new_d2v
+mag_d2v_V4 = lambda x: 80.23*np.exp((R_mag*1e6-x)/47.49) + 5e14/x**7
+# mag_d2v_V5 = new_d2v
 
 
 M0_MOneM = 1700*23.5
@@ -582,16 +582,16 @@ VV1 = mag_d2v((XX-R_mag)*1e6) * 1e-6
 VV2 = mag_d2v_V2((XX-R_mag)*1e6) * 1e-6
 VV3 = mag_d2v_V3(XX) * 1e-6
 VV4 = mag_d2v_V4((XX)*1e6) * 1e-6
-VV5 = mag_d2v_V5((XX-R_mag)*1e6) * 1e-6
+# VV5 = mag_d2v_V5((XX-R_mag)*1e6) * 1e-6
 
-VV = VV5
+VV = VV1
 FFvisc1= DragC * VV1
 FFvisc = DragC * VV
 
-# m_mag = 1.2e-6 # Good for the standard mag_d2v function
+m_mag = 1.2e-6 # Good for the standard mag_d2v function
 # m_mag = 3.35e-6 # Good for the higher mag_d2v function
 # m_mag = 3.35e-6 # Good for the mag_d2v_V4 function
-m_mag = 3.35e-6 # Good for the mag_d2v_V5 function
+# m_mag = 3.35e-6 # Good for the mag_d2v_V5 function
 
 BB = ChampMag(m_mag, XX)
 GBGB = GradMag(m_mag, XX)
