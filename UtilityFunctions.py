@@ -1156,6 +1156,16 @@ def volumeRheoConePlan(D, alpha, a=0):
 # V = volumeRheoConePlan(D, alpha)
 # V_µL = V*1e9 # m3 to µL
 # V_µL = 571.2 # µL
+# print(f'CP{D*1e3:.0f}-{alpha:.0f}, a = {a*1e6:.0f}µm, V = {V_µL:.1f}')
+
+#### CP35-1, a = 30µm
+D = 35e-3 # m
+alpha = 1 # °
+a = 30 * 1e-6
+V = volumeRheoConePlan(D, alpha, a)
+V_µL = V*1e9 # m3 to µL
+# V_µL = 95.9 # µL
+print(f'CP{D*1e3:.0f}-{alpha:.0f}, V = {V_µL:.1f} µL')
 
 #### CP25-1, a = 0µm
 # D = 25e-3 # m
@@ -1163,6 +1173,16 @@ def volumeRheoConePlan(D, alpha, a=0):
 # V = volumeRheoConePlan(D, alpha)
 # V_µL = V*1e9 # m3 to µL
 # V_µL = 71.4 # µL
+# print(f'CP{D*1e3:.0f}-{alpha:.0f}, a = {a*1e6:.0f}µm, V = {V_µL:.1f}')
+
+#### CP25-1, a = 30µm
+D = 25e-3 # m
+alpha = 1 # °
+a = 30 * 1e-6
+V = volumeRheoConePlan(D, alpha, a)
+V_µL = V*1e9 # m3 to µL
+# V_µL = 95.9 # µL
+print(f'CP{D*1e3:.0f}-{alpha:.0f}, V = {V_µL:.1f} µL')
 
 #### CP25-1, a = 50µm
 # D = 25e-3 # m
@@ -1171,6 +1191,7 @@ def volumeRheoConePlan(D, alpha, a=0):
 # V = volumeRheoConePlan(D, alpha, a)
 # V_µL = V*1e9 # m3 to µL
 # V_µL = 95.9 # µL
+# print(f'CP{D*1e3:.0f}-{alpha:.0f}, a = {a*1e6:.0f}µm, V = {V_µL:.1f}')
 
 #### CP25-1, a = 100µm
 # D = 25e-3 # m
@@ -1179,6 +1200,7 @@ def volumeRheoConePlan(D, alpha, a=0):
 # V = volumeRheoConePlan(D, alpha, a)
 # V_µL = V*1e9 # m3 to µL
 # V_µL = 120.5 # µL
+# print(f'CP{D*1e3:.0f}-{alpha:.0f}, a = {a*1e6:.0f}µm, V = {V_µL:.1f}')
 
 #### CP25-0.5 , a = 0µm
 # D = 25e-3 # m
@@ -1186,14 +1208,16 @@ def volumeRheoConePlan(D, alpha, a=0):
 # V = volumeRheoConePlan(D, alpha)
 # V_µL = V*1e9 # m3 to µL
 # V_µL = 35.7 # µL
+# print(f'CP{D*1e3:.0f}-{alpha:.0f}, a = {a*1e6:.0f}µm, V = {V_µL:.1f}')
 
-#### CP25-0.5 , a = 50µm
-# D = 25e-3 # m
-# alpha = 0.5 # °
-# a = 50 * 1e-6
-# V = volumeRheoConePlan(D, alpha, a)
-# V_µL = V*1e9 # m3 to µL
+#### CP25-0.5 , a = 15µm
+D = 25e-3 # m
+alpha = 0.5 # °
+a = 15 * 1e-6
+V = volumeRheoConePlan(D, alpha, a)
+V_µL = V*1e9 # m3 to µL
 # V_µL = 60.2 # µL
+print(f'CP{D*1e3:.0f}-{alpha:.1f}, V = {V_µL:.1f} µL')
 
 #### CP25-0.5 , a = 100µm
 # D = 25e-3 # m
@@ -1202,7 +1226,7 @@ def volumeRheoConePlan(D, alpha, a=0):
 # V = volumeRheoConePlan(D, alpha, a)
 # V_µL = V*1e9 # m3 to µL
 # V_µL = 84.8 # µL
-
+# print(f'CP{D*1e3:.0f}-{alpha:.0f}, a = {a*1e6:.0f}µm, V = {V_µL:.1f}')
 
 # %% Test
 
