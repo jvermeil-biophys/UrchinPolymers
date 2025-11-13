@@ -1132,6 +1132,8 @@ def lighten_color(color, amount=0.5):
 
 # %%% Geometry / design
 
+# %%%% Rheology
+
 def volumeRheoPlanPlan(D, h=1e-3):
     R = D/2
     V = np.pi * R**2 * h
@@ -1227,6 +1229,25 @@ print(f'CP{D*1e3:.0f}-{alpha:.1f}, V = {V_µL:.1f} µL')
 # V_µL = V*1e9 # m3 to µL
 # V_µL = 84.8 # µL
 # print(f'CP{D*1e3:.0f}-{alpha:.0f}, a = {a*1e6:.0f}µm, V = {V_µL:.1f}')
+
+# %%%% Optics
+
+D1 = 37 * 1e-3 # m
+R1 = D1/2
+S1 = np.pi*R1**2 # m2
+P = 435 * 1e-3 # W
+
+I1 = P/S1
+I1_mWcm2 = I1 * 1e3 * 1e-4
+print(f'Irradience In: {I1_mWcm2:.2f} mW/cm²')
+
+Loss_factor = 0.01
+D2 = 460 * 1e-6 # m
+R2 = D2/2
+S2 = np.pi*R2**2 # m2
+I2 = Loss_factor * P/S2
+I2_mWcm2 = I2 * 1e3 * 1e-4
+print(f'Irradience In: {I2_mWcm2:.2f} mW/cm²')
 
 # %% Test
 
