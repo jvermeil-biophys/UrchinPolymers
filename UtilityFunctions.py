@@ -29,6 +29,7 @@ import pandas as pd
 import scipy.ndimage as ndi
 import statsmodels.api as sm
 import matplotlib.pyplot as plt
+import xml.etree.ElementTree as ET
 
 import os
 import re
@@ -61,7 +62,7 @@ import GraphicStyles as gs
 # %% (1) Utility functions
 
 
-# %%% Image management - nomeclature and creating stacks
+# %%% Image management - nomenclature and creating stacks
        
 
 def renamePrefix(DirExt, currentCell, newPrefix):
@@ -101,8 +102,6 @@ def renamePrefix(DirExt, currentCell, newPrefix):
                 print(gs.YELLOW + "Error! There may be other .nd files with the new prefix you can trying to incorporate" + gs.NORMAL)
             
 # %%% Data management
-
-        
 
 def removeColumnsDuplicate(df):
     cols = df.columns.values
@@ -355,6 +354,42 @@ def flattenPandasIndex(pandasIndex):
             new_idx = new_idx[:-1]
         new_pandasIndex.append(new_idx)
     return(new_pandasIndex)
+
+
+def importTrackMateTracks(filepath):
+    """
+    Parse a TrackMate XML file and return list of tracks.
+    Each track: numpy array [t, x, y].
+    """
+    tree = ET.parse(filepath)
+    root = tree.getroot()
+    tracks = []
+    for particle in root.findall('particle'):
+        L = []
+        for detection in particle.iter("detection"):
+            # print(detection)
+            # ID = int(spot.attrib["ID"])
+            t = float(detection.attrib["t"])
+            x = float(detection.attrib["x"])
+            y = float(detection.attrib["y"])
+            L.append([t, x, y])
+        tracks.append(np.array(L))
+    return(tracks)
+
+
+def trackSelection(tracks, mode="longest"):
+    """
+    Select one track.
+    mode="longest": pick the track with most frames
+    """
+    if mode == "longest":
+        lengths = [len(tr) for tr in tracks]
+        idx = int(np.argmax(lengths))
+        return(tracks[idx])
+    else:
+        print('Unspecified track selection')
+        # Fallback: first track
+        return(tracks[0])
 
 
 # %%% File manipulation
@@ -1161,13 +1196,13 @@ def volumeRheoConePlan(D, alpha, a=0):
 # print(f'CP{D*1e3:.0f}-{alpha:.0f}, a = {a*1e6:.0f}µm, V = {V_µL:.1f}')
 
 #### CP35-1, a = 30µm
-D = 35e-3 # m
-alpha = 1 # °
-a = 30 * 1e-6
-V = volumeRheoConePlan(D, alpha, a)
-V_µL = V*1e9 # m3 to µL
-# V_µL = 95.9 # µL
-print(f'CP{D*1e3:.0f}-{alpha:.0f}, V = {V_µL:.1f} µL')
+# D = 35e-3 # m
+# alpha = 1 # °
+# a = 30 * 1e-6
+# V = volumeRheoConePlan(D, alpha, a)
+# V_µL = V*1e9 # m3 to µL
+# # V_µL = 95.9 # µL
+# print(f'CP{D*1e3:.0f}-{alpha:.0f}, V = {V_µL:.1f} µL')
 
 #### CP25-1, a = 0µm
 # D = 25e-3 # m
@@ -1178,13 +1213,13 @@ print(f'CP{D*1e3:.0f}-{alpha:.0f}, V = {V_µL:.1f} µL')
 # print(f'CP{D*1e3:.0f}-{alpha:.0f}, a = {a*1e6:.0f}µm, V = {V_µL:.1f}')
 
 #### CP25-1, a = 30µm
-D = 25e-3 # m
-alpha = 1 # °
-a = 30 * 1e-6
-V = volumeRheoConePlan(D, alpha, a)
-V_µL = V*1e9 # m3 to µL
-# V_µL = 95.9 # µL
-print(f'CP{D*1e3:.0f}-{alpha:.0f}, V = {V_µL:.1f} µL')
+# D = 25e-3 # m
+# alpha = 1 # °
+# a = 30 * 1e-6
+# V = volumeRheoConePlan(D, alpha, a)
+# V_µL = V*1e9 # m3 to µL
+# # V_µL = 95.9 # µL
+# print(f'CP{D*1e3:.0f}-{alpha:.0f}, V = {V_µL:.1f} µL')
 
 #### CP25-1, a = 50µm
 # D = 25e-3 # m
@@ -1213,13 +1248,13 @@ print(f'CP{D*1e3:.0f}-{alpha:.0f}, V = {V_µL:.1f} µL')
 # print(f'CP{D*1e3:.0f}-{alpha:.0f}, a = {a*1e6:.0f}µm, V = {V_µL:.1f}')
 
 #### CP25-0.5 , a = 15µm
-D = 25e-3 # m
-alpha = 0.5 # °
-a = 15 * 1e-6
-V = volumeRheoConePlan(D, alpha, a)
-V_µL = V*1e9 # m3 to µL
-# V_µL = 60.2 # µL
-print(f'CP{D*1e3:.0f}-{alpha:.1f}, V = {V_µL:.1f} µL')
+# D = 25e-3 # m
+# alpha = 0.5 # °
+# a = 15 * 1e-6
+# V = volumeRheoConePlan(D, alpha, a)
+# V_µL = V*1e9 # m3 to µL
+# # V_µL = 60.2 # µL
+# print(f'CP{D*1e3:.0f}-{alpha:.1f}, V = {V_µL:.1f} µL')
 
 #### CP25-0.5 , a = 100µm
 # D = 25e-3 # m
@@ -1232,22 +1267,22 @@ print(f'CP{D*1e3:.0f}-{alpha:.1f}, V = {V_µL:.1f} µL')
 
 # %%%% Optics
 
-D1 = 37 * 1e-3 # m
-R1 = D1/2
-S1 = np.pi*R1**2 # m2
-P = 435 * 1e-3 # W
+# D1 = 37 * 1e-3 # m
+# R1 = D1/2
+# S1 = np.pi*R1**2 # m2
+# P = 435 * 1e-3 # W
 
-I1 = P/S1
-I1_mWcm2 = I1 * 1e3 * 1e-4
-print(f'Irradience In: {I1_mWcm2:.2f} mW/cm²')
+# I1 = P/S1
+# I1_mWcm2 = I1 * 1e3 * 1e-4
+# print(f'Irradience In: {I1_mWcm2:.2f} mW/cm²')
 
-Loss_factor = 0.01
-D2 = 460 * 1e-6 # m
-R2 = D2/2
-S2 = np.pi*R2**2 # m2
-I2 = Loss_factor * P/S2
-I2_mWcm2 = I2 * 1e3 * 1e-4
-print(f'Irradience In: {I2_mWcm2:.2f} mW/cm²')
+# Loss_factor = 0.01
+# D2 = 460 * 1e-6 # m
+# R2 = D2/2
+# S2 = np.pi*R2**2 # m2
+# I2 = Loss_factor * P/S2
+# I2_mWcm2 = I2 * 1e3 * 1e-4
+# print(f'Irradience In: {I2_mWcm2:.2f} mW/cm²')
 
 # %% Test
 
