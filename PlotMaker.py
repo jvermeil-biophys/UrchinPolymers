@@ -29,8 +29,10 @@ import pandas as pd
 import seaborn as sns
 import scipy.stats as st
 import statsmodels.api as sm
+import matplotlib.colors as mc
 import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
+
 
 import os
 import re
@@ -39,6 +41,7 @@ import time
 import random
 import numbers
 import warnings
+import colorsys
 import itertools
 import matplotlib
 
@@ -571,6 +574,28 @@ def pval2text(p, n_digits = 2, space=True):
     return(text)
 
 # %% 3. Graphic subfunctions
+
+def lighten_color(color, factor=1.0):
+    """
+    Source : https://gist.github.com/ihincks/6a420b599f43fcd7dbd79d56798c4e5a
+    and : https://stackoverflow.com/questions/37765197/darken-or-lighten-a-color-in-matplotlib
+    Lightens the given color by multiplying (1-luminosity) by the given amount.
+    Input can be matplotlib color string, hex string, or RGB tuple.
+
+    Examples:
+    >> lighten_color('g', 0.3)
+    >> lighten_color('#F034A3', 0.6)
+    >> lighten_color((.3,.55,.1), 0.5)
+    """
+    
+    try:
+        c = mc.cnames[color]
+    except:
+        c = color
+    c = colorsys.rgb_to_hls(*mc.to_rgb(c))
+    new_c = colorsys.hls_to_rgb(c[0], max(0, min(1, factor * c[1])), c[2])
+    return(new_c)
+
 
 def getSnsPalette(conditions, styleDict):
     colors = []
