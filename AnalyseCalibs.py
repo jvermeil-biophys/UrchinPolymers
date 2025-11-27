@@ -1397,6 +1397,72 @@ df_fC = pd.read_csv(flowCorrectionPath, header = 3, sep='\t', #skiprows=2,
 output = ApplyFlowCorrection(tracks_data, df_fC)
 
 
+# %%%% Test ExaminePIV()
+
+def ExaminePIV(df_flowBeads, df_flowTracers):
+    df_fB = df_flowBeads
+    df_fT = df_flowTracers
+    for df in [df_fB, df_fT]:
+        X = df['x'].unique()
+        step = np.polyfit(np.arange(len(X)), X, 1)[0]
+        df['xi'] = df['x']//step
+        df['yi'] = df['y']//step
+    list_xi = df_fT['xi'].unique().astype(int)
+    list_yi = df_fT['yi'].unique().astype(int)
+    
+    corrected_tracks_data = []
+    
+    for track in tracks_data[:1]:
+        valid_track = True
+        track['xi'] = ((track['Xraw']/0.451)//step).astype(int)
+        track['yi'] = ((track['Yraw']/0.451)//step).astype(int)
+        # print(track['Xraw'], track['Yraw'])
+        valid_xi = np.array([(xi in list_xi) for xi in track['xi']])
+        valid_yi = np.array([(yi in list_yi) for yi in track['yi']])
+        valid_point = (valid_xi & valid_yi)
+        valid_idx = [i for i in range(len(valid_point)) if valid_point[i]]
+        # print(valid_idx)
+        
+        # track['T_fT'] = track['T']
+        # track['D_fT'] = track['D']
+        # track['V_fT'] = track['V']
+        track['T_fT'] = track['T'][valid_point]
+        track['D_fT'] = track['D'][valid_point]
+        track['V_fT'] = track['V'][valid_point]
+        
+        phi = np.pi+track['phi']
+        vect_dir = np.array([np.cos(phi), np.sin(phi)]).T
+        # print(vect_dir)
+        
+        UU = [float(df_fT.loc[(df_fT['xi']==track['xi'][i]) & (df_fT['yi']==track['yi'][i]), 'u'].values[0]) for i in valid_idx]
+        # print(UU)
+        VV = [float(df_fT.loc[(df_fT['xi']==track['xi'][i]) & (df_fT['yi']==track['yi'][i]), 'v'].values[0]) for i in valid_idx]
+        # print(VV)
+        UUVV = np.array([UU, VV]).T
+        proj_UUVV = UUVV @ vect_dir
+        
+        track['V_fT2'] = track['V_fT']-proj_UUVV
+        print(track['V_fT2'])
+        
+        # track['T_fT'] = track['T_fT'][valid_point]
+        # track['D_fT'] = track['D_fT'][valid_point]
+        # track['V_fT'] = track['V_fT'][valid_point]
+        
+        if valid_track:
+            corrected_tracks_data.append(track)
+        
+    return(df_fT)
+
+#### test 
+flowCorrectionPath = 'E:\WorkingData/LeicaData/25-11-19/25-11-19_Droplet01_Gly80p_MyOne/'
+flowCorrectionPath += '25-11-19_Droplet01_20x_FilmFluo_3spf_3/Res01_PIVlab.txt'
+df_fC = pd.read_csv(flowCorrectionPath, header = 3, sep='\t', #skiprows=2,
+                    on_bad_lines='skip', encoding='utf_8',
+                    names=['x', 'y', 'u', 'v', 'vector_type']) # 'utf_16_le'
+# Original column names
+# x [px]	y [px]	u [px/frame]	v [px/frame]	Vector type [-]
+
+output = ApplyFlowCorrection(tracks_data, df_fC)
 
 
 
