@@ -21,10 +21,7 @@ import matplotlib
 
 
 from scipy import interpolate, optimize, signal
-from skimage import io, filters, exposure, measure, transform, util, color
 from matplotlib.gridspec import GridSpec
-from datetime import date, datetime
-from copy import deepcopy
 
 
 #### Local Imports
@@ -99,7 +96,7 @@ def json2listOfdict(dirPath, fileName):
     return(L)
 
 
-# %%% Analyse tracks
+# %%% Analyse tracks - without flow
 
 def cleanRawTrack(track):
     track_valid = True
@@ -692,10 +689,41 @@ def tracerTracks_pretreatment(all_tracks, SCALE, FPS,
     return(tracks_data)
 
 
-def tracerTracks_analysis(tracks_data, MagR=75):
+def tracerTracks_analysis(tracks_data, df_flowCorr, 
+                          SCALE, FPS, 
+                          MagX, MagY, MagR):
 
+    #### Manage the flow correction data
+    df_fC = df_flowCorr
+    
+    df_fC['x2'] = (df_fC['x']-MagX) * SCALE
+    df_fC['y2'] = (MagY-df_fC['y']) * SCALE
+    df_fC['u2'] = df_fC['u'] * (FPS*SCALE)
+    df_fC['v2'] = df_fC['v'] * ((-1)*FPS*SCALE)
+    
+    X_fC = df_fC['x2'].unique()
+    step_fC = np.polyfit(np.arange(len(X_fC)), X_fC, 1)[0]
+    df_fC['xi'] = df_fC['x2']//step_fC
+    df_fC['yi'] = df_fC['y2']//step_fC
+    list_xi_fC = df_fC['xi'].unique().astype(int)
+    list_yi_fC = df_fC['yi'].unique().astype(int)
+    print(list_xi_fC)
+    print(list_yi_fC)
+
+    #### First plots
     fig1, axes1 = plt.subplots(1, 3, figsize = (24, 8))
     fig = fig1
+    for ax in axes1:
+        circle1 = plt.Circle((0, 0), MagR*SCALE, color='dimgrey')
+        ax.add_patch(circle1)
+        # ax.axvspan(wall_L, wall_R, color='lightgray', zorder=0)
+        ax.set_xlim([0, 800])
+        ax.set_ylim([-400, +400])
+        ax.grid()
+        ax.axis('equal')
+        ax.set_xlabel('X [µm]')
+        ax.set_ylabel('Y [µm]')
+    
     #### Plot raw trajectories
     ax = axes1[0]
     ax.set_title(f'All tracks, N = {len(tracks_data)}')
@@ -705,80 +733,170 @@ def tracerTracks_analysis(tracks_data, MagR=75):
         
     #### Plot smoothed trajectories
     ax = axes1[1]
-    ax.set_title(f'Smooth tracks, Savitsky-Golay')
+    ax.set_title('Smooth tracks, Savitsky-Golay')
     for track in tracks_data:
         X, Y = track['X3'], track['Y3']
         ax.plot(X, Y)
         
-    #### Plot smoothed trajectories 2
+    #### Plot smoothed trajectories with vectors from PIV
     ax = axes1[2]
-    ax.set_title(f'Smooth tracks, Splines')
+    ax.set_title('Smooth tracks & vectors from PIV')
     for track in tracks_data:
-        X, Y = track['X4'], track['Y4']
-        ax.plot(X, Y)
+        X, Y = track['X3'], track['Y3']
+        ax.plot(X, Y, lw=1.0)
+    ax.quiver(df_fC['x2'], df_fC['y2'], df_fC['u2'], df_fC['v2'], zorder=6)
+   
+        
+    plt.show()
+    
+    #### Plot the different definition of the speed
+    # fig2, axes2 = plt.subplots(2, 2, figsize = (12, 12), sharey=True)
+    # fig = fig2
+    # for i, var in enumerate(['U3', 'V3', 'U4', 'V4']):
+    #     ax = axes2.flatten()[i]
+    #     ax.set_title(var + '(t)')
+    #     for track in tracks_data[:10]:
+    #         T, v = track['T'], track[var]
+    #         ax.plot(T, v)
+    
+    #### Examine only a specific windows
+    ROIs = []
+    
+    height, width = 20, 20
+    x1, y1 = 140, -10
+    x2, y2 = x1+width, y1+height
+    ROI = (x1, y1, x2, y2, height, width)
+    ROIs.append(ROI)
+    
+    height, width = 40, 40
+    x1, y1 = 300, 150
+    x2, y2 = x1+width, y1+height
+    ROI = (x1, y1, x2, y2, height, width)
+    ROIs.append(ROI)
+    
+    height, width = 40, 40
+    x1, y1 = 150, -150
+    x2, y2 = x1+width, y1+height
+    ROI = (x1, y1, x2, y2, height, width)
+    ROIs.append(ROI)
+    
+    height, width = 50, 50
+    x1, y1 = -20, 160
+    x2, y2 = x1+width, y1+height
+    ROI = (x1, y1, x2, y2, height, width)
+    ROIs.append(ROI)
+    
 
-    for ax in axes1:
-        circle1 = plt.Circle((0, 0), MagR, color='dimgrey')
-        ax.add_patch(circle1)
-        # ax.axvspan(wall_L, wall_R, color='lightgray', zorder=0)
-        ax.set_xlim([0, 800])
-        ax.set_ylim([-400, +400])
+    fig3 = plt.figure(layout="constrained", figsize = (18, 8))
+    fig = fig3
+
+    gs = GridSpec(2, 4, figure=fig)
+    ax0 = fig.add_subplot(gs[:, :2])
+    # identical to ax1 = plt.subplot(gs.new_subplotspec((0, 0), colspan=3))
+    ax1 = fig.add_subplot(gs[0, 2])
+    ax2 = fig.add_subplot(gs[0, 3])
+    ax3 = fig.add_subplot(gs[1, 2])
+    ax4 = fig.add_subplot(gs[1, 3])
+    axes3 = [ax0, ax1, ax2, ax3, ax4]
+    
+    #### Plot trajectories in ROIs
+    ax = axes3[0]
+    ax.set_xlim([0, 800])
+    ax.set_ylim([-400, +400])
+    ax.grid()
+    ax.axis('equal')
+    ax.set_xlabel('X [µm]')
+    ax.set_ylabel('Y [µm]')
+    circle1 = plt.Circle((0, 0), MagR*SCALE, color='dimgrey')
+    ax.add_patch(circle1)
+    
+    for i, ROI in enumerate(ROIs):
+        color = pm.cL_Set12[i]
+        
+        ax = axes3[0]
+        (x1, y1, x2, y2, height, width) = ROI
+        rect = plt.Rectangle(xy=(x1, y1), width=width, height=height, 
+                             facecolor='None', edgecolor=color, linewidth=2)
+        ax.add_patch(rect)
+        
+        ax = axes3[i+1]
         ax.grid()
-        ax.axis('equal')
-        ax.set_xlabel('X [µm]')
-        ax.set_ylabel('Y [µm]')
+        ax.plot([], [], 'ko', label = r'$V_x$')
+        ax.plot([], [], 'k^', label = r'$V_y$')
+        for spine in ax.spines.values():
+            spine.set_edgecolor(color)
+            spine.set_linewidth(2)
+            
+        xm, ym = (x1+x2)*0.5, (y1+y2)*0.5
+        xm_i, ym_i = (xm+step_fC/2)//step_fC, (ym+step_fC/2)//step_fC
+        print(int(xm_i), int(ym_i))
+        
+        valid_ROI = (xm_i in list_xi_fC) and (ym_i in list_yi_fC) 
+        if valid_ROI:
+            print(f'ROI {i+1} ok !')
+            row_loc = (df_fC['xi']==xm_i) & (df_fC['yi']==ym_i)
+            U_fC = float(df_fC.loc[row_loc, 'u2'].values[0])
+            V_fC = float(df_fC.loc[row_loc, 'v2'].values[0])
+            
+            
+            ax.axhline(U_fC, ls='--', label=r'$V_x$ from PIV')
+            ax.axhline(V_fC, ls=':', label=r'$V_y$ from PIV')
+        # print(VV)
+    
+    
+    for track in tracks_data:
+        X, Y = track['X3'], track['Y3']
+        ax = axes3[0]
+        ax.plot(X, Y, alpha = 0.3)
+        
+        for i, ROI in enumerate(ROIs):               
+            (x1, y1, x2, y2, height, width) = ROI
+            filterX = (x1 <= X) & (X <= x2)
+            filterY = (y1 <= Y) & (Y <= y2)
+            filterXY = filterX & filterY
+            
+            Xf, Yf = X[filterXY], Y[filterXY]
+            Tf, Uf, Vf = track['T'][filterXY], track['U3'][filterXY], track['V3'][filterXY]
+            
+            if len(Tf) > 0:
+                ax = axes3[0]
+                ax.plot(Xf, Yf)
+                
+                ax = axes3[i+1]
+                ax.plot(np.median(Tf), np.median(Uf), ls='', marker='o')
+                ax.plot(np.median(Tf), np.median(Vf), ls='', marker='^')
+                
+            
+            
+                
+    for ax in [axes3[2], axes3[4]]:
+        ax.legend(loc="center left",
+                  bbox_to_anchor=(1, 0, 0.5, 1))
+
+                
+
+        
+    #### Plot smoothed trajectories
+    # ax = axes3[1]
+    # ax.set_title(f'Smooth tracks, Savitsky-Golay')
+    # for track in tracks_data:
+    #     X, Y = track['X3'], track['Y3']
+    #     ax.plot(X, Y)
+
         
     plt.show()
     
-    
-    fig2, axes2 = plt.subplots(2, 2, figsize = (12, 12), sharey=True)
-    fig = fig2
-    #
-    ax = axes2[0,0]
-    ax.set_title('U3(t)')
-    for track in tracks_data[:10]:
-        T, U = track['T'], track['U3']
-        ax.plot(T, U)
-        
-    #
-    ax = axes2[0,1]
-    ax.set_title('V3(t)')
-    for track in tracks_data[:10]:
-        T, V = track['T'], track['V3']
-        ax.plot(T, V)
-    #
-    ax = axes2[1,0]
-    ax.set_title('U4(t)')
-    for track in tracks_data[:10]:
-        T, U = track['T'], track['U4']
-        ax.plot(T, U)
-        
-    #
-    ax = axes2[1,1]
-    ax.set_title('V4(t)')
-    for track in tracks_data[:10]:
-        T, V = track['T'], track['V4']
-        ax.plot(T, V)
-
-    # for ax in axes2:
-    #     circle1 = plt.Circle((0, 0), MagR, color='dimgrey')
-    #     ax.add_patch(circle1)
-    #     # ax.axvspan(wall_L, wall_R, color='lightgray', zorder=0)
-    #     ax.set_xlim([0, 800])
-    #     ax.set_ylim([-400, +400])
-    #     ax.grid()
-    #     ax.axis('equal')
-    #     ax.set_xlabel('X [µm]')
-    #     ax.set_ylabel('Y [µm]')
-        
-    plt.show()
+    return(df_fC)
     
 
 
 
-mainDir = 'E:/WorkingData/LeicaData/25-11-19/25-11-19_Droplet01_Gly80p_MyOne'
-mainDir += '/25-11-19_Droplet01_20x_FilmFluo_3spf_3/'
+# mainDir = 'E:/WorkingData/LeicaData/25-11-19/25-11-19_Droplet01_Gly80p_MyOne'
+# mainDir += '/25-11-19_Droplet01_20x_FilmFluo_3spf_3/'
 
+mainDir = 'C:/Users/josep/Desktop/Seafile/AnalysisPulls/'
+mainDir += '25-11-19_Droplet01_Gly80p_MyOne/'
+mainDir += '25-11-19_Droplet01_20x_FilmFluo_3spf_3/'
 
 fileName = '20x_FilmFluo_3spf_3_CropTracers_MinusMED_Tracks.xml'
 filePath = os.path.join(mainDir, fileName)
@@ -799,7 +917,457 @@ tracks_data = tracerTracks_pretreatment(all_tracks, SCALE, FPS,
                                    MagX, MagY, MagR,
                                    CropXY = [CropX, CropY])
 
-tracerTracks_analysis(tracks_data, MagR = MagR*SCALE)
+# flowCorrectionPath = 'E:\WorkingData/LeicaData/25-11-19/25-11-19_Droplet01_Gly80p_MyOne/'
+# flowCorrectionPath += '25-11-19_Droplet01_20x_FilmFluo_3spf_3/Res01_PIVlab.txt'
+
+flowCorrectionFile = 'Res01_PIVlab.txt'
+flowCorrectionPath = os.path.join(mainDir, flowCorrectionFile)
+
+df_fC = pd.read_csv(flowCorrectionPath, header = 3, sep='\t', #skiprows=2,
+                    on_bad_lines='skip', encoding='utf_8',
+                    names=['x', 'y', 'u', 'v', 'vector_type']).dropna(subset=['u']) # 'utf_16_le'
+
+# df_fC = df_flowCorr
+# X_fC = df_fC['x'].unique()
+# step_fC = np.polyfit(np.arange(len(X_fC)), X_fC, 1)[0]
+# df_fC['xi'] = df_fC['x']//step_fC
+# df_fC['yi'] = df_fC['y']//step_fC
+# list_xi_fC = df_fC['xi'].unique().astype(int)
+# list_yi_fC = df_fC['yi'].unique().astype(int)
+
+df_fC2 = tracerTracks_analysis(tracks_data, df_fC, 
+                      SCALE, FPS, 
+                      MagX, MagY, MagR)
+
+
+# %%% Analyse tracks - with flow
+
+
+def tracks_pretreatment_wFlow(all_tracks, SCALE, FPS, 
+                        MagX, MagY, MagR, Rb, visco,
+                        CropXY = [0, 0]):
+    tracks_data = []
+    MagX *= SCALE
+    MagY *= SCALE
+    MagR *= SCALE
+    CropXY = np.array(CropXY)*SCALE
+    # all_tracks = cleanAllRawTracks(all_tracks)
+    all_tracks = [track for track in all_tracks if track.shape[0] >= 10]
+
+    for i, track in enumerate(all_tracks):
+        #### Conversion in um and sec
+        T = track[:, 0] * (1/FPS)
+        X = track[:, 1] * SCALE
+        Y = track[:, 2] * SCALE
+                
+        tracks_data.append({'T':T, 'Xraw':X, 'Yraw':Y})
+        
+        #### Origin as the magnet center
+        X2, Y2 = (X+CropXY[0])-MagX, MagY-(Y+CropXY[1])
+        # NB: inversion of Y so that the trajectories 
+        # shown by matplotlib look like the Fiji ones
+        medX2, medY2 = np.median(X2), np.median(Y2)
+        tracks_data[i].update({'X':X2, 'Y':Y2,
+                               'medX2':medX2, 'medY2':medY2})
+        #### Rotate the trajectory by its own angle
+        parms, res, wlm_res = ufun.fitLineHuber(X2, Y2, with_wlm_results=True)
+        b_fit, a_fit = parms
+        r2 = wlm_res.rsquared
+        theta = np.atan(a_fit)
+        # rotation_mat = np.array([[np.cos(-theta), -np.sin(-theta)],
+        #                          [np.sin(-theta),  np.cos(-theta)]])
+        # rotated_XY = np.vstack((X2, Y2)).T @ rotation_mat.T
+        # X3, Y3 = rotated_XY[:,0], rotated_XY[:,1]
+        tracks_data[i].update({'a_fit':a_fit, 'b_fit':b_fit, 'r2_fit':r2,
+                               'theta':theta,
+                               # 'X3':X3, 'Y3':Y3,
+                               })
+        #### Rotate the trajectory by its angle with the magnet
+        phi = np.atan(medY2/medX2)
+        delta = theta-phi # delta is the angle between the traj fit & strait line to the magnet
+        # rotation_mat = np.array([[np.cos(-phi), -np.sin(-phi)],
+        #                          [np.sin(-phi),  np.cos(-phi)]])
+        # rotated_XY = np.vstack((X2, Y2)).T @ rotation_mat.T
+        # X4, Y4 = rotated_XY[:,0], rotated_XY[:,1]
+        tracks_data[i].update({'phi':phi, 'delta':delta,
+                               # 'X4':X4, 'Y4':Y4,
+                               })
+        #### Compute distances [Several possible definitions]
+        D2 = np.array(((X2**2 + Y2**2)**0.5) - MagR) # Seems like the best one
+        # D3 = np.array(X3 - MagR)
+        # D4 = np.array(X4 - MagR) # Note: D4 == D2, almost
+        # tracks_data[i].update({'D2':D2, 'D3':D3, 'D4':D4,
+        #                        })
+        
+        #### Smooth D with splines and compute velocity V
+        # Chose distance definition
+        D = D2 
+        # Make spline
+        spline_D = interpolate.make_splrep(T, D, s=6)
+        spline_V = spline_D.derivative(nu=1)
+        # Compute V and chose definition
+        V_spline = np.abs(spline_V(T))
+        # V_savgol = dxdt(D, T, kind="savitzky_golay", 
+        #                 left=10, right=10, order=3)
+        # V_kalman = dxdt(D, T, kind="kalman", alpha=1)
+        V = V_spline # Seems to be the best one
+        # Compute the force, ie the viscous drag for given dynamic viscosity in mPa.s
+        F = 6 * np.pi * visco*1e-3 * Rb*1e-6 * V*1e-6 * 1e12 # pN
+        #
+        medD, medV, medF = np.median(D), np.median(V), np.median(F)
+        tracks_data[i].update({'D':D, 'V':V, 'F':F,
+                               'medD':medD, 'medV':medV, 'medF':medF
+                               })
+                
+    return(tracks_data)
+
+
+
+def tracks_analysis_wFlow(tracks_data, df_flowCorr, expLabel = '', 
+                    flowCorrection = False, flowCorrectionPath = '',
+                    saveResults = True, savePlots = True, saveDir = '.'):
+    
+    MagR = 150/2
+    
+    #### Manage the flow correction data
+    df_fC = df_flowCorr
+    
+    df_fC['x2'] = (df_fC['x']-MagX) * SCALE
+    df_fC['y2'] = (MagY-df_fC['y']) * SCALE
+    df_fC['u2'] = df_fC['u'] * (FPS*SCALE)
+    df_fC['v2'] = df_fC['v'] * ((-1)*FPS*SCALE)
+    
+    X_fC = df_fC['x2'].unique()
+    step_fC = np.polyfit(np.arange(len(X_fC)), X_fC, 1)[0]
+    df_fC['xi'] = df_fC['x2']//step_fC
+    df_fC['yi'] = df_fC['y2']//step_fC
+    list_xi_fC = df_fC['xi'].unique().astype(int)
+    list_yi_fC = df_fC['yi'].unique().astype(int)
+    print(list_xi_fC)
+    print(list_yi_fC)
+    
+    #### First filter
+    tracks_data_f1 = []
+    for track in tracks_data:
+        crit1 = (np.abs(track['delta']*180/np.pi) < 25)
+        crit2 = (np.abs(track['r2_fit'] > 0.80))
+        bypass1 = (np.min(track['X']) < 300)
+        if (crit1 and crit2) or bypass1:
+            tracks_data_f1.append(track)
+        
+    fig1, axes1 = plt.subplots(1, 3, figsize = (24, 8))
+    fig = fig1
+    #### Plot all trajectories
+    ax = axes1[0]
+    ax.set_title(f'All tracks, N = {len(tracks_data)}')
+    for track in tracks_data:
+        X, Y = track['X'], track['Y']
+        ax.plot(X, Y)
+    
+    # #### Plot first filter
+    # ax = axes1[1]
+    # ax.set_title(f'First filter, N = {len(tracks_data_f1)}')
+    # for track in tracks_data_f1:
+    #     X, Y = track['X'], track['Y']
+    #     ax.plot(X, Y)
+
+    for ax in axes1[:2]:
+        circle1 = plt.Circle((0, 0), MagR, color='dimgrey')
+        ax.add_patch(circle1)
+        # ax.axvspan(wall_L, wall_R, color='lightgray', zorder=0)
+        ax.set_xlim([0, 800])
+        ax.set_ylim([-400, +400])
+        ax.grid()
+        ax.axis('equal')
+        ax.set_xlabel('X [µm]')
+        ax.set_ylabel('Y [µm]')
+
+    # #### Second Filter
+    # all_medD = np.array([track['medD'] for track in tracks_data_f1])
+    # all_medV = np.array([track['medV'] for track in tracks_data_f1])
+    # all_D = np.concat([track['D'] for track in tracks_data_f1])
+    # all_V = np.concat([track['V'] for track in tracks_data_f1])
+    
+    # # fig2, ax2 = plt.subplots(1, 1, figsize = (8, 6))
+    # # fig, ax = fig2, ax2
+    # # # ax.plot(all_medD, all_medV, ls='', marker='.')
+    # # ax.plot(all_D, all_V, ls='', marker='.', alpha=0.05)
+    # # ax.grid()
+    # # ax.set_xlabel('D [µm]')
+    # # ax.set_ylabel('V [µm/s]')
+    
+    
+    # D_plot = np.linspace(1, 5000, 500)
+
+    # # Double Expo
+    # V_popt_2exp, V_pcov_2exp = optimize.curve_fit(doubleExpo, all_D, all_V, 
+    #                        p0 = [1000, 50, 100, 1000], 
+    #                        bounds=([0, 0, 0, 0], [np.inf, np.inf, np.inf, np.inf]))
+    # V_fit_2exp = doubleExpo(D_plot, *V_popt_2exp)
+    # label_2exp = r'$\bf{A \cdot exp(-x/k_1) + B \cdot exp(-x/k_2)}$' + '\n'
+    # label_2exp += '$A$ = {:.2e} | $k_1$ = {:.2f}\n$B$ = {:.2f} | $k_2$ = {:.2e}'.format(*V_popt_2exp)
+
+    # # Power Law
+    # V_popt_pL, V_pcov_pL = optimize.curve_fit(powerLaw, all_D, all_V, 
+    #                        p0 = [1000, -2], 
+    #                        bounds=([0, -10], [np.inf, 0]))
+    # V_fit_pL = powerLaw(D_plot, *V_popt_pL)
+    # V_label_pL = r'$\bf{A \cdot x^k}$' + '\n'
+    # V_label_pL += '$A$ = {:.2e} | $k$ = {:.2f}'.format(*V_popt_pL)
+
+    # expected_medV = powerLaw(all_medD, *V_popt_pL)
+    # ratio_fitV = all_medV/expected_medV
+    # high_cut = 1.45
+    # low_cut = 0.55
+
+    # # fig21, ax21 = plt.subplots(1,1)
+    # # fig, ax = fig21, ax21
+    # # ax.plot(all_medD, ratio_fitV, ls='', marker='.', alpha=0.3)
+    # # ax.axhline(high_cut, color = 'k', ls='-.')
+    # # ax.axhline(low_cut, color = 'k', ls='-.')
+    # tracks_data_f2 = []
+    # removed_tracks = []
+    # for i, track in enumerate(tracks_data_f1):
+    #     if (ratio_fitV[i] > low_cut) and (ratio_fitV[i] < high_cut):
+    #         tracks_data_f2.append(track)
+    #     else:
+    #         removed_tracks.append(track)
+            
+    # all_D = np.concat([track['D'] for track in tracks_data_f2])
+    # all_V = np.concat([track['V'] for track in tracks_data_f2])
+    # all_F = np.concat([track['F'] for track in tracks_data_f2])
+    # all_removedD = np.concat([track['D'] for track in removed_tracks])
+    # all_removedV = np.concat([track['V'] for track in removed_tracks])   
+    
+    # #### Plot second filter
+    # # fig22, ax22 = plt.subplots(1, 1, figsize = (8, 6))
+    # # fig, ax = fig22, ax22
+    # fig, ax = fig1, axes1[2]
+    # ax.plot(all_D, all_V, ls='', marker='.', alpha=0.05)
+    # ax.plot(D_plot, V_fit_pL, ls='-.', c='darkred', lw=2.0, label = 'Naive fit')
+    # ax.plot(D_plot, V_fit_pL*high_cut, 
+    #         ls='-.', c='green', lw=1.25, label = f'High cut = {high_cut}')
+    # ax.plot(D_plot, V_fit_pL*low_cut,  
+    #         ls='-.', c='blue', lw=1.25, label = f'Low cut = {low_cut}')
+    # ax.plot(all_removedD, all_removedV, ls='', marker='.', alpha=0.05)
+    # MD, MV = max(all_D), max(all_V)
+    # ax.set_xlim([0, 1.1*MD])
+    # ax.set_ylim([0, 1.2*MV])
+    # ax.grid()
+    # ax.legend()
+    # ax.set_xlabel('D [µm]')
+    # ax.set_ylabel('V [µm/s]')
+    # ax.set_title(f'Second Filter, N = {len(tracks_data_f2)}')
+            
+    
+    # #### In case of flow correction
+    # if flowCorrection:
+    #     df_fC = pd.read_csv(flowCorrectionPath, header = 3, sep='\t', #skiprows=2,
+    #                         on_bad_lines='skip', encoding='utf_8',
+    #                         names=['x', 'y', 'u', 'v', 'vector_type']) # 'utf_16_le'
+    #     # Original column names
+    #     # x [px]	y [px]	u [px/frame]	v [px/frame]	Vector type [-]
+        
+    #     tracks_data_f3 = ApplyFlowCorrection(tracks_data_f2, df_fC)
+    
+    
+        
+    
+    
+    
+    
+    # #### Final fits
+    # D_plot = np.linspace(1, 5000, 500)
+
+    # #### Velocity
+    # # Double Expo
+    # V_popt_2exp, V_pcov_2exp = optimize.curve_fit(doubleExpo, all_D, all_V, 
+    #                        p0 = [1000, 50, 100, 1000], 
+    #                        bounds=([0, 0, 0, 0], [np.inf, np.inf, np.inf, np.inf]))
+    # V_fit_2exp = doubleExpo(D_plot, *V_popt_2exp)
+    # V_label_2exp = r'$\bf{A \cdot exp(-x/k_1) + B \cdot exp(-x/k_2)}$' + '\n'
+    # V_label_2exp += '$A$ = {:.2e} | $k_1$ = {:.2f}\n$B$ = {:.2f} | $k_2$ = {:.2e}'.format(*V_popt_2exp)
+
+    # # Power Law
+    # V_popt_pL, V_pcov_pL = optimize.curve_fit(powerLaw, all_D, all_V, 
+    #                        p0 = [1000, -2], 
+    #                        bounds=([0, -10], [np.inf, 0]))
+    # V_fit_pL = powerLaw(D_plot, *V_popt_pL)
+    # V_label_pL = r'$\bf{A \cdot x^k}$' + '\n'
+    # V_label_pL += '$A$ = {:.2e} | $k$ = {:.2f}'.format(*V_popt_pL)
+
+    # #### Force
+    # # Double Expo
+    # F_popt_2exp, F_pcov_2exp = optimize.curve_fit(doubleExpo, all_D, all_F, 
+    #                        p0 = [1000, 50, 100, 1000], 
+    #                        bounds=([0, 0, 0, 0], [np.inf, np.inf, np.inf, np.inf]))
+    # F_fit_2exp = doubleExpo(D_plot, *F_popt_2exp)
+    # F_label_2exp = r'$\bf{A \cdot exp(-x/k_1) + B \cdot exp(-x/k_2)}$' + '\n'
+    # F_label_2exp += '$A$ = {:.2e} | $k_1$ = {:.2f}\n$B$ = {:.2f} | $k_2$ = {:.2e}'.format(*F_popt_2exp)
+
+    # # Power Law
+    # F_popt_pL, F_pcov_pL = optimize.curve_fit(powerLaw, all_D, all_F, 
+    #                        p0 = [1000, -2], 
+    #                        bounds=([0, -10], [np.inf, 0]))
+    # F_fit_pL = powerLaw(D_plot, *F_popt_pL)
+    # F_label_pL = r'$\bf{A \cdot x^k}$' + '\n'
+    # F_label_pL += '$A$ = {:.2e} | $k$ = {:.2f}'.format(*F_popt_pL)
+
+
+    # #### Plot the clean fits
+    # fig2, axes2 = plt.subplots(2, 2, figsize=(12, 8))
+    # fig = fig2
+    # color_V = pm.colorList10[0]
+    # color_F = pm.cL_Set21[0]
+    # ax = axes2[0,0]
+    # ax.plot(all_D, all_V, ls='', marker='.', alpha=0.01, c = color_V)
+    # ax.plot(D_plot, V_fit_2exp, 'r-', label = label_2exp)
+    # ax.plot(D_plot, V_fit_pL, ls='-', color='darkorange', label = V_label_pL)
+    # # ax.plot(D_plot, V_fit_pLS, 'c-', label = V_label_pLS)
+    # ax.grid()
+    # ax.set_xlim([0, 1.1 * max(all_D)])
+    # ax.set_ylim([0, 1.2 * max(all_V)])
+    # ax.set_xlabel('d [µm]')
+    # ax.set_ylabel('v [µm/s]')
+    # # ax.legend()
+
+    # ax = axes2[0,1]
+    # ax.set_xscale('log')
+    # ax.set_yscale('log')
+    # ax.plot(all_D, all_V, ls='', marker='.', alpha=0.01, c = color_V)
+    # ax.plot(D_plot, V_fit_2exp, 'r-', label = V_label_2exp)
+    # ax.plot(D_plot, V_fit_pL, ls='-', color='darkorange', label = V_label_pL)
+    # # ax.plot(D_plot, V_fit_pLS, 'c-', label = V_label_pLS)
+    # ax.grid()
+    # ax.set_xlim([50, 5000])
+    # ax.set_ylim([0.01, 100])
+    # ax.set_xlabel('d [µm]')
+    # ax.set_ylabel('v [µm/s]')
+    # ax.legend(title='Fit on V(d)',
+    #           loc="center left",
+    #           bbox_to_anchor=(1, 0, 0.5, 1))
+
+    # ax = axes2[1,0]
+    # ax.plot(all_D, all_F, ls='', marker='.', alpha=0.01, c = color_F)
+    # ax.plot(D_plot, F_fit_2exp, 'r-', label = F_label_2exp)
+    # ax.plot(D_plot, F_fit_pL, ls='-', color='darkorange', label = F_label_pL)
+    # # ax.plot(D_plot, V_fit_pLS, 'c-', label = V_label_pLS)
+    # ax.grid()
+    # ax.set_xlim([0, 1.1 * max(all_D)])
+    # ax.set_ylim([0, 1.2 * max(all_F)])
+    # ax.set_xlabel('d [µm]')
+    # ax.set_ylabel('F [pN]')
+    # # ax.legend()
+
+    # ax = axes2[1,1]
+    # ax.set_xscale('log')
+    # ax.set_yscale('log')
+    # ax.plot(all_D, all_F, ls='', marker='.', alpha=0.01, c = color_F)
+    # ax.plot(D_plot, F_fit_2exp, 'r-', label = F_label_2exp)
+    # ax.plot(D_plot, F_fit_pL, ls='-', color='darkorange', label = F_label_pL)
+    # # ax.plot(D_plot, V_fit_pLS, 'c-', label = V_label_pLS)
+    # ax.grid()
+    # ax.set_xlim([50, 5000])
+    # ax.set_ylim([0.01, 100])
+    # ax.set_xlabel('d [µm]')
+    # ax.set_ylabel('F [pN]')
+    # ax.legend(title='Fit on F(d)',
+    #           loc="center left",
+    #           bbox_to_anchor=(1, 0, 0.5, 1))
+
+    # MainTitle = 'Calibration Data'
+    # if expLabel != '':
+    #     MainTitle = MainTitle + ' - ' + expLabel
+    # fig.suptitle(MainTitle)
+    # fig.tight_layout()
+    
+    # plt.show()
+    
+    # if savePlots:
+    #     fig1.savefig(os.path.join(saveDir, expLabel + '_Traj.png'), dpi=400)
+    #     fig2.savefig(os.path.join(saveDir, expLabel + '_Fits.png'), dpi=400)
+    
+    # if saveResults:
+    #     dictResults = {'V_popt_2exp':V_popt_2exp,
+    #                    'V_popt_pL':V_popt_pL,
+    #                    'F_popt_2exp':F_popt_2exp,
+    #                    'F_popt_pL':F_popt_pL,
+    #                    'all_D':all_D,
+    #                    'all_V':all_V,
+    #                    'all_F':all_F,
+    #                    }
+    #     listOfdict2json(tracks_data_f2, saveDir, expLabel+'_allTracksData')
+    #     dict2json(dictResults, saveDir, expLabel+'_fitData')
+    #     # json2listOfdict(path, fileName)
+
+
+
+
+
+
+# mainDir = 'E:/WorkingData/LeicaData/25-11-19/25-11-19_Droplet01_Gly80p_MyOne'
+# mainDir += '/25-11-19_Droplet01_20x_FilmFluo_3spf_3/'
+
+mainDir = 'C:/Users/josep/Desktop/Seafile/AnalysisPulls/'
+mainDir += '25-11-19_Droplet01_Gly80p_MyOne/'
+mainDir += '25-11-19_Droplet01_20x_FilmFluo_3spf_3/'
+
+fileName = '20x_FilmFluo_3spf_3_CropMagbeads_Tracks.xml'
+filePath = os.path.join(mainDir, fileName)
+
+SCALE = 0.451
+FPS = (1/3)
+# Beads
+Rb = 1 * 0.5
+# Medium - °C 20.6 - %Gly 75
+visco = 87.9 # mPa.s
+
+# Magnet
+MagX = 229
+MagY = 702
+MagR = 250 * 0.5
+# Crop
+CropX = 0
+CropY = 0
+
+all_tracks = ufun.importTrackMateTracks(filePath)
+tracks_data = tracks_pretreatment_wFlow(all_tracks, SCALE, FPS, 
+                                   MagX, MagY, MagR, Rb, visco,
+                                   CropXY = [CropX, CropY])
+
+# flowCorrectionPath = 'E:\WorkingData/LeicaData/25-11-19/25-11-19_Droplet01_Gly80p_MyOne/'
+# flowCorrectionPath += '25-11-19_Droplet01_20x_FilmFluo_3spf_3/Res01_PIVlab.txt'
+
+flowCorrectionFile = 'Res01_PIVlab.txt'
+flowCorrectionPath = os.path.join(mainDir, flowCorrectionFile)
+
+df_fC = pd.read_csv(flowCorrectionPath, header = 3, sep='\t', #skiprows=2,
+                    on_bad_lines='skip', encoding='utf_8',
+                    names=['x', 'y', 'u', 'v', 'vector_type']).dropna(subset=['u']) # 'utf_16_le'
+
+# df_fC = df_flowCorr
+# X_fC = df_fC['x'].unique()
+# step_fC = np.polyfit(np.arange(len(X_fC)), X_fC, 1)[0]
+# df_fC['xi'] = df_fC['x']//step_fC
+# df_fC['yi'] = df_fC['y']//step_fC
+# list_xi_fC = df_fC['xi'].unique().astype(int)
+# list_yi_fC = df_fC['yi'].unique().astype(int)
+
+df_fC2 = tracks_analysis_wFlow(tracks_data, df_fC, expLabel = '', 
+                    flowCorrection = False, flowCorrectionPath = '',
+                    saveResults = False, savePlots = False, saveDir = '.')
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -808,7 +1376,9 @@ tracerTracks_analysis(tracks_data, MagR = MagR*SCALE)
 
 # saveDir = 'C:/Users/josep/Desktop/Seafile/DownloadedFromSeafile/25-11-19+21'
 # saveDir = 'E:/WorkingData/LeicaData/25-11-19/'
-saveDir = 'C:/Users/Utilisateur/Desktop/AnalysisPulls/25-11_DynabeadsInCapillaries_CalibrationsTests/'
+# saveDir = 'C:/Users/Utilisateur/Desktop/AnalysisPulls/25-11_DynabeadsInCapillaries_CalibrationsTests/'
+saveDir = 'C:/Users/josep/Desktop/Seafile/AnalysisPulls/25-11_DynabeadsInCapillaries_CalibrationsTests/'
+
 
 # %%% 3.1 MyOne - Gly75%
 
@@ -1264,8 +1834,12 @@ tracks_analysis(tracks_data, expLabel = 'M270_Glycerol80%',
     
 
 # srcDir = 'C:/Users/josep/Desktop/Seafile/DownloadedFromSeafile/25-11-19+21'
-srcDir = 'C:/Users/Utilisateur/Desktop/AnalysisPulls/25-11_DynabeadsInCapillaries_CalibrationsTests/Results'
-dstDir = 'C:/Users/Utilisateur/Desktop/AnalysisPulls/25-11_DynabeadsInCapillaries_CalibrationsTests/'
+# srcDir = 'C:/Users/Utilisateur/Desktop/AnalysisPulls/25-11_DynabeadsInCapillaries_CalibrationsTests/Results'
+# dstDir = 'C:/Users/Utilisateur/Desktop/AnalysisPulls/25-11_DynabeadsInCapillaries_CalibrationsTests/'
+srcDir = 'C:/Users/josep/Desktop/Seafile/AnalysisPulls/25-11_DynabeadsInCapillaries_CalibrationsTests/Results'
+dstDir = 'C:/Users/josep/Desktop/Seafile/AnalysisPulls/25-11_DynabeadsInCapillaries_CalibrationsTests/'
+
+
 labelList = ['MyOne_Glycerol75%', 'MyOne_Glycerol80%']
 examineCalibration(srcDir, labelList = labelList,
                    savePlots = True, saveDir = dstDir)
@@ -1305,8 +1879,11 @@ examineCalibration(srcDir, labelList = labelList,
 
 # mainDir = 'C:/Users/Utilisateur/Desktop/AnalysisPulls/'
 # mainDir += '25-11_DynabeadsInCapillaries_CalibrationsTests/Tracks'
-mainDir = 'E:/WorkingData/LeicaData/25-11-19/25-11-19_Droplet01_Gly80p_MyOne'
-mainDir += '/25-11-19_Droplet01_20x_FilmFluo_3spf_3/'
+# mainDir = 'E:/WorkingData/LeicaData/25-11-19/25-11-19_Droplet01_Gly80p_MyOne'
+# mainDir += '/25-11-19_Droplet01_20x_FilmFluo_3spf_3/'
+mainDir = 'C:/Users/josep/Desktop/Seafile/AnalysisPulls/'
+mainDir += '25-11-19_Droplet01_Gly80p_MyOne/'
+mainDir += '25-11-19_Droplet01_20x_FilmFluo_3spf_3/'
 
 # %%%% Look at the tracer motion
 
@@ -1325,9 +1902,9 @@ CropX = 0
 CropY = 0
 
 all_tracks = ufun.importTrackMateTracks(filePath)
-tracks_data = tracks_pretreatment(all_tracks, SCALE, FPS, 
-                                   MagX, MagY, MagR, Rb, visco,
-                                   CropXY = [CropX, CropY])
+tracks_data = tracerTracks_pretreatment(all_tracks, SCALE, FPS, 
+                                        MagX, MagY, MagR, 
+                                        CropXY = [0, 0])
 
 tracerTracks_analysis(tracks_data, MagR = MagR*SCALE)
 
