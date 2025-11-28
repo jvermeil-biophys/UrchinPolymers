@@ -263,6 +263,11 @@ def setGraphicOptions(mode = 'screen', palette = 'Set2', colorList = cL_Set21):
         SMALL_SIZE = 13
         MEDIUM_SIZE = 16
         BIGGER_SIZE = 20
+    if mode == 'screen_big':
+        SMALLER_SIZE = 12
+        SMALL_SIZE = 14
+        MEDIUM_SIZE = 18
+        BIGGER_SIZE = 22
     elif mode == 'print':
         SMALLER_SIZE = 8
         SMALL_SIZE = 10
