@@ -1045,12 +1045,18 @@ def getPIVvectors(df_fT, step_piv,
         ax.set_ylabel('Y [µm]')
         ax.quiver(df_fT['x2'], df_fT['y2'], df_fT['u2'], df_fT['v2'], zorder=6)
         ax.plot(X_traj, Y_traj, alpha = 0.5)
-        ax.plot((Xi+0.5)*step_piv, (Yi+0.5)*step_piv, 'rx', ms=10)
+        ax.plot((Xi+0.5)*step_piv, (Yi+0.5)*step_piv, 'r+', ms=5)
         ax.plot(X_traj[mask_valid], Y_traj[mask_valid])
+        ax.set_xlabel('X [µm]')
+        ax.set_ylabel('Y [µm]')
         
         ax = axes1[1]
-        ax.plot(idx_valid, U_piv, ls='--', marker='o')
-        ax.plot(idx_valid, V_piv, ls=':', marker='^')
+        ax.plot(idx_valid, U_piv, ls='--', marker='o', label='$V_x$')
+        ax.plot(idx_valid, V_piv, ls=':', marker='^', label='$V_y$')
+        ax.set_xlabel('index in trajectory')
+        ax.set_ylabel('PIV velocity along x and y [µm/s]')
+        ax.legend()
+        
         plt.show()
 
     return(U_piv, V_piv, mask_valid, idx_valid)
@@ -1141,6 +1147,11 @@ def tracks_pretreatment_wFlow(all_tracks,
             
             #### Use the PIV table from tracers to compute the relative velocities
             # NB : relative velocity = observed velocity - flow velocity
+            # if 100 < i < 106:
+            #     PLOT = True
+            # else:
+            #     PLOT = False
+                
             U_piv, V_piv, m_valid, i_valid = getPIVvectors(df_fT, step_piv, xi_piv, yi_piv,
                                                            X2, Y2, PLOT = False)
 
@@ -2170,12 +2181,27 @@ examineCalibration(srcDir, labelList = labelList,
 
 # %% 4. Analyse droplets
 
+# saveDir = 'C:/Users/josep/Desktop/Seafile/DownloadedFromSeafile/25-11-19+21'
+# saveDir = 'E:/WorkingData/LeicaData/25-11-19/'
+# saveDir = 'C:/Users/Utilisateur/Desktop/AnalysisPulls/25-11_DynabeadsInCapillaries_CalibrationsTests/'
+saveDir = 'C:/Users/josep/Desktop/Seafile/AnalysisPulls/25-11_DynabeadsInCapillaries_CalibrationsTests/'
+
+
+
 # %%% First movie
 
 # %%%% Look at the tracer motion
 
 fileName = '20x_FilmFluo_3spf_3_CropTracers_MinusMED_Tracks.xml'
 filePath = os.path.join(mainDir, fileName)
+
+flowTracersFile = 'Res01_PIVlab.txt'
+flowTracersPath = os.path.join(mainDir, flowTracersFile)
+
+df_fT = pd.read_csv(flowTracersPath, header = 2, sep='\t', #skiprows=2,
+                    on_bad_lines='skip', encoding='utf_8',
+                    names=['x', 'y', 'u', 'v', 'vector_type']) #.dropna(subset=['u']) # 'utf_16_le'
+
 
 SCALE = 0.451
 FPS = 5
@@ -2193,7 +2219,9 @@ tracks_data = tracerTracks_pretreatment(all_tracks, SCALE, FPS,
                                         MagX, MagY, MagR, 
                                         CropXY = [0, 0])
 
-tracerTracks_analysis(tracks_data, MagR = MagR*SCALE)
+tracerTracks_analysis(tracks_data, df_fT,
+                      SCALE, FPS, 
+                      MagX, MagY, MagR, )
 
 # %%%% Do the analysis
 
@@ -2253,7 +2281,7 @@ df_fC2 = tracks_analysis_wFlow(tracks_data,
                                 SCALE, FPS, 
                                 MagX, MagY, MagR, 
                                 expLabel = 'MyOne_Glycerol80%_Droplet', flowCorrection = True, 
-                                saveResults = True, savePlots = True, saveDir = saveDir)
+                                saveResults = False, savePlots = False, saveDir = saveDir)
 
 
 # %%%% Compare with the other plots
