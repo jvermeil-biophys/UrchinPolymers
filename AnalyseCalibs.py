@@ -272,7 +272,7 @@ def tracks_analysis(tracks_data, expLabel = '',
                     saveResults = True, savePlots = True, saveDir = '.',
                     return_fig = 0):
     
-    MagR = 150/2
+    MagR = 60 # µm - Diamètre typique
     
     #### First filter
     tracks_data_f1 = []
@@ -385,24 +385,7 @@ def tracks_analysis(tracks_data, expLabel = '',
     ax.legend()
     ax.set_xlabel('D [µm]')
     ax.set_ylabel('V [µm/s]')
-    ax.set_title(f'Second Filter, N = {len(tracks_data_f2)}')
-            
-    
-    #### In case of flow correction
-    if flowCorrection:
-        df_fC = pd.read_csv(flowCorrectionPath, header = 3, sep='\t', #skiprows=2,
-                            on_bad_lines='skip', encoding='utf_8',
-                            names=['x', 'y', 'u', 'v', 'vector_type']) # 'utf_16_le'
-        # Original column names
-        # x [px]	y [px]	u [px/frame]	v [px/frame]	Vector type [-]
-        
-        tracks_data_f3 = ApplyFlowCorrection(tracks_data_f2, df_fC)
-    
-    
-        
-    
-    
-    
+    ax.set_title(f'Second Filter, N = {len(tracks_data_f2)}')    
     
     #### Final fits
     D_plot = np.linspace(1, 5000, 500)
