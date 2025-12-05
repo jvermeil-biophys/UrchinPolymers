@@ -21,7 +21,7 @@ import colorsys
 from scipy import interpolate, optimize
 
 
-# %% 2. Subfunctions
+# %% 2. Helper functions
 
 # %%% Graphic settings
 
@@ -235,11 +235,7 @@ def importTrackMateTracks(filepath):
         tracks.append(np.array(L))
     return(tracks)
 
-
-# %% 3. Main functions
-
-
-# %%% Analyse tracks
+# %% Clean Tracks of weird points when importing them
 
 def cleanRawTrack(track):
     track_valid = True
@@ -269,14 +265,17 @@ def cleanAllRawTracks(all_tracks):
     return(clean_tracks)
 
 
+# %% 3. Core functions
+
 def tracks_pretreatment(all_tracks, SCALE, FPS, 
                         MagX, MagY, MagR, Rb, visco,
-                        CropXY = [0, 0]):
+                        CropX, CropY):
     tracks_data = []
     MagX *= SCALE
     MagY *= SCALE
     MagR *= SCALE
-    CropXY = np.array(CropXY)*SCALE
+    CropX *= SCALE
+    CropY *= SCALE
     all_tracks = cleanAllRawTracks(all_tracks)
 
     for i, track in enumerate(all_tracks):
@@ -288,7 +287,7 @@ def tracks_pretreatment(all_tracks, SCALE, FPS,
         tracks_data.append({'T':T, 'Xraw':X, 'Yraw':Y})
         
         #### Origin as the magnet center
-        X2, Y2 = (X+CropXY[0])-MagX, MagY-(Y+CropXY[1])
+        X2, Y2 = (X+CropX)-MagX, MagY-(Y+CropY)
         # NB: inversion of Y so that the trajectories 
         # shown by matplotlib look like the Fiji ones
         medX2, medY2 = np.median(X2), np.median(Y2)
@@ -348,10 +347,10 @@ def tracks_pretreatment(all_tracks, SCALE, FPS,
 
 
 def tracks_analysis(tracks_data, expLabel = '', 
-                    saveResults = True, savePlots = True, saveDir = '.',
+                    saveResults = True, savePlots = True, saveDir = '',
                     return_fig = 0):
     
-    MagR = 60 # µm - Diamètre typique
+    MagR = 60 # µm - Typical Diameter
     
     #### 1.1 First filter
     tracks_data_f1 = []
@@ -497,7 +496,7 @@ def tracks_analysis(tracks_data, expLabel = '',
     color_F = colorListSns[0]
     ax = axes2[0,0]
     ax.plot(all_D, all_V, ls='', marker='.', alpha=0.01, c = color_V)
-    ax.plot(D_plot, V_fit_2exp, 'r-', label = label_2exp)
+    ax.plot(D_plot, V_fit_2exp, ls='-', color='r', label = label_2exp)
     ax.plot(D_plot, V_fit_pL, ls='-', color='darkorange', label = V_label_pL)
     # ax.plot(D_plot, V_fit_pLS, 'c-', label = V_label_pLS)
     ax.grid()
@@ -511,7 +510,7 @@ def tracks_analysis(tracks_data, expLabel = '',
     ax.set_xscale('log')
     ax.set_yscale('log')
     ax.plot(all_D, all_V, ls='', marker='.', alpha=0.01, c = color_V)
-    ax.plot(D_plot, V_fit_2exp, 'r-', label = V_label_2exp)
+    ax.plot(D_plot, V_fit_2exp, ls='-', color='r', label = V_label_2exp)
     ax.plot(D_plot, V_fit_pL, ls='-', color='darkorange', label = V_label_pL)
     # ax.plot(D_plot, V_fit_pLS, 'c-', label = V_label_pLS)
     ax.grid()
@@ -525,7 +524,7 @@ def tracks_analysis(tracks_data, expLabel = '',
 
     ax = axes2[1,0]
     ax.plot(all_D, all_F, ls='', marker='.', alpha=0.01, c = color_F)
-    ax.plot(D_plot, F_fit_2exp, 'r-', label = F_label_2exp)
+    ax.plot(D_plot, F_fit_2exp, ls='-', color='r', label = F_label_2exp)
     ax.plot(D_plot, F_fit_pL, ls='-', color='darkorange', label = F_label_pL)
     # ax.plot(D_plot, V_fit_pLS, 'c-', label = V_label_pLS)
     ax.grid()
@@ -539,7 +538,7 @@ def tracks_analysis(tracks_data, expLabel = '',
     ax.set_xscale('log')
     ax.set_yscale('log')
     ax.plot(all_D, all_F, ls='', marker='.', alpha=0.01, c = color_F)
-    ax.plot(D_plot, F_fit_2exp, 'r-', label = F_label_2exp)
+    ax.plot(D_plot, F_fit_2exp, ls='-', color='r', label = F_label_2exp)
     ax.plot(D_plot, F_fit_pL, ls='-', color='darkorange', label = F_label_pL)
     # ax.plot(D_plot, V_fit_pLS, 'c-', label = V_label_pLS)
     ax.grid()
@@ -580,14 +579,37 @@ def tracks_analysis(tracks_data, expLabel = '',
     elif return_fig == 2:
         return(fig2, axes2)
 
+    
+# %% 4. Main functions
+
+def runCalibration(mainDir, SCALE, FPS, Rb, visco, filesInfo, 
+                   saveDir, expLabel, saveResults, savePlots):
+    
+    setGraphicOptions(mode = 'screen_big', colorList = colorListMpl)
+    
+    tracks_data = [];
+    Nfiles = len(filesInfo)
+
+    # 1. Import all the files data & run the pretreatment
+    for i in range(Nfiles):
+        fI = filesInfo[i]
+        fileName = fI['fileName']
+        filePath = os.path.join(mainDir, fileName)
+        MagX, MagY, MagR = fI['MagX'], fI['MagY'], fI['MagR']
+        CropX, CropY = fI['CropX'], fI['CropY']
+        all_tracks = importTrackMateTracks(filePath)
+        tracks_data += tracks_pretreatment(all_tracks, 
+                                           SCALE, FPS, MagX, MagY, MagR, 
+                                           Rb, visco, CropX, CropY)
+    # 2. Run analysis
+    tracks_analysis(tracks_data, expLabel, saveResults, savePlots, saveDir)
 
 
-# %%% Compare analysis
 
 
-def examineCalibration(srcDir, labelList = [], 
-                       savePlots = True, saveDir = '.',
-                       return_fig = 0):
+def compareCalibrations(srcDir, labelList = [], 
+                        savePlots = True, saveDir = '.',
+                        return_fig = 0):
     dataList = []
     supTitle = ''
     saveTitle = ''
@@ -709,10 +731,8 @@ def examineCalibration(srcDir, labelList = [],
         
     if return_fig == 1:
         return(fig1, axes1)
-    
 
-
-# %% 4. Run the analysis
+# %% 5. Run the analysis
 
 # %%% 4.1 - Example : MyOne - Gly75%
 
