@@ -2379,6 +2379,47 @@ except:
 
 # %% 11. Tests
 
+# %%% Extract Tiff OME metadata
+
+import xml.etree.ElementTree as ET
+from ome_types import from_tiff
+
+S = '{http://www.openmicroscopy.org/Schemas/OME/2016-06}'
+
+# dirPath = 'E:/WorkingData/LeicaData/25-12-18_WithJessica/25-12-18_Capi01_JN-Magnet_MyOne-Gly80/25-12-18_20x_FastBFGFP_1'
+dirPath = 'E:/WorkingData/LeicaData/25-12-18_WithJessica/25-12-18_Droplet01_JN-Magnet_MyOne-Gly80/'
+
+# fileName = '25-12-18_20x_FastBFGFP_1_MMStack_Default.ome.tif'
+
+fileNames = os.listdir(dirPath)
+T = []
+C = []
+
+for fN in fileNames:
+    if fN.endswith('.tif'):
+        filePath = os.path.join(dirPath, fN)
+        ome = from_tiff(filePath)
+        xmlText = ome.to_xml()
+        root = ET.fromstring(xmlText)
+        for image in root.findall(S + 'Image'):
+            for plane in image.iter(S + "Plane"):
+                c = float(plane.attrib["TheC"])
+                t = float(plane.attrib["DeltaT"])
+                C.append(c)
+                T.append(t)
+    break
+
+C = np.array(C)
+T = np.array(T)
+idx_BF = (C == 0)
+T_BF = T[idx_BF]
+dT = T_BF[1:] - T_BF[:-1]
+mean_dT = np.mean(dT)
+median_dT = np.median(dT)
+std_dT = np.std(dT)
+
+
+
 # %%% Save a dict in .json
 
 import json
