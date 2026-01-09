@@ -726,7 +726,7 @@ def pullAnalyzer(track, dict_pull,
     
     parms_langevin = [2.75379e+10, 6.87603e+21, -124.896]
     # parms_langevin = [3.56905e+11, 3.76308e+25, -140]
-    # parms_langevin = [1.7435e+10, 4.65859e+19, -100]
+    # parms_langevin = [1.7435e+10, 4.65859e+19, -100] 
     # parms_langevin = [6.46079e+10, 1.09389e+21, 0]
     mag_d2v_langevin = lambda x: Langevin_D2V(x, *parms_langevin)
     
