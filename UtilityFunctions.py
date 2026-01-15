@@ -45,7 +45,8 @@ from scipy import interpolate
 from scipy import signal
 from scipy import odr
 
-
+import xml.etree.ElementTree as ET
+from ome_types import from_tiff
 
 from skimage import io, filters, exposure, measure, transform, util, color
 from scipy.signal import find_peaks, savgol_filter
@@ -438,6 +439,108 @@ def getFileNamesWithExt(Dir, ext):
 def softMkdir(path):
     if not os.path.exists(path):
         os.makedirs(path)
+        
+
+# %%% Tiff files
+
+
+
+import xml.etree.ElementTree as ET
+from ome_types import from_tiff
+
+# fileName = '25-12-18_20x_FastBFGFP_1_MMStack_Default.ome.tif'
+
+def extractDT(dirPath):
+    S = '{http://www.openmicroscopy.org/Schemas/OME/2016-06}'
+    fileNames = os.listdir(dirPath)
+    T = []
+    C = []
+    
+    for fN in fileNames:
+        if fN.endswith('.tif'):
+            filePath = os.path.join(dirPath, fN)
+            ome = from_tiff(filePath)
+            xmlText = ome.to_xml()
+            root = ET.fromstring(xmlText)
+            for image in root.findall(S + 'Image'):
+                for plane in image.iter(S + "Plane"):
+                    c = float(plane.attrib["TheC"])
+                    t = float(plane.attrib["DeltaT"])
+                    C.append(c)
+                    T.append(t)
+        break
+    
+    C = np.array(C)
+    T = np.array(T)
+    idx_BF = (C == 0)
+    T_BF = T[idx_BF]
+    dT = T_BF[1:] - T_BF[:-1]
+    mean_dT = np.mean(dT)
+    median_dT = np.median(dT)
+    std_dT = np.std(dT)
+    
+    return(mean_dT, median_dT, std_dT)
+
+
+def getTimeFromTiff(path):
+    S = '{http://www.openmicroscopy.org/Schemas/OME/2016-06}'
+    T = []
+    C = []
+    
+    if path.endswith('.tif'):
+        filePath = path
+        ome = from_tiff(filePath)
+        xmlText = ome.to_xml()
+        root = ET.fromstring(xmlText)
+        for image in root.findall(S + 'Image'):
+            for plane in image.iter(S + "Plane"):
+                c = float(plane.attrib["TheC"])
+                t = float(plane.attrib["DeltaT"])
+                C.append(c)
+                T.append(t)
+    
+    C = np.array(C)
+    T = np.array(T)
+    idx_C0 = (C == 0)
+    T_C0 = T[idx_C0]
+    dT_C0 = T_C0[1:] - T_C0[:-1]
+    # mean_dT = np.mean(dT)
+    # median_dT = np.median(dT)
+    # std_dT = np.std(dT)
+    
+    return(T_C0, dT_C0)
+
+
+# dirPath = 'E:/WorkingData/LeicaData/25-12-18_WithJessica/25-12-18_Capi01_JN-Magnet_MyOne-Gly80/25-12-18_20x_FastBFGFP_1'
+# dirPath = 'E:/WorkingData/LeicaData/25-12-18_WithJessica/25-12-18_Droplet01_JN-Magnet_MyOne-Gly80/'
+# print(extractDT(dirPath))
+
+# dirPath = 'E:/WorkingData/LeicaData/26-01-07_Calib_MagnetJingAude_20x_MyOneGly75p_Capillary/26-01-07_20x_MyOneGly75p_Capillary_1'
+# print(extractDT(dirPath))
+        
+def checkDT_multiFile(dirPath):        
+    list_dir = os.listdir(dirPath)
+    D = {'file name':[], 'median dT':[], 'mean dT':[], 'std dT':[]}
+    for d in list_dir:
+        p = os.path.join(dirPath, d)
+        if os.path.isdir(p):
+            lf = os.listdir(p)
+            for f in lf:
+                if f.endswith('.tif'):
+                    pf = os.path.join(p, f)
+                    T_C0, dT_C0 = getTimeFromTiff(pf)
+                    D['file name'].append(f)
+                    D['median dT'].append(np.median(dT_C0))
+                    D['mean dT'].append(np.mean(dT_C0))
+                    D['std dT'].append(np.std(dT_C0))
+    for k in D.keys():
+        D[k] = np.array(D[k])
+    df = pd.DataFrame(D)
+    return(df)
+
+# dirPath = 'E:/WorkingData/LeicaData/26-01-14_UVinLiveCells/D1_MyOne_200mM-I2959_20pHPMA'
+# df = checkDT_multiFile(dirPath)
+            
 
 # %%% Stats
 
