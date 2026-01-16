@@ -40,12 +40,12 @@ import numbers
 import matplotlib
 import traceback
 
-
 from scipy import interpolate
 from scipy import signal
 from scipy import odr
 
-import xml.etree.ElementTree as ET
+from PIL import Image
+from PIL.TiffTags import TAGS
 from ome_types import from_tiff
 
 from skimage import io, filters, exposure, measure, transform, util, color
@@ -443,12 +443,129 @@ def softMkdir(path):
 
 # %%% Tiff files
 
-
-
-import xml.etree.ElementTree as ET
-from ome_types import from_tiff
-
 # fileName = '25-12-18_20x_FastBFGFP_1_MMStack_Default.ome.tif'
+
+#### Made in PMMH
+
+def get_CZT_fromTiff(filePath):
+    img = Image.open(filePath)
+    meta_dict = {TAGS[key] : img.tag[key] for key in img.tag_v2}
+    # md_str = str(meta_dict['ImageJMetaData'].decode('UTF-8'))
+    md_str = str(meta_dict['ImageJMetaData'].decode('UTF-8'))[1:-3:2]
+    md_array = np.array(md_str.split('#')).astype('<U100')
+    channel_str = r'c:\d+/\d+'
+    slice_str = r'z:\d+/\d+'
+    time_str = r't:\d+/\d+'
+    line0 = md_array[0]
+    c_match = re.search(channel_str, line0)
+    c_tot = int(line0[c_match.start():c_match.end():].split('/')[-1])
+    z_match = re.search(slice_str, line0)
+    z_tot = int(line0[z_match.start():z_match.end():].split('/')[-1])
+    t_match = re.search(time_str, line0)
+    t_tot = int(line0[t_match.start():t_match.end():].split('/')[-1])
+    czt_shape = [c_tot, z_tot, t_tot]
+
+    czt_seq = []
+    for line in md_array:
+        if len(line) > 12:
+            c_match = re.search(channel_str, line)
+            c_raw = line[c_match.start():c_match.end():]
+            c = c_raw.split('/')[0].split(':')[-1]
+            z_match = re.search(slice_str, line)
+            z_raw = line[z_match.start():z_match.end():]
+            z = z_raw.split('/')[0].split(':')[-1]
+            t_match = re.search(time_str, line)
+            t_raw = line[t_match.start():t_match.end():]
+            t = t_raw.split('/')[0].split(':')[-1]
+            czt_seq.append([int(c), int(z), int(t)])
+            
+    return(czt_shape, czt_seq)
+
+def OMEReadField(parsed_str, target_str):
+    target_str = r'' + target_str
+    res = []
+    matches = re.finditer(target_str, parsed_str)
+    for m in matches:
+        str_num = parsed_str[m.end():m.end()+30]
+        m_num = re.search(r'[\d\.]+', str_num)
+        val_num = float(str_num[m_num.start():m_num.end()])
+        res.append(val_num)
+    return(res)
+
+
+def OMEDataParser_tz(filepath):
+    # with open(filepath, 'r') as f:
+    #     text = f.read()
+    
+    ome = from_tiff(filepath)
+    text = ome.to_xml()
+        
+    nC, nT, nZ = OMEReadField(text, ' SizeC=')[0], OMEReadField(text, ' SizeT=')[0], OMEReadField(text, ' SizeZ=')[0]
+    nC, nT, nZ = int(nC), int(nT), int(nZ)
+    CTZ_tz = np.zeros((nC, nT, nZ, 2))
+    
+    lines = text.split('\n')
+    plane_lines = []
+    for line in lines:
+        if line.startswith('<Plane'):
+            plane_lines.append(line)
+    
+    for line in plane_lines:
+        cIdx = int(OMEReadField(line, r' TheC=')[0])
+        tIdx = int(OMEReadField(line, r' TheT=')[0])
+        zIdx = int(OMEReadField(line, r' TheZ=')[0])
+        
+        tVal = OMEReadField(line, r' DeltaT=')[0]
+        zVal = OMEReadField(line, r' PositionZ=')[0]
+        
+        CTZ_tz[cIdx, tIdx, zIdx] = [tVal, zVal]
+    
+    return(CTZ_tz)
+
+def OMEDataParser_t(filepath):
+    # with open(filepath, 'r') as f:
+    #     text = f.read()
+    
+    ome = from_tiff(filepath)
+    text = ome.to_xml()
+        
+    nC, nT, nZ = OMEReadField(text, ' SizeC=')[0], OMEReadField(text, ' SizeT=')[0], OMEReadField(text, ' SizeZ=')[0]
+    nC, nT, nZ = int(nC), int(nT), int(nZ)
+    CTZ_t = np.zeros((nC, nT, nZ))
+    
+    lines = text.split('\n')
+    plane_lines = []
+    for line in lines:
+        if line.startswith('<Plane'):
+            plane_lines.append(line)
+    
+    for line in plane_lines:
+        cIdx = int(OMEReadField(line, r' TheC=')[0])
+        tIdx = int(OMEReadField(line, r' TheT=')[0])
+        zIdx = int(OMEReadField(line, r' TheZ=')[0])
+        
+        tVal = OMEReadField(line, r' DeltaT=')[0]
+        
+        print(tVal)
+        
+        CTZ_t[cIdx, tIdx, zIdx] = tVal
+    
+    return(CTZ_t)
+
+#### WORK IN PROGRESS !
+
+WD_path = 'C:/Users/Joseph/Desktop/WorkingData'    
+# WD_path = 'E:/WorkingData'
+dirPath = WD_path + '/LeicaData/26-01-14_UVinLiveCells/D1_MyOne_200mM-I2959_20pHPMA/26-01-13_C3_beforeUV_1'
+filePath = dirPath + '/26-01-13_C3_beforeUV_1_MMStack_Default.ome.tif'
+# dirPath = 'E:/WorkingData/LeicaData/25-12-18_WithJessica/25-12-18_Droplet01_JN-Magnet_MyOne-Gly80/'
+# print(extractDT(dirPath))
+
+CTZ_t = OMEDataParser_t(filePath)
+# ome = from_tiff(filePath)
+# xmlText = ome.to_xml()
+
+#### Made in IJM
 
 def extractDT(dirPath):
     S = '{http://www.openmicroscopy.org/Schemas/OME/2016-06}'
