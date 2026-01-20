@@ -554,16 +554,16 @@ def OMEDataParser_t(filepath):
 
 #### WORK IN PROGRESS !
 
-WD_path = 'C:/Users/Joseph/Desktop/WorkingData'    
-# WD_path = 'E:/WorkingData'
-dirPath = WD_path + '/LeicaData/26-01-14_UVinLiveCells/D1_MyOne_200mM-I2959_20pHPMA/26-01-13_C3_beforeUV_1'
-filePath = dirPath + '/26-01-13_C3_beforeUV_1_MMStack_Default.ome.tif'
-# dirPath = 'E:/WorkingData/LeicaData/25-12-18_WithJessica/25-12-18_Droplet01_JN-Magnet_MyOne-Gly80/'
-# print(extractDT(dirPath))
+# WD_path = 'C:/Users/Joseph/Desktop/WorkingData'    
+# # WD_path = 'E:/WorkingData'
+# dirPath = WD_path + '/LeicaData/26-01-14_UVinLiveCells/D1_MyOne_200mM-I2959_20pHPMA/26-01-13_C3_beforeUV_1'
+# filePath = dirPath + '/26-01-13_C3_beforeUV_1_MMStack_Default.ome.tif'
+# # dirPath = 'E:/WorkingData/LeicaData/25-12-18_WithJessica/25-12-18_Droplet01_JN-Magnet_MyOne-Gly80/'
+# # print(extractDT(dirPath))
 
-CTZ_t = OMEDataParser_t(filePath)
-# ome = from_tiff(filePath)
-# xmlText = ome.to_xml()
+# CTZ_t = OMEDataParser_t(filePath)
+# # ome = from_tiff(filePath)
+# # xmlText = ome.to_xml()
 
 #### Made in IJM
 
