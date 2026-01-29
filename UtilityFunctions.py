@@ -794,6 +794,7 @@ def fitCircle(contour, loss = 'huber'):
     result = least_squares(f_2, center_estimate, loss=loss) # Functions from the scipy.optimize library
     center = result.x
     R = np.mean(calc_R(*center))
+    center = (center[1], center[0])
     
     return(center, R)
 
