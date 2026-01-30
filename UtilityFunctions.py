@@ -33,6 +33,7 @@ import xml.etree.ElementTree as ET
 
 import os
 import re
+import json
 import time
 import shutil
 import random
@@ -392,6 +393,40 @@ def trackSelection(tracks, mode="longest"):
         print('Unspecified track selection')
         # Fallback: first track
         return(tracks[0])
+    
+    
+def list2json(L, dirPath, fileName):
+    L = list(L)
+    with open(os.path.join(dirPath, fileName + '.json'), 'w') as fp:
+        json.dump(L, fp, indent=4)
+        
+def json2list(dirPath, fileName):
+    with open(os.path.join(dirPath, fileName + '.json'), 'r') as fp:
+        L = json.load(fp)
+    L = list(L)
+    return(L)
+    
+def dict2json(d, dirPath, fileName):
+    for k in d.keys():
+        obj = d[k]
+        if isinstance(obj, np.ndarray):
+            d[k] = d[k].tolist()
+        else:
+            pass
+    with open(os.path.join(dirPath, fileName + '.json'), 'w') as fp:
+        json.dump(d, fp, indent=4)
+        
+        
+def json2dict(dirPath, fileName):
+    with open(os.path.join(dirPath, fileName + '.json'), 'r') as fp:
+        d = json.load(fp)
+    for k in d.keys():
+        obj = d[k]
+        if isinstance(obj, list):
+            d[k] = np.array(d[k])
+        else:
+            pass
+    return(d)
 
 
 # %%% File manipulation
@@ -512,6 +547,21 @@ def OMEDataParser(filepath):
             zVal = OMEReadField(line, r' PositionZ=')[0]
             TZ_tz[tIdx, zIdx] = [tVal, zVal]
         result = TZ_tz
+        
+    elif nC == 1 and nZ == 1:
+        case = 'T_t'
+        T_t = np.zeros(nT)
+        lines = text.split('\n')
+        plane_lines = []
+        for line in lines:
+            target = r'([\s]+)<Plane'
+            if re.match(target, line):
+                plane_lines.append(line)
+        for line in plane_lines:
+            tIdx = int(OMEReadField(line, r' TheT=')[0])
+            tVal = OMEReadField(line, r' DeltaT=')[0]
+            T_t[tIdx] = tVal
+        result = T_t
     
     return(result, case)
 
@@ -596,16 +646,18 @@ def OMEDataParser_tz(filepath):
 
 
 
-# WD_path = 'C:/Users/Joseph/Desktop/WorkingData'    
-# # WD_path = 'E:/WorkingData'
-# dirPath = WD_path + '/LeicaData/26-01-14_UVinLiveCells/D1_MyOne_200mM-I2959_20pHPMA/26-01-13_C3_beforeUV_1'
-# filePath = dirPath + '/26-01-13_C3_beforeUV_1_MMStack_Default.ome.tif'
-# # dirPath = 'E:/WorkingData/LeicaData/25-12-18_WithJessica/25-12-18_Droplet01_JN-Magnet_MyOne-Gly80/'
-# # print(extractDT(dirPath))
+WD_path = 'C:/Users/Joseph/Desktop/WorkingData'    
+# WD_path = 'E:/WorkingData'
+dirPath = WD_path + '/LeicaData/26-01-14_UVinLiveCells/D1_MyOne_200mM-I2959_20pHPMA/26-01-13_C3_beforeUV_1'
+filePath = dirPath + '/26-01-13_C3_beforeUV_1_MMStack_Default.ome.tif'
+# dirPath = 'E:/WorkingData/LeicaData/25-12-18_WithJessica/25-12-18_Droplet01_JN-Magnet_MyOne-Gly80/'
+# print(extractDT(dirPath))
 
-# CTZ_t = OMEDataParser_t(filePath)
-# # ome = from_tiff(filePath)
-# # xmlText = ome.to_xml()
+
+
+result, case = OMEDataParser(filePath)
+# ome = from_tiff(filePath)
+# xmlText = ome.to_xml()
 
 #### Made in IJM
 
