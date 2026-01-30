@@ -31,15 +31,14 @@ import tifffile
 import traceback
 
 import numpy as np
+import pandas as pd
 import pyjokes as pj
+import skimage as skm
+import scipy.ndimage as ndi
 import matplotlib.pyplot as plt
 
 import GraphicStyles as gs
 import UtilityFunctions as ufun
-
-from skimage import io
-from skimage import measure
-
 
 # Unused imports
 
@@ -95,14 +94,20 @@ def getListOfSourceFolders(Dir, forbiddenWords = [], compulsaryWords = []): # 'd
     return(res)
 
 
-def copyMetadataFiles(ListDirSrc, DirDst, suffix = '.txt'):
+def copy_metadata_files(ListDirSrc, DirDst, suffix = '.txt'):
     """
     Import the Field.txt files from the relevant folders.
     Calls the copyFilesWithString from ufun with suffix = '_Field.txt'
-    
     """
     for DirSrc in ListDirSrc:
         ufun.copyFilesWithString(DirSrc, DirDst, suffix)
+        
+def extract_T_from_OMEtiff(ListPaths, DirDst):
+    """
+
+    """
+    #### TODO !
+    pass
         
         
         
@@ -199,7 +204,80 @@ def load_IC_region(listpath, time_indices=None, x_slice=None, y_slice=None):
     return(np.stack(cropped_stack, axis=0))
 
 
-def Zprojection(stack, kind = 'min', scaleFactor = 1/4, normalize = False):
+def analyze_cropped_stack(image, tasks = ['Magnet_frames', 'Magnet_pos']):
+    """
+    
+    
+    """
+
+    pass
+
+def get_largest_object_contour(img, mode = 'dark'):
+    th = skm.filters.threshold_otsu(img)
+    if mode == 'dark':
+        img_bin = (img < th)
+    elif mode == 'bright':
+        img_bin = (img > th)
+    img_label, num_features = ndi.label(img_bin)
+    df = pd.DataFrame(skm.measure.regionprops_table(img_label, img, properties = ['label', 'area']))
+    df = df.sort_values(by='area', ascending=False)
+    i_label = df.label.values[0]
+    img_bin_object = (img_label == i_label)
+    img_bin_object = ndi.binary_fill_holes(img_bin_object)
+    [contour_object] = skm.measure.find_contours(img_bin_object, 0.5)
+    return(contour_object)
+
+def get_magnet_loc(img):
+    [nY, nX] = img.shape
+    
+    #### First thresholding
+    contour_magnet = get_largest_object_contour(img, mode = 'dark')
+    cmX, cmY = contour_magnet[:,1], contour_magnet[:,0]
+    
+    #### Second thresholding
+    Xmax = np.max(cmX)
+    img_cropped = img[:, 0:int(Xmax*1.2)]
+    contour_magnet = get_largest_object_contour(img_cropped, mode = 'dark')
+    cmX, cmY = contour_magnet[:,1], contour_magnet[:,0]
+    
+    #### Define circle arc and fit
+    selected_points = (np.abs(cmY-(nY/2)) < (nY/4))
+    arc_magnet = contour_magnet[selected_points, :]
+    mag_center, mag_R = ufun.fitCircle(arc_magnet, loss = 'huber')
+    # mag_center in YX format
+    return(mag_center, mag_R) #, arc_magnet)
+
+
+def get_magnet_frames(img):
+    [nT, nY, nX] = img.shape
+    
+    S = np.mean(img, axis=(1,2))
+    th = skm.filters.threshold_otsu(S) # unconventionnal use of otsu thresholding
+    # low = np.median(S[S < th])
+    # high = np.median(S[S > th])
+    # th2 = 0.8 * low + 0.2 * high # kind of weighted mean
+    # print(th, low, high, th2)
+    frames_with_magnet = (S > th)
+    if frames_with_magnet[0]: # if the array has True for background instead of False, invert it.
+        frames_with_magnet = ~frames_with_magnet
+
+    first_idx = ufun.findFirst(1, frames_with_magnet)
+    last_idx = ufun.findLast(1, frames_with_magnet)
+    
+    first_frame_withMagnet = first_idx + 1
+    last_frame_beforeMagnet = first_frame_withMagnet - 1
+    last_frame_withMagnet = last_idx + 1
+    
+    # Maybe unecessary
+    # if frames_with_magnet[-1]:
+    #     last_frame_withMagnet = nT
+    
+    return(last_frame_beforeMagnet, last_frame_withMagnet)
+    
+
+
+
+def Z_projection(stack, kind = 'min', scaleFactor = 1/4, output_type = 'uint8', normalize = False):
     """
     From an image stack in the (T, Y, X) format
     does a scaled-down (by 'scaleFactor') Z-projection (minimum by default)
@@ -217,7 +295,7 @@ def Zprojection(stack, kind = 'min', scaleFactor = 1/4, normalize = False):
         Zimg = np.median(stack, axis = 0)
     Zimg = cv2.resize(Zimg, (int(imgWidth*scaleFactor), int(imgHeight*scaleFactor)))
     if normalize:
-        Zimg = cv2.normalize(Zimg, None, 0, 255, cv2.NORM_MINMAX, dtype=dtype_matching['uint8'])
+        Zimg = cv2.normalize(Zimg, None, 0, 255, cv2.NORM_MINMAX, dtype=dtype_matching[output_type])
         # Zimg = cv2.normalize(Zimg, None, 0, 65535, cv2.NORM_MINMAX, dtype=dtype_matching['uint16'])
     return(Zimg)
 
@@ -282,7 +360,7 @@ def shape_selection(event, x, y, flags, param):
         
 
 
-def cropAndCopy(DirSrc, DirDst, allRefPoints, allStackPaths, 
+def crop_and_copy(DirSrc, DirDst, allRefPoints, allStackPaths, 
                 source_format = 'single file', suffix = '',
                 bin_output = False, bin_N = 1, bin_func = np.mean,
                 channel = 'nan', prefix = 'nan'):
@@ -310,7 +388,6 @@ def cropAndCopy(DirSrc, DirDst, allRefPoints, allStackPaths,
         refPts = np.array(allRefPoints[i])
         x1, x2 = int(min(refPts[:,0])), int(max(refPts[:,0]))
         y1, y2 = int(min(refPts[:,1])), int(max(refPts[:,1]))
-
         
         # to detect supplementary selections
         try:
@@ -360,13 +437,12 @@ def cropAndCopy(DirSrc, DirDst, allRefPoints, allStackPaths,
                                               x_slice=slice(x1,x2,1), y_slice=slice(y1,y2,1))
             
             if bin_output:
-                cropped_stack = measure.block_reduce(cropped_stack, 
+                cropped_stack = skm.measure.block_reduce(cropped_stack, 
                                                      block_size = bin_N, func = bin_func, 
                                                      cval = 0)
-            
-            
+
             FileDst = stackName + suffix_1 + suffix_2 + '.tif'
-            io.imsave(os.path.join(DirDst, FileDst), cropped_stack)
+            skm.io.imsave(os.path.join(DirDst, FileDst), cropped_stack)
             print(gs.GREEN + os.path.join(DirDst, FileDst) + '\nSaved sucessfully' + gs.NORMAL)
         
         except Exception:
@@ -393,6 +469,7 @@ microscope = 'Leica'
 source_format = 'single file' # 'image collection'
 # imagePrefix = 'im'
 checkIfAlreadyExist = True
+GetOMEdata = True
 
 scaleFactor = 1/8
 
@@ -414,6 +491,7 @@ allStackPaths = getListOfSourceFolders(DirSrc,
 
 allStacks = []
 allStacksToCrop = []
+allStacksPath = []
 ref_point = []
 allRefPoints = []
 allZimg = []
@@ -450,6 +528,7 @@ for i in range(len(allStackPaths)):
                 continue
             else:
                 stackPath = os.path.join(StackFolder, TifList[0])
+                allStacksPath.append(stackPath)
                 stackShape, stackType = tiff_inspect(stackPath)
                 (nT, nY, nX) = stackShape
                 TT = np.array([t for t in range(0, nT, 5)])
@@ -471,7 +550,7 @@ for i in range(len(allStackPaths)):
                 stack = load_IC_region(stackPaths, time_indices=TT, 
                                           x_slice=None, y_slice=None)
                 
-        Zimg = Zprojection(stack, kind = 'min', scaleFactor = scaleFactor, normalize = True)
+        Zimg = Z_projection(stack, kind = 'min', scaleFactor = scaleFactor, normalize = True)
         allStacks.append(StackFolder)
         allZimg.append(Zimg)
         print(gs.CYAN + '--> Will be copied' + gs.NORMAL)
@@ -479,8 +558,8 @@ for i in range(len(allStackPaths)):
         #     print(gs.BRIGHTRED + '/!\ Unexpected error during file handling' + gs.NORMAL)
 
 
-# copyMetadataFiles(allStacks, DirDst, suffix = '_Status.txt')
-# copyMetadataFiles(allStacks, DirDst, suffix = '_Status.txt')
+# copy_metadata_files(allStacks, DirDst, suffix = '_Status.txt')
+# copy_metadata_files(allStacks, DirDst, suffix = '_Status.txt')
 # allZimg_og = np.copy(np.asarray(allZimg)) # TBC
 
 #%% Main function 2/2
@@ -532,24 +611,24 @@ for i in range(min(len(allZimg), limiter)):
     cv2.setMouseCallback(stackName, shape_selection)
     
     while True:
-    # display the image and wait for a keypress
+    # Display the image and wait for a keypress
         stackPath = allStacks[i]
         stackDir, stackName = os.path.split(stackPath)
         cv2.imshow(stackName, img)
         key = cv2.waitKey(20) & 0xFF
         
-    # press 'r' to reset the crop
+    # Press 'r' to reset the crop
         if key == ord("r"):  
             img = np.copy(img_backup)  
              
-    # if the 'a' key is pressed, break from the loop and move on to t/he next file
+    # If the 'a' key is pressed, break from the loop and move on to t/he next file
         elif key == ord("a"):
             allRefPoints.append(np.asarray(ref_point)/scaleFactor)
             allStacksToCrop.append(stackPath)
             break
         
-    # if the 's' key is pressed, save the coordinates and rest the crop, ready to save once more
-    # The code can accept more than 2 selections per stack !!!
+    # If the 's' key is pressed, save the coordinates and rest the crop, ready to save once more
+    # The code can accept more than 2 selections per stack !
         elif key == ord("s"):
             allRefPoints.append(np.asarray(ref_point)/scaleFactor)
             allStacksToCrop.append(stackPath)
@@ -563,17 +642,20 @@ cv2.destroyAllWindows()
 print(allStacksToCrop)
 print(gs.BLUE + 'Saving all tiff stacks...' + gs.NORMAL)
 
-cropAndCopy(DirSrc, DirDst, allRefPoints[:], allStacksToCrop[:], 
+crop_and_copy(DirSrc, DirDst, allRefPoints[:], allStacksToCrop[:], 
             source_format = source_format, suffix = '',
             bin_output = False, bin_N = 1, bin_func = np.mean,
             channel = 'nan', prefix = 'nan')
 
-cropAndCopy(DirSrc, DirDst, allRefPoints[:], allStacksToCrop[:], 
-            source_format = source_format, suffix = '_Binned',
-            bin_output = True, bin_N = 3, bin_func = np.mean,
-            channel = 'nan', prefix = 'nan')
+if GetOMEdata:
+    extract_T_from_OMEtiff(allStacksPath, DirDst)
 
-# skimage.measure.block_reduce(image, block_size=2, func=<function sum>, cval=0, func_kwargs=None)
+# crop_and_copy(DirSrc, DirDst, allRefPoints[:], allStacksToCrop[:], 
+#             source_format = source_format, suffix = '_Binned',
+#             bin_output = True, bin_N = 3, bin_func = np.mean,
+#             channel = 'nan', prefix = 'nan')
+
+# skm.measure.block_reduce(image, block_size=2, func=<function sum>, cval=0, func_kwargs=None)
 
 
 # %% Tests
@@ -601,6 +683,98 @@ print(case)
 
 # %%%
 
+# %%%
+
+srcDir = "C:/Users/Utilisateur/Desktop/AnalysisPulls/26-01-14_BeadTracking/Films"
+imgName = '26-01-14_M1_C3_Pa1_P2.tif'
+imgPath = os.path.join(srcDir, imgName)
+
+
+print(tiff_inspect(imgPath))
+
+img_size, img_type = tiff_inspect(imgPath)
+
+# If = load_stack_region(imgPath)
+# img = If
+# img = skm.util.invert(img)
+# fI, fL = get_magnet_frames(img)
+
+# fig, ax = plt.subplots(1, 1)
+# ax.imshow(img[fI], cmap='gray')
+# plt.show()
+
+# fig, ax = plt.subplots(1, 1)
+# ax.imshow(img[fL], cmap='gray')
+# plt.show()
+
+
+
+Ic = load_stack_region(imgPath, x_slice=slice(0,50,1))
+img = Ic
+img = skm.util.invert(img)
+fI, fL = get_magnet_frames(img)
+
+fig, ax = plt.subplots(2, 2, sharex = True, sharey= True, figsize=(3, 8))
+ax[0,0].imshow(img[fI-1], cmap='gray')
+ax[0,1].imshow(img[fI], cmap='gray')
+ax[1,0].imshow(img[fL-1], cmap='gray')
+ax[1,1].imshow(img[fL], cmap='gray')
+# fig.tight_layout()
+fig.suptitle(imgName[:-4], fontsize=10)
+plt.show()
+
+# S = np.mean(img, axis=(1,2))
+
+
+# %%%
+
+A = np.ones(50)
+for i in range(20, 40):
+    A[i] = 1.5
+
+th = skm.filters.threshold_otsu(A)
+print(th)
+
+
+A = np.ones((500, 400, 400))
+S = np.sum(A, axis=(1,2))
+
+# %%%
+
+srcDir = "C:/Users/Utilisateur/Desktop/AnalysisPulls/26-01-14_BeadTracking/Films"
+imgPath = os.path.join(srcDir, '26-01-14_M1_C4_Pa1_P3.tif')
+
+
+print(tiff_inspect(imgPath))
+
+I1 = load_stack_region(imgPath)
+I1 = skm.util.invert(I1)
+
+I1_min = Z_projection(I1, kind='min', scaleFactor=1, output_type='uint16')
+
+center, R, contour = get_magnet_loc(I1_min)
+
+
+
+# fig, ax = plt.subplots(1, 1)
+# ax.plot(contour[:,1], contour[:,0], 'b--')
+# ax.plot(center[0], center[1], 'go', markersize = 10)
+# circle = plt.Circle((center[0], center[1]), R, facecolor='None', edgecolor='r')
+# ax.add_patch(circle)
+# ax.set_aspect('equal')
+# plt.show()
+
+fig, ax = plt.subplots(1, 1)
+ax.imshow(I1_min, cmap='gray')
+ax.plot(contour[:,1], contour[:,0], 'b--')
+ax.plot(center[1], center[0], 'go', markersize = 10)
+circle = plt.Circle((center[1], center[0]), R, facecolor='None', edgecolor='r')
+ax.add_patch(circle)
+plt.show()
+
+
+# %%%
+
 TestFolder = "C:/Users/Utilisateur/Desktop/MicroscopeData/Leica/25-09-19/Test"
 
 stackPath = os.path.join(TestFolder, 'M1_D6_P1_S', '25-09-19_M1_D6_P1_noUV_Gly75p_NaSS5p_I2959-50mM_1_MMStack_Default.ome.tif')
@@ -616,7 +790,7 @@ print(tiff_inspect(stackPath))
 I1 = load_stack_region(stackPath,
                        time_indices=time_indices, x_slice=x_slice, y_slice=y_slice)
 
-I1_median = Zprojection(I1, kind='median', scaleFactor=1, output_type='uint16')
+I1_median = Z_projection(I1, kind='median', scaleFactor=1, output_type='uint16')
 
 I1_cleaned = I1 - I1_median
 
@@ -625,8 +799,8 @@ plt.imshow(I1_cleaned[-1])
 # I2 = load_IC_region(listpaths, 
 #                    time_indices=time_indices, x_slice=x_slice, y_slice=y_slice)
 
-# io.imshow(I1[0])
-# io.imshow(I2[0])
+# skm.io.imshow(I1[0])
+# skm.io.imshow(I2[0])
 
 
 
