@@ -443,7 +443,77 @@ def softMkdir(path):
 
 # %%% Tiff files
 
-# fileName = '25-12-18_20x_FastBFGFP_1_MMStack_Default.ome.tif'
+#### The best ones
+
+def OMEReadField(parsed_str, target_str):
+    target_str = r'' + target_str
+    res = []
+    matches = re.finditer(target_str, parsed_str)
+    for m in matches:
+        str_num = parsed_str[m.end():m.end()+30]
+        m_num = re.search(r'[\d\.]+', str_num)
+        val_num = float(str_num[m_num.start():m_num.end()])
+        res.append(val_num)
+    return(res)
+
+def OMEDataParser(filepath):
+    ome = from_tiff(filepath)
+    text = ome.to_xml()
+    nC, nT, nZ = OMEReadField(text, ' SizeC=')[0], OMEReadField(text, ' SizeT=')[0], OMEReadField(text, ' SizeZ=')[0]
+    nC, nT, nZ = int(nC), int(nT), int(nZ)
+    
+    if nC > 1 and nZ > 1:
+        case = 'CTZ_tz'
+        CTZ_tz = np.zeros((nC, nT, nZ, 2))
+        lines = text.split('\n')
+        plane_lines = []
+        for line in lines:
+            target = r'([\s]+)<Plane'
+            if re.match(target, line):
+                plane_lines.append(line)
+        for line in plane_lines:
+            cIdx = int(OMEReadField(line, r' TheC=')[0])
+            tIdx = int(OMEReadField(line, r' TheT=')[0])
+            zIdx = int(OMEReadField(line, r' TheZ=')[0])
+            tVal = OMEReadField(line, r' DeltaT=')[0]
+            zVal = OMEReadField(line, r' PositionZ=')[0]
+            CTZ_tz[cIdx, tIdx, zIdx] = [tVal, zVal]
+        result = CTZ_tz
+        
+    elif nC > 1 and nZ == 1:
+        case = 'CT_t'
+        CT_t = np.zeros((nC, nT))
+        lines = text.split('\n')
+        plane_lines = []
+        for line in lines:
+            target = r'([\s]+)<Plane'
+            if re.match(target, line):
+                plane_lines.append(line)
+        for line in plane_lines:
+            cIdx = int(OMEReadField(line, r' TheC=')[0])
+            tIdx = int(OMEReadField(line, r' TheT=')[0])
+            tVal = OMEReadField(line, r' DeltaT=')[0]
+            CT_t[cIdx, tIdx] = tVal
+        result = CT_t
+        
+    elif nC == 1 and nZ > 1:
+        case = 'TZ_tz'
+        TZ_tz = np.zeros((nT, nZ))
+        lines = text.split('\n')
+        plane_lines = []
+        for line in lines:
+            target = r'([\s]+)<Plane'
+            if re.match(target, line):
+                plane_lines.append(line)
+        for line in plane_lines:
+            tIdx = int(OMEReadField(line, r' TheT=')[0])
+            zIdx = int(OMEReadField(line, r' TheZ=')[0])
+            tVal = OMEReadField(line, r' DeltaT=')[0]
+            zVal = OMEReadField(line, r' PositionZ=')[0]
+            TZ_tz[tIdx, zIdx] = [tVal, zVal]
+        result = TZ_tz
+    
+    return(result, case)
 
 #### Made in PMMH
 
@@ -481,16 +551,17 @@ def get_CZT_fromTiff(filePath):
             
     return(czt_shape, czt_seq)
 
-def OMEReadField(parsed_str, target_str):
-    target_str = r'' + target_str
-    res = []
-    matches = re.finditer(target_str, parsed_str)
-    for m in matches:
-        str_num = parsed_str[m.end():m.end()+30]
-        m_num = re.search(r'[\d\.]+', str_num)
-        val_num = float(str_num[m_num.start():m_num.end()])
-        res.append(val_num)
-    return(res)
+
+# def OMEReadField(parsed_str, target_str):
+#     target_str = r'' + target_str
+#     res = []
+#     matches = re.finditer(target_str, parsed_str)
+#     for m in matches:
+#         str_num = parsed_str[m.end():m.end()+30]
+#         m_num = re.search(r'[\d\.]+', str_num)
+#         val_num = float(str_num[m_num.start():m_num.end()])
+#         res.append(val_num)
+#     return(res)
 
 
 def OMEDataParser_tz(filepath):
@@ -507,7 +578,8 @@ def OMEDataParser_tz(filepath):
     lines = text.split('\n')
     plane_lines = []
     for line in lines:
-        if line.startswith('<Plane'):
+        target = r'([\s]+)<Plane'
+        if re.match(target, line):
             plane_lines.append(line)
     
     for line in plane_lines:
@@ -522,48 +594,7 @@ def OMEDataParser_tz(filepath):
     
     return(CTZ_tz)
 
-def OMEDataParser_t(filepath):
-    # with open(filepath, 'r') as f:
-    #     text = f.read()
-    
-    ome = from_tiff(filepath)
-    text = ome.to_xml()
-        
-    nC, nT, nZ = OMEReadField(text, ' SizeC=')[0], OMEReadField(text, ' SizeT=')[0], OMEReadField(text, ' SizeZ=')[0]
-    nC, nT, nZ = int(nC), int(nT), int(nZ)
-    CTZ_t = np.zeros((nC, nT, nZ))
-    
-    lines = text.split('\n')
-    plane_lines = []
-    for line in lines:
-        if line.startswith('<Plane'):
-            plane_lines.append(line)
-    
-    for line in plane_lines:
-        cIdx = int(OMEReadField(line, r' TheC=')[0])
-        tIdx = int(OMEReadField(line, r' TheT=')[0])
-        zIdx = int(OMEReadField(line, r' TheZ=')[0])
-        
-        tVal = OMEReadField(line, r' DeltaT=')[0]
-        
-        print(tVal)
-        
-        CTZ_t[cIdx, tIdx, zIdx] = tVal
-    
-    return(CTZ_t)
 
-#### WORK IN PROGRESS !
-
-WD_path = 'C:/Users/Joseph/Desktop/WorkingData'    
-# WD_path = 'E:/WorkingData'
-dirPath = WD_path + '/LeicaData/26-01-14_UVinLiveCells/D1_MyOne_200mM-I2959_20pHPMA/26-01-13_C3_beforeUV_1'
-filePath = dirPath + '/26-01-13_C3_beforeUV_1_MMStack_Default.ome.tif'
-# dirPath = 'E:/WorkingData/LeicaData/25-12-18_WithJessica/25-12-18_Droplet01_JN-Magnet_MyOne-Gly80/'
-# print(extractDT(dirPath))
-
-CTZ_t = OMEDataParser_t(filePath)
-# ome = from_tiff(filePath)
-# xmlText = ome.to_xml()
 
 #### Made in IJM
 
@@ -627,14 +658,6 @@ def getTimeFromTiff(path):
     
     return(T_C0, dT_C0)
 
-
-# dirPath = 'E:/WorkingData/LeicaData/25-12-18_WithJessica/25-12-18_Capi01_JN-Magnet_MyOne-Gly80/25-12-18_20x_FastBFGFP_1'
-# dirPath = 'E:/WorkingData/LeicaData/25-12-18_WithJessica/25-12-18_Droplet01_JN-Magnet_MyOne-Gly80/'
-# print(extractDT(dirPath))
-
-# dirPath = 'E:/WorkingData/LeicaData/26-01-07_Calib_MagnetJingAude_20x_MyOneGly75p_Capillary/26-01-07_20x_MyOneGly75p_Capillary_1'
-# print(extractDT(dirPath))
-        
 def checkDT_multiFile(dirPath):        
     list_dir = os.listdir(dirPath)
     D = {'file name':[], 'median dT':[], 'mean dT':[], 'std dT':[]}
@@ -655,9 +678,6 @@ def checkDT_multiFile(dirPath):
     df = pd.DataFrame(D)
     return(df)
 
-# dirPath = 'E:/WorkingData/LeicaData/26-01-14_UVinLiveCells/D1_MyOne_200mM-I2959_20pHPMA'
-# df = checkDT_multiFile(dirPath)
-            
 
 # %%% Stats
 

@@ -578,6 +578,29 @@ cropAndCopy(DirSrc, DirDst, allRefPoints[:], allStacksToCrop[:],
 
 # %% Tests
 
+# %%%
+
+dirPath = 'C:/Users/Joseph/Desktop/WorkingData/LeicaData/25-12-18_WithJessica/25-12-18_Droplet01_JN-Magnet_MyOne-Gly80'
+fileName = '25-12-18_20x_FastBFGFP_Droplet_1_MMStack_Default.ome.tif'
+filePath = os.path.join(dirPath, fileName)
+
+result, case = ufun.OMEDataParser(filePath)
+print(case)
+
+
+
+
+
+
+
+
+
+
+
+
+
+# %%%
+
 TestFolder = "C:/Users/Utilisateur/Desktop/MicroscopeData/Leica/25-09-19/Test"
 
 stackPath = os.path.join(TestFolder, 'M1_D6_P1_S', '25-09-19_M1_D6_P1_noUV_Gly75p_NaSS5p_I2959-50mM_1_MMStack_Default.ome.tif')
