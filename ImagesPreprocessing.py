@@ -719,6 +719,28 @@ for sP in allStacksPath:
 # This almost works :)
 
 
+# %%
+
+def dicts_concat(list_of_dicts):
+    dict_of_lists = {}
+    for k in list_of_dicts[0].keys():
+        dict_of_lists[k] = []
+        
+    for d in list_of_dicts:
+        for k in d.keys():
+            try:
+                dict_of_lists[k].append(d[k])
+            except:
+                print("Damned, your dicts don't all have the same keys !")
+    
+    return(dict_of_lists)
+
+d1 = {'a':1, 'b':2}
+d2 = {'a':2, 'b':2}
+d3 = {'a':3, 'b':2}
+list_of_dicts = [d1, d2, d3]
+D = dicts_concat(list_of_dicts)
+
 
 # %% Tests
 

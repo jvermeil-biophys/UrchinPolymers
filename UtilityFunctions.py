@@ -38,6 +38,7 @@ import time
 import shutil
 import random
 import numbers
+import tifffile
 import matplotlib
 import traceback
 
@@ -478,7 +479,102 @@ def softMkdir(path):
 
 # %%% Tiff files
 
-#### The best ones
+
+        
+def tiff_inspect(filepath):
+    with tifffile.TiffFile(filepath) as tif:
+        series = tif.series[0]  # first series
+        shape = series.shape
+        dtype = series.dtype
+    return(shape, dtype)
+
+
+def load_stack_region(filepath, time_indices=None, x_slice=None, y_slice=None):
+    """
+    Load a cropped region of a 3D TIFF (X, Y, time) with minimal memory usage.
+
+    Parameters
+    ----------
+    filename : str
+        Path to the TIFF file.
+    time_indices : list[int] or slice, optional
+        Which time points to load. Default = all.
+    x_slice : slice, optional
+        Cropping along X dimension (cols).
+    y_slice : slice, optional
+        Cropping along Y dimension (rows).
+
+    Returns
+    -------
+    numpy.ndarray
+        Cropped stack with shape (T, Y, X).
+    """
+    
+    with tifffile.TiffFile(filepath) as tif:
+        series = tif.series[0]   # the first image series
+        pages = series.pages
+        firstFrame = pages[0]
+        if time_indices is None:
+            time_indices = range(0, len(pages))
+        if x_slice is None:
+            x_slice = slice(0, firstFrame.shape[1])
+        if y_slice is None:
+            y_slice = slice(0, firstFrame.shape[0])
+
+        # Collect requested frames without loading everything
+        cropped_stack = []
+        for i in time_indices:
+            page = pages[i]
+            arr = page.asarray()[y_slice, x_slice]  # crop directly
+            cropped_stack.append(arr)
+
+        return(np.stack(cropped_stack, axis=0))
+    
+    
+def load_IC_region(listpath, time_indices=None, x_slice=None, y_slice=None):
+    """
+    Load a cropped region of an image collection (list of 2D .tif images) 
+    with minimal memory usage.
+
+    Parameters
+    ----------
+    filename : str
+        Path to the TIFF file.
+    time_indices : list[int] or slice, optional
+        Which time points to load. Default = all.
+    x_slice : slice, optional
+        Cropping along X dimension (cols).
+    y_slice : slice, optional
+        Cropping along Y dimension (rows).
+
+    Returns
+    -------
+    numpy.ndarray
+        Cropped stack with shape (T, Y, X).
+    """
+
+    with tifffile.TiffFile(listpath[0]) as tif:
+        series = tif.series[0]   # the first image series
+        pages = series.pages
+        firstFrame = pages[0]
+    if time_indices is None:
+        time_indices = np.arange(0, len(listpath))
+    if x_slice is None:
+        x_slice = slice(0, firstFrame.shape[1])
+    if y_slice is None:
+        y_slice = slice(0, firstFrame.shape[0])
+    cropped_stack = []
+    for fp in np.array(listpath)[np.array(time_indices)]:
+        with tifffile.TiffFile(fp) as tif:
+            series = tif.series[0]   # the first image series
+            pages = series.pages
+            page = pages[0]
+            arr = page.asarray()[y_slice, x_slice]  # crop directly
+            cropped_stack.append(arr)
+    return(np.stack(cropped_stack, axis=0))
+
+
+#### Parsers for OME metadata
 
 def OMEReadField(parsed_str, target_str):
     target_str = r'' + target_str
@@ -565,6 +661,8 @@ def OMEDataParser(filepath):
     
     return(result, case)
 
+# %%%% Former versions
+
 #### Made in PMMH
 
 def get_CZT_fromTiff(filePath):
@@ -646,16 +744,16 @@ def OMEDataParser_tz(filepath):
 
 
 
-WD_path = 'C:/Users/Joseph/Desktop/WorkingData'    
-# WD_path = 'E:/WorkingData'
-dirPath = WD_path + '/LeicaData/26-01-14_UVinLiveCells/D1_MyOne_200mM-I2959_20pHPMA/26-01-13_C3_beforeUV_1'
-filePath = dirPath + '/26-01-13_C3_beforeUV_1_MMStack_Default.ome.tif'
-# dirPath = 'E:/WorkingData/LeicaData/25-12-18_WithJessica/25-12-18_Droplet01_JN-Magnet_MyOne-Gly80/'
-# print(extractDT(dirPath))
+# WD_path = 'C:/Users/Joseph/Desktop/WorkingData'    
+# # WD_path = 'E:/WorkingData'
+# dirPath = WD_path + '/LeicaData/26-01-14_UVinLiveCells/D1_MyOne_200mM-I2959_20pHPMA/26-01-13_C3_beforeUV_1'
+# filePath = dirPath + '/26-01-13_C3_beforeUV_1_MMStack_Default.ome.tif'
+# # dirPath = 'E:/WorkingData/LeicaData/25-12-18_WithJessica/25-12-18_Droplet01_JN-Magnet_MyOne-Gly80/'
+# # print(extractDT(dirPath))
 
 
 
-result, case = OMEDataParser(filePath)
+# result, case = OMEDataParser(filePath)
 # ome = from_tiff(filePath)
 # xmlText = ome.to_xml()
 
