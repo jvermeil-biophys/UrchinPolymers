@@ -429,6 +429,19 @@ def json2dict(dirPath, fileName):
             pass
     return(d)
 
+def dicts_concat(list_of_dicts):
+    dict_of_lists = {}
+    for k in list_of_dicts[0].keys():
+        dict_of_lists[k] = []
+        
+    for d in list_of_dicts:
+        for k in d.keys():
+            try:
+                dict_of_lists[k].append(d[k])
+            except:
+                print("Damned, your dicts don't all have the same keys !")
+    
+    return(dict_of_lists)
 
 # %%% File manipulation
 
@@ -660,6 +673,91 @@ def OMEDataParser(filepath):
         result = T_t
     
     return(result, case)
+
+def OMEData2Df(filepath):
+    """
+    return(Df, shape)
+    shape format : T, C, Z
+    
+    Df format :
+        iT  iC  iZ        t    z
+  0      0   0   0   1881.0  7.2
+  1      1   0   0   2072.0  7.2
+  2      2   0   0   2269.0  7.2
+  3      3   0   0   2473.0  7.2
+  4      4   0   0   2675.0  7.2
+    
+    """
+    ome = from_tiff(filepath)
+    text = ome.to_xml()
+    nC, nT, nZ = OMEReadField(text, ' SizeC=')[0], OMEReadField(text, ' SizeT=')[0], OMEReadField(text, ' SizeZ=')[0]
+    nC, nT, nZ = int(nC), int(nT), int(nZ)
+    nTot = nC * nT * nZ
+    
+    M = np.array(np.meshgrid(np.arange(nC), np.arange(nZ), np.arange(nT))).T.reshape(-1,3)
+    M = M[:,[2,0,1]]
+    # M is TCZ coordinates
+    TT = M[:,0]
+    CC = M[:,1]
+    ZZ = M[:,2]
+    Df = pd.DataFrame({
+        'iT':TT,
+        'iC':CC,
+        'iZ':ZZ,
+        't':np.zeros(nTot),
+        'z':np.zeros(nTot),
+        })
+    
+    lines = text.split('\n')
+    plane_lines = []
+    for line in lines:
+        target = r'([\s]+)<Plane'
+        if re.match(target, line):
+            plane_lines.append(line)
+            
+    for line in plane_lines:
+        cIdx = int(OMEReadField(line, r' TheC=')[0])
+        tIdx = int(OMEReadField(line, r' TheT=')[0])
+        zIdx = int(OMEReadField(line, r' TheZ=')[0])
+        tVal = OMEReadField(line, r' DeltaT=')[0]
+        zVal = OMEReadField(line, r' PositionZ=')[0]
+        Df.loc[(Df['iT']==tIdx) & (Df['iC']==cIdx) & (Df['iZ']==zIdx), 't'] = tVal
+        Df.loc[(Df['iT']==tIdx) & (Df['iC']==cIdx) & (Df['iZ']==zIdx), 'z'] = zVal
+
+    shape = (nT, nC, nZ)
+    
+    return(Df, shape)
+
+WD_path = 'C:/Users/Joseph/Desktop/WorkingData'    
+# # WD_path = 'E:/WorkingData'
+dirPath = WD_path + '/LeicaData/26-01-14_UVinLiveCells/D1_MyOne_200mM-I2959_20pHPMA/26-01-13_C3_beforeUV_1'
+filePath = dirPath + '/26-01-13_C3_beforeUV_1_MMStack_Default.ome.tif'
+# # dirPath = 'E:/WorkingData/LeicaData/25-12-18_WithJessica/25-12-18_Droplet01_JN-Magnet_MyOne-Gly80/'
+# # print(extractDT(dirPath))
+
+
+# dirPath = WD_path + "/Nikon2Data/25-10-16_TestSurvie_Dextran+I2959-50mM/25-10-16_Dex+I2959-50mM_UV100p10min_AfterFertil_LongFilm_1"
+# filePath = dirPath + '/25-10-16_Dex+I2959-50mM_UV100p10min_AfterFertil_LongFilm_1_MMStack_Pos4.ome.tif'
+
+ome = from_tiff(filePath)
+text = ome.to_xml()
+nC, nT, nZ = OMEReadField(text, ' SizeC=')[0], OMEReadField(text, ' SizeT=')[0], OMEReadField(text, ' SizeZ=')[0]
+nC, nT, nZ = int(nC), int(nT), int(nZ)
+nTot = nC * nT * nZ
+
+Df, shape = OMEData2Df(filePath)
+
+# %%%%
+
+nT = 10
+nZ = 3
+nC = 2
+
+# TCZ = np.meshgrid(np.arange(nT), np.arange(nC), np.arange(nZ))
+M = np.array(np.meshgrid(np.arange(nC), np.arange(nZ), np.arange(nT))).T.reshape(-1,3)
+M = M[:,[2,0,1]]
+
+M
 
 # %%%% Former versions
 

@@ -82,7 +82,7 @@ def getListOfSourceFolders(Dir, forbiddenWords = [], compulsaryWords = []): # 'd
         
     else:
         listDirs = os.listdir(Dir)
-        print(listDirs)
+        # print(listDirs)
         for D in listDirs:
             path = os.path.join(Dir, D)
             res += getListOfSourceFolders(path, 
@@ -105,13 +105,14 @@ def copy_metadata_files(ListDirSrc, DirDst, suffix = '.txt'):
         
 def get_data_from_OMEtiff(filePath):
     """
-
+    
     """
-    result, case = ufun.OMEDataParser(filePath)
-    if case != 'T_t':
-        print('Case detected : ' + case)
-        print('Are you sure this file is correct ?')
-    return(result)
+    # result, case = ufun.OMEDataParser(filePath)
+    # if case != 'T_t':
+    #     print('Case detected : ' + case)
+    #     print('Are you sure this file is correct ?')
+    df, shape = ufun.OMEData2Df(filePath)
+    return(df)
         
         
         
@@ -222,17 +223,18 @@ def analyze_cropped_stack(imgPath, tasks = ['Magnet_frames', 'Magnet_pos']):
                                x_slice=None, y_slice=None)
         stack_Zproj = Z_projection(stack, kind = 'min', scaleFactor = 1)
         mag_center, mag_R = get_magnet_loc(stack_Zproj)
-        results['mag_center'] = mag_center
-        results['mag_R'] = mag_R
+        results['mag_y'], results['mag_x']  = mag_center
+        results['mag_r'] = mag_R
     
     if 'Magnet_frames' in tasks:
         stack_leftEdge = load_stack_region(imgPath, x_slice=slice(0, 50, 1))
         F_lastBefore, F_lastWith = get_magnet_frames(stack_leftEdge)
-        results['F_lastBefore'] = F_lastBefore
-        results['F_lastWith'] = F_lastWith
+        results['mag_fi'] = F_lastBefore
+        results['mag_ff'] = F_lastWith
         
     return(results)
-    
+
+
 
 def get_largest_object_contour(img, mode = 'dark'):
     th = skm.filters.threshold_otsu(img)
@@ -241,13 +243,43 @@ def get_largest_object_contour(img, mode = 'dark'):
     elif mode == 'bright':
         img_bin = (img > th)
     img_label, num_features = ndi.label(img_bin)
+    
     df = pd.DataFrame(skm.measure.regionprops_table(img_label, img, properties = ['label', 'area']))
     df = df.sort_values(by='area', ascending=False)
     i_label = df.label.values[0]
     img_bin_object = (img_label == i_label)
     img_bin_object = ndi.binary_fill_holes(img_bin_object)
-    [contour_object] = skm.measure.find_contours(img_bin_object, 0.5)
-    return(contour_object)
+    FoundContours = skm.measure.find_contours(img_bin_object, 0.5)
+    if len(FoundContours) == 1:
+        contour = FoundContours[0]
+    else:
+        L = [len(c) for c in FoundContours]
+        im = np.argmax(L)
+        contour = FoundContours[im]
+    
+    # fig, ax = plt.subplots(1, 1)
+    # ax.imshow(img, cmap='gray')
+    # for c in FoundContours:
+    #     ax.plot(c[:,1], c[:,0], 'b--')
+    # ax.plot(contour[:,1], contour[:,0], 'r--')
+    # plt.show()
+    
+    # except:
+    #     th = skm.filters.threshold_(img)
+    #     if mode == 'dark':
+    #         img_bin = (img < th)
+    #     elif mode == 'bright':
+    #         img_bin = (img > th)
+    #     img_label, num_features = ndi.label(img_bin)
+        
+    #     df = pd.DataFrame(skm.measure.regionprops_table(img_label, img, properties = ['label', 'area']))
+    #     df = df.sort_values(by='area', ascending=False)
+    #     i_label = df.label.values[0]
+    #     img_bin_object = (img_label == i_label)
+    #     img_bin_object = ndi.binary_fill_holes(img_bin_object)
+    #     [contour_object] = skm.measure.find_contours(img_bin_object, 0.5)
+    
+    return(contour)
 
 
 def get_magnet_loc(img):
@@ -264,7 +296,7 @@ def get_magnet_loc(img):
     cmX, cmY = contour_magnet[:,1], contour_magnet[:,0]
     
     #### Define circle arc and fit
-    selected_points = (np.abs(cmY-(nY/2)) < (nY/4))
+    selected_points = (np.abs(cmY-(nY/2)) < (nY/5))
     arc_magnet = contour_magnet[selected_points, :]
     mag_center, mag_R = ufun.fitCircle(arc_magnet, loss = 'huber')
     # mag_center in YX format
@@ -296,7 +328,10 @@ def get_magnet_frames(img):
     #     last_frame_withMagnet = nT
     
     return(last_frame_beforeMagnet, last_frame_withMagnet)
-    
+
+
+# path = 'C:/Users/Joseph/Desktop/WorkingData/LeicaData/26-01-27/Pulls/26-01-27_M1_C3_Pa0_P1_1/26-01-27_M1_C3_Pa0_P1_1_MMStack_Default.ome.tif'
+# analyze_cropped_stack(path, tasks = ['Magnet_frames', 'Magnet_pos'])
 
 def Z_projection(stack, kind = 'min', scaleFactor = 1/4, output_type = 'uint8', normalize = False):
     """
@@ -492,6 +527,9 @@ DirSrc = 'C:/Users/Joseph/Desktop/Test_Preprocessing/SourceDir' #'/M4_patterns_c
 DirDst = 'C:/Users/Joseph/Desktop/Test_Preprocessing/DestinDir'
 # DirDst_bins = ''
 
+DirSrc = 'C:/Users/Joseph/Desktop/WorkingData/LeicaData/26-01-27/Pulls'
+DirDst = 'C:/Users/Joseph/Desktop/AnalysisPulls/26-01-27_BeadTracking'
+
 microscope = 'Leica'
 source_format = 'single file' # 'image collection'
 # imagePrefix = 'im'
@@ -601,7 +639,7 @@ instructionText += "\n\nLet's gooooo !\n"
 
 #Change below the number of stacks you want to crop at once. Run the code again to crop the remaining files. 
 # !! WARNING: Sometimes choosing too many can make your computer bug !!
-limiter = 15
+limiter = 30
 
 print(gs.YELLOW + instructionText + gs.NORMAL)
 
@@ -632,6 +670,10 @@ for i in range(min(len(allZimg), limiter)):
     img = allZimg[i]
     img_backup = np.copy(img)
     img_copy = np.copy(img)
+    
+    shape = img.shape
+    nY, nX = shape
+    print(shape)
     
     cv2.namedWindow(stackName)
     cv2.moveWindow(stackName, (count//nrows)*340, count%nrows*350)
@@ -665,9 +707,10 @@ for i in range(min(len(allZimg), limiter)):
             
     # If the 'f' key is pressed, save the full image without cropping it !
         elif key == ord("f"):
-            allRefPoints.append(np.asarray(ref_point)/scaleFactor)
+            allRefPoints.append(np.asarray([[0, 0], [nX, nY]])/scaleFactor)
             allStacksToCrop.append(stackPath)
-            img = np.copy(img_backup)    
+            img = np.copy(img_backup)
+            break
         
     count = count + 1
     print(stackPath)
@@ -693,31 +736,143 @@ allOutputPaths = crop_and_copy(DirSrc, DirDst, allRefPoints[:], allStacksToCrop[
 
 #%% Main function 3/3 --- Manage the metadata
 
+# Initialize
+ExpData = {'id' : [],
+           'date' : [],
+           'manip id' : [],
+           'cell id' : [],
+           'pull id' : [],
+           'cell type' : [],
+           'injected' : [],
+           'injection mix' : [],
+           'photo-activation' : [],
+           'light wavelength' : [],
+           'activation conds' : [],
+           'activation est power' : [],
+           'activation duration' : [],
+           'magnet' : [],
+           'mag_fi' : [],
+           'mag_ff' : [],
+           'mag_x' : [],
+           'mag_y' : [],
+           'mag_r' : [],
+           'bead' : [],
+           'b_r' : [],
+           'film_pixel_size' : [],
+           'film_dt' : [],
+           'film_dt_std' : [],
+           }
+
+
+allInputPaths = []
+allOutputPaths = []
+
+allInputDirPaths = getListOfSourceFolders(DirSrc,
+                                       forbiddenWords = forbiddenWords,
+                                       compulsaryWords = compulsaryWords)
+
+for i in range(len(allInputDirPaths)):
+    StackFolder = allInputDirPaths[i]
+    StackFolderDir, StackFolderName = os.path.split(StackFolder)
+    validStackFolder = True        
+    if not ufun.containsFilesWithExt(StackFolder, '.tif'):
+        validStackFolder = False
+    if validStackFolder:
+        FilesList = os.listdir(StackFolder)
+        TifList = [f for f in FilesList if f.endswith('.tif')]
+        if len(TifList) != 1:
+            print(gs.BRIGHTRED + '/! Several images in the folder in single file mode' + gs.NORMAL)
+            continue
+        else:
+            stackPath = os.path.join(StackFolder, TifList[0])
+            allInputPaths.append(stackPath)
+
+uncheckedOutputPaths = os.listdir(DirDst)
+uncheckedOutputPaths = [f for f in uncheckedOutputPaths if f.endswith('.tif')]
+
+for iP in allInputPaths:
+    iD, iF = os.path.split(iP)
+    Id = '_'.join(iF.split('_')[:5])
+    for F in uncheckedOutputPaths:
+        if F.startswith(Id):
+            allOutputPaths.append(iP)
+                
+N = len(allInputPaths)
 
 # Analyse the output image
-AllFilesRes = []
-for sP in allOutputPaths:
-    d, f = os.path.split(sP)
-    print(sP)
-    oneFileRes = analyze_cropped_stack(sP, tasks = ['Magnet_frames', 'Magnet_pos'])
-    oneFileRes['Pull id'] = '_'.join(f.split('_')[:6])
-    AllFilesRes.append(oneFileRes)
-
-
-# Get the OME metadata, if possible
-for sP in allStacksPath:
-    d, f = os.path.split(sP)
-    Pid = '_'.join(f.split('_')[:6])
+for iP, oP in zip(allInputPaths, allOutputPaths):
+    oD, oF = os.path.split(oP)
+    date = oF.split('_')[0]
+    Id = '_'.join(oF.split('_')[:5])
+    Mid = '_'.join(oF.split('_')[0:2])
+    Cid = '_'.join(oF.split('_')[1:4])
+    Pid = '_'.join(oF.split('_')[1:5])
+    ExpData['id'].append(Id)
+    ExpData['date'].append(date)
+    ExpData['manip id'].append(Mid)
+    ExpData['cell id'].append(Cid)
+    ExpData['pull id'].append(Pid)
+    
+    oneFileResDict = analyze_cropped_stack(oP, tasks = ['Magnet_frames', 'Magnet_pos'])
+    # print(oneFileResDict)
+    ExpData['mag_x'].append(oneFileResDict['mag_x'])
+    ExpData['mag_y'].append(oneFileResDict['mag_y'])
+    ExpData['mag_r'].append(oneFileResDict['mag_r'])
+    ExpData['mag_fi'].append(oneFileResDict['mag_fi'])
+    ExpData['mag_ff'].append(oneFileResDict['mag_ff'])
+    
+    iD, iF = os.path.split(iP)
+    Pid = '_'.join(iF.split('_')[:6])
     fTxtName = Pid + '_OmeMd.txt'
     fBinName = Pid + '_OmeMd.npy'
-    data = get_data_from_OMEtiff(sP)
-    np.savetxt(os.path.join(DirDst, fTxtName), data, fmt='%.0f', delimiter=' ', 
-               newline='\n', header='', footer='', comments='# ', encoding=None)
-    np.save(os.path.join(DirDst, fBinName), data)
+    fCsvName = Pid + '_OmeMd.csv'
+    data = get_data_from_OMEtiff(iP)
+    # np.savetxt(os.path.join(DirDst, fTxtName), data, fmt='%.0f', delimiter=' ', 
+    #            newline='\n', header='', footer='', comments='# ', encoding=None)
+    # np.save(os.path.join(DirDst, fBinName), data)
+    data.to_csv(os.path.join(DirDst, fCsvName), float_format = '%.1f', index=False)
+    T = data.loc[(data['iC']==0) & (data['iZ']==0), 't']
+    dT = T[1:] - T[:-1]
+    medT = np.median(T)
+    stdT = np.std(T)
+    ExpData['film_dt'].append(medT)
+    ExpData['film_dt_std'].append(stdT)
 
+# ResDict = ufun.dicts_concat(ListOfResDicts)
+# ResDf = pd.DataFrame(ResDict)
+# ResDf.to_csv(os.path.join(DirDst, 'FilmsAutoAnalysis.csv'), float_format = '%.5f', index=False)
+
+# Get the OME metadata, if possible
+# for sP in allStacksPath:
+#     d, f = os.path.split(sP)
+#     Pid = '_'.join(f.split('_')[:6])
+#     fTxtName = Pid + '_OmeMd.txt'
+#     fBinName = Pid + '_OmeMd.npy'
+#     fCsvName = Pid + '_OmeMd.csv'
+#     data = get_data_from_OMEtiff(sP)
+#     # np.savetxt(os.path.join(DirDst, fTxtName), data, fmt='%.0f', delimiter=' ', 
+#     #            newline='\n', header='', footer='', comments='# ', encoding=None)
+#     # np.save(os.path.join(DirDst, fBinName), data)
+#     data.to_csv(os.path.join(DirDst, fCsvName), float_format = '%.1f', index=False)
+#     T = data.loc[(data['iC']==0) & (data['iZ']==0), 't']
+#     medT = np.median(T)
+#     stdT = np.std(T)
+#     ExpData['film_dt'].append(medT)
+#     ExpData['film_dt_std'].append(stdT)
+
+
+for k in ExpData.keys():
+    if len(ExpData[k]) == 0:
+        ExpData[k] = np.ones(N) * np.nan
+    
+ExpDf = pd.DataFrame(ExpData)
+ExpDf.to_csv(os.path.join(DirDst, 'Automatic_ExperimentalData.csv'), float_format = '%.5f', index=False)
 
 # This almost works :)
-
+# id	date	manip id	cell id	pull id	cell type	injected	injection mix	
+# photo-activation	light wavelength	activation conds	activation est power	
+# activation duration	magnet	mag_fi	mag_ff	mag_x	mag_y	mag_r	bead	
+# b_r	film_pixel_size	film_dt	film_dt_std
 
 # %%
 
@@ -839,6 +994,8 @@ I1_min = Z_projection(I1, kind='min', scaleFactor=1, output_type='uint16')
 center, R, contour = get_magnet_loc(I1_min)
 
 
+path = 'C:/Users/Joseph/Desktop/WorkingData/LeicaData/26-01-27/Pulls/26-01-27_M1_C3_Pa0_P1_1/26-01-27_M1_C3_Pa0_P1_1_MMStack_Default.ome.tif'
+analyze_cropped_stack(path, tasks = ['Magnet_frames', 'Magnet_pos'])
 
 # fig, ax = plt.subplots(1, 1)
 # ax.plot(contour[:,1], contour[:,0], 'b--')
