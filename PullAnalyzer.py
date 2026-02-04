@@ -687,7 +687,7 @@ def pullAnalyzer_multiFiles(mainDir, date, prefix_id,
     for M_id in listManips:
         co_dict = df_manips[df_manips['id'] == M_id].to_dict('list')
         listTracks = [t for t in listTrackIds if \
-                      t.startswith(M_id) and (Redo or (t not in already_analyzed))]
+                      t.startswith(prefix_id) and (Redo or (t not in already_analyzed))]
         for T_id in listTracks:
             trackFileName = dict_TrackIds2File[T_id]
             tracks = importTrackMateTracks(os.path.join(tracksDir, trackFileName))
@@ -1403,9 +1403,10 @@ def pullAnalyzer_compareTracks(list_tracks, list_track_ids, list_dict_pull, list
 
 # %%% ... on many files
 
-mainDir = os.path.join("C:/Users/Utilisateur/Desktop/")
-# mainDir = os.path.join("C:/Users/josep/Desktop/Seafile")
-date = '26-01-14'
+# mainDir = os.path.join("C:/Users/Utilisateur/Desktop/") # Ordi IJM
+# mainDir = os.path.join("C:/Users/josep/Desktop/Seafile") # Ordi perso
+mainDir = os.path.join("C:/Users/Joseph/Desktop/") # Ordi LJP
+date = '26-01-27'
 subfolder = date + '_BeadTracking'
 
 
@@ -1414,7 +1415,9 @@ tracksDir = os.path.join(analysisDir, subfolder, 'Tracks') # where the tracks ar
 resultsDir = os.path.join(analysisDir, subfolder, 'Results')
 plotsDir = os.path.join(analysisDir, subfolder, 'Plots')
 
-prefix_id = '26-01-14' # used to select a subset of the track files if needed
+# cell = '_M1_C1_Pa0_P3'
+
+prefix_id = '26-01-27' # + cell # used to select a subset of the track files if needed
 
 Results = pullAnalyzer_multiFiles(mainDir, date, prefix_id,
                                     analysisDir, tracksDir, resultsDir, plotsDir,
@@ -1487,12 +1490,20 @@ for track in tracks:
 
 # %%% Dataframe
 
-dirData = 'C:/Users/Utilisateur/Desktop/AnalysisPulls/26-01-14_BeadTracking/Results'
-fileName = '26-01-14_BeadsPulling_15s.csv'
+# dirData = os.path.join("C:/Users/Utilisateur/Desktop/AnalysisPulls/") # Ordi IJM
+# dirData = os.path.join("C:/Users/josep/Desktop/Seafile/AnalysisPulls/") # Ordi perso
+dirData = os.path.join("C:/Users/Joseph/Desktop/AnalysisPulls/") # Ordi LJP
+# dirData = 'C:/Users/Utilisateur/Desktop/AnalysisPulls/26-01-14_BeadTracking/Results'
+# dirData = 'C:/Users/Utilisateur/Desktop/AnalysisPulls/'
+# fileName = '26-01-14_BeadsPulling_15s.csv'
+fileName = 'AllResults_BeadsPulling.csv'
 filePath = os.path.join(dirData, fileName)
+
+specif = '_26-01-27_NoI2959'
 
 df = pd.read_csv(filePath)
 
+df['date'] = df['track_id'].apply(lambda x : x.split('_')[0])
 df['Lc'] = 6*np.pi*df['bead radius']
 df['J_modulus'] = df['J_k'] / df['Lc']
 df['J_visco1'] = df['J_gamma1'] / df['Lc']
@@ -1500,8 +1511,10 @@ df['J_visco2'] = df['J_gamma2'] / df['Lc']
 
 Filters = [(df['J_gamma2'] < 500),
            (df['J_fit_error'] == False),
-           (df['J_R2'] >= 0.8),
-           (df['cell_id'] != '26-01-14_M1_C1')]
+           (df['J_R2'] >= 0.7),
+           (df['date'] == '26-01-27'),
+           (df['cell_id'] != '26-01-14_M1_C1'),
+           ]
 GlobalFilter = np.ones_like(Filters[0]).astype(bool)
 for F in Filters:
     GlobalFilter = GlobalFilter & F
@@ -1551,11 +1564,11 @@ for k in range(4):
     else:
         ax.legend().set_visible(False)
 
-fig.suptitle('All pulls & beads', fontsize=16)
+fig.suptitle('All pulls & beads' + specif, fontsize=16)
 fig.tight_layout()
 plt.show()
 
-fig.savefig(savePath + '/res_allPulls.png', dpi=500)
+fig.savefig(savePath + '/res_allPulls' + specif + '.png', dpi=500)
 
 
 # %%% Plots by cell
@@ -1601,11 +1614,11 @@ for k in range(4):
     
     ax.grid(axis='y')
         
-fig.suptitle('Average values by cell', fontsize=16)
+fig.suptitle('Average values by cell' + specif, fontsize=16)
 fig.tight_layout()
 plt.show()
     
-fig.savefig(savePath + '/res_avgByCell.png', dpi=500)
+fig.savefig(savePath + '/res_avgByCell' + specif + '.png', dpi=500)
     
     
 metric_names_2 = ['$k_1$ (ratio)', '$\gamma_1$ (ratio)', '$\gamma_2$ (ratio)', '$\eta_N$ (ratio)']
@@ -1634,36 +1647,39 @@ for k in range(4):
     
     ax.grid(axis='y')
 
-fig.suptitle('Average values by cell, normalized', fontsize=16)    
+fig.suptitle('Average values by cell, normalized' + specif, fontsize=16)    
 fig.tight_layout()
 plt.show()
     
-fig.savefig(savePath + '/res_avgByCell_norm.png', dpi=500)
+fig.savefig(savePath + '/res_avgByCell_norm' + specif + '.png', dpi=500)
     
     
     
 
-# %%% Data for C3_B1 across pullings
+# %%% Data for one bead across pullings
 
 Filters = [
-           (df_f['cell_id'] == '26-01-14_M1_C3'),
+           (df_f['cell_id'] == '26-01-27_M1_C1'),
            (df_f['bead'] == 1),
            ]
+
+iUV = 3 # nPulls_beforeUV
+
 GlobalFilter = np.ones_like(Filters[0]).astype(bool)
 for F in Filters:
     GlobalFilter = GlobalFilter & F
 
-df_c3b1 = df_f[GlobalFilter]
-df_c3b1['Idx Pull'] = np.arange(1, 1+len(df_c3b1))
+df_1c1b = df_f[GlobalFilter]
+df_1c1b['Idx Pull'] = np.arange(1, 1+len(df_1c1b))
 
 fig, ax = plt.subplots(1, 1, figsize = (5,4))
 
 
-ax.plot(df_c3b1['Idx Pull'], df_c3b1['J_visco2'], 'o', markerfacecolor = 'None', label='$\eta_2$ (Jeffrey)')
-ax.plot(df_c3b1['Idx Pull'], df_c3b1['N_viscosity'], 'o', markerfacecolor = 'None', label='$\eta_N$  (Newton)')
-ax.axvspan(2.25, 2.75, color='indigo', zorder=5)
+ax.plot(df_1c1b['Idx Pull'], df_1c1b['J_visco2'], 'o', markerfacecolor = 'None', label='$\eta_2$ (Jeffrey)')
+ax.plot(df_1c1b['Idx Pull'], df_1c1b['N_viscosity'], 'o', markerfacecolor = 'None', label='$\eta_N$  (Newton)')
+ax.axvspan(iUV + 0.25, iUV + 0.75, color='indigo', zorder=5)
 ymid = np.mean(ax.get_ylim())
-ax.text(2.5, ymid, 'UV', c='w', style='italic', size=10, ha='center', va='center', zorder=6)
+ax.text(iUV + 0.5, ymid, 'UV', c='w', style='italic', size=10, ha='center', va='center', zorder=6)
 
 ax.set_xlabel('Pull No.')
 ax.set_ylabel('$\eta$ (Pa.s)')
@@ -1671,25 +1687,25 @@ ax.set_ylabel('$\eta$ (Pa.s)')
 ax.grid(axis='y')
 ax.legend()
 
-fig.suptitle('Repeated pulls on 26-01-14_M1_C3 Bead n°1', fontsize = 12)
+fig.suptitle('Repeated pulls on 26-01-27_M1_C1 Bead n°1', fontsize = 12)
 fig.tight_layout()
 plt.show()
 
 
 
-fig.savefig(savePath + '/RepPull_v2vN_26-01-14_M1_C3_B1.png', dpi=500)
+fig.savefig(savePath + '/RepPull_v2vN_26-01-27_M1_C1_B1.png', dpi=500)
 
 # ------
 
 fig, ax = plt.subplots(1, 1, figsize = (5.5,4))
 axbis = ax.twinx()
 
-ax.plot(df_c3b1['Idx Pull'], df_c3b1['J_visco1'], 'o', color=pm.colorList10[0], markerfacecolor = 'None')
+ax.plot(df_1c1b['Idx Pull'], df_1c1b['J_visco1'], 'o', color=pm.colorList10[0], markerfacecolor = 'None')
 ax.plot([], [], 'o', color=pm.colorList10[1], markerfacecolor = 'None', label='k')
-axbis.plot(df_c3b1['Idx Pull'], df_c3b1['J_k'], 'o', color=pm.colorList10[1], markerfacecolor = 'None')
-ax.axvspan(2.25, 2.75, color='indigo', zorder=5)
+axbis.plot(df_1c1b['Idx Pull'], df_1c1b['J_k'], 'o', color=pm.colorList10[1], markerfacecolor = 'None')
+ax.axvspan(iUV + 0.25, iUV + 0.75, color='indigo', zorder=5)
 ymid = np.mean(ax.get_ylim())
-ax.text(2.5, ymid, 'UV', c='w', style='italic', size=10, ha='center', va='center', zorder=6)
+ax.text(iUV + 0.5, ymid, 'UV', c='w', style='italic', size=10, ha='center', va='center', zorder=6)
 
 ax.set_xlabel('Pull No.')
 ax.set_ylabel('$\eta_1$ (Pa.s)', color=pm.colorList10[0])
@@ -1698,12 +1714,12 @@ axbis.set_ylabel('$k_1$ (pN/µm)', color=pm.colorList10[1])
 ax.grid(axis='y')
 # ax.legend() 
 
-fig.suptitle('Repeated pulls on 26-01-14_M1_C3 Bead n°1', fontsize = 12)
+fig.suptitle('Repeated pulls on 26-01-27_M1_C1 Bead n°1', fontsize = 12)
 fig.tight_layout()
 plt.show()
 
 
-fig.savefig(savePath + '/RepPull_k1v1_26-01-14_M1_C3_B1.png', dpi=500)
+fig.savefig(savePath + '/RepPull_k1v1_26-01-27_M1_C1_B1.png', dpi=500)
 
 
 # %%% Compare before / after UV on an example

@@ -25,6 +25,7 @@ source : https://docs.opencv.org/3.4/db/d5b/tutorial_py_mouse_handling.html
 # %% Imports
 
 import os
+import re
 import cv2
 import logging
 import tifffile
@@ -213,17 +214,29 @@ def analyze_cropped_stack(imgPath, tasks = ['Magnet_frames', 'Magnet_pos']):
     """
     
     """
+    # Settings
+    magnet_gray_lv = 'dark' # 'bright'
+    magnet_side    = 'left' # 'right'
+    
+    # Analysis    
     results = {}
     if 'Magnet_pos' in tasks:
         stackShape, stackType = tiff_inspect(imgPath)
         print(imgPath)
         (nT, nY, nX) = stackShape
         TT = np.array([t for t in range(0, nT, 5)])
-        stack = load_stack_region(imgPath, time_indices=TT, 
-                               x_slice=None, y_slice=None)
+        if magnet_side == 'left':
+            stack = load_stack_region(imgPath, time_indices=TT, 
+                                      x_slice=slice(0, int(nX*2/3)), y_slice=None)
+            offset_x = 0
+        elif magnet_side == 'right':
+            stack = load_stack_region(imgPath, time_indices=TT, 
+                                      x_slice=slice(int(nX*1/3), nX), y_slice=None)
+            offset_x = int(nX*1/3)
+                        
         stack_Zproj = Z_projection(stack, kind = 'min', scaleFactor = 1)
-        mag_center, mag_R = get_magnet_loc(stack_Zproj)
-        results['mag_y'], results['mag_x']  = mag_center
+        mag_center, mag_R = get_magnet_loc(stack_Zproj, magnet_gray_lv)
+        results['mag_y'], results['mag_x']  = mag_center[1], mag_center[0] + offset_x
         results['mag_r'] = mag_R
     
     if 'Magnet_frames' in tasks:
@@ -282,11 +295,11 @@ def get_largest_object_contour(img, mode = 'dark'):
     return(contour)
 
 
-def get_magnet_loc(img):
+def get_magnet_loc(img, magnet_gray_lv):
     [nY, nX] = img.shape
     
     #### First thresholding
-    contour_magnet = get_largest_object_contour(img, mode = 'dark')
+    contour_magnet = get_largest_object_contour(img, mode = magnet_gray_lv)
     cmX, cmY = contour_magnet[:,1], contour_magnet[:,0]
     
     #### Second thresholding
@@ -736,6 +749,9 @@ allOutputPaths = crop_and_copy(DirSrc, DirDst, allRefPoints[:], allStacksToCrop[
 
 #%% Main function 3/3 --- Manage the metadata
 
+# Settings
+Save_OME = False
+
 # Initialize
 ExpData = {'id' : [],
            'date' : [],
@@ -763,21 +779,27 @@ ExpData = {'id' : [],
            'film_dt_std' : [],
            }
 
+# Get the file list based on output .tif files then matching input .tif files
 
 allInputPaths = []
 allOutputPaths = []
 
+allOutputPaths = os.listdir(DirDst)
+allOutputPaths = [os.path.join(DirDst, f) for f in allOutputPaths if f.endswith('.tif')]
+allOutputPid = ['_'.join((os.path.split(path)[1]).split('_')[:5]) for path in allOutputPaths]
+
+N = len(allOutputPaths)
+
 allInputDirPaths = getListOfSourceFolders(DirSrc,
                                        forbiddenWords = forbiddenWords,
                                        compulsaryWords = compulsaryWords)
+allInputPid = ['_'.join((os.path.split(path)[1]).split('_')[:5]) for path in allInputDirPaths]
+inputDict = {k:v for (k,v) in zip(allInputPid, allInputDirPaths)}
 
-for i in range(len(allInputDirPaths)):
-    StackFolder = allInputDirPaths[i]
-    StackFolderDir, StackFolderName = os.path.split(StackFolder)
-    validStackFolder = True        
-    if not ufun.containsFilesWithExt(StackFolder, '.tif'):
-        validStackFolder = False
-    if validStackFolder:
+for i, oPid in enumerate(allOutputPid):
+    if oPid in inputDict.keys():
+        StackFolder = inputDict[oPid]
+        # StackFolderDir, StackFolderName = os.path.split(StackFolder)
         FilesList = os.listdir(StackFolder)
         TifList = [f for f in FilesList if f.endswith('.tif')]
         if len(TifList) != 1:
@@ -787,17 +809,7 @@ for i in range(len(allInputDirPaths)):
             stackPath = os.path.join(StackFolder, TifList[0])
             allInputPaths.append(stackPath)
 
-uncheckedOutputPaths = os.listdir(DirDst)
-uncheckedOutputPaths = [f for f in uncheckedOutputPaths if f.endswith('.tif')]
 
-for iP in allInputPaths:
-    iD, iF = os.path.split(iP)
-    Id = '_'.join(iF.split('_')[:5])
-    for F in uncheckedOutputPaths:
-        if F.startswith(Id):
-            allOutputPaths.append(iP)
-                
-N = len(allInputPaths)
 
 # Analyse the output image
 for iP, oP in zip(allInputPaths, allOutputPaths):
@@ -807,11 +819,16 @@ for iP, oP in zip(allInputPaths, allOutputPaths):
     Mid = '_'.join(oF.split('_')[0:2])
     Cid = '_'.join(oF.split('_')[1:4])
     Pid = '_'.join(oF.split('_')[1:5])
+    Pa = -1
+    m = re.search(r'_Pa', Pid)
+    m_num = re.search(r'[\d\.]+', Pid[m.end():m.end()+3])
+    Pa = int(Pid[m.end():m.end()+3][m_num.start():m_num.end()])
     ExpData['id'].append(Id)
     ExpData['date'].append(date)
     ExpData['manip id'].append(Mid)
     ExpData['cell id'].append(Cid)
     ExpData['pull id'].append(Pid)
+    ExpData['photo-activation'].append(Pa)
     
     oneFileResDict = analyze_cropped_stack(oP, tasks = ['Magnet_frames', 'Magnet_pos'])
     # print(oneFileResDict)
@@ -823,58 +840,35 @@ for iP, oP in zip(allInputPaths, allOutputPaths):
     
     iD, iF = os.path.split(iP)
     Pid = '_'.join(iF.split('_')[:6])
-    fTxtName = Pid + '_OmeMd.txt'
-    fBinName = Pid + '_OmeMd.npy'
-    fCsvName = Pid + '_OmeMd.csv'
-    data = get_data_from_OMEtiff(iP)
-    # np.savetxt(os.path.join(DirDst, fTxtName), data, fmt='%.0f', delimiter=' ', 
-    #            newline='\n', header='', footer='', comments='# ', encoding=None)
-    # np.save(os.path.join(DirDst, fBinName), data)
-    data.to_csv(os.path.join(DirDst, fCsvName), float_format = '%.1f', index=False)
-    T = data.loc[(data['iC']==0) & (data['iZ']==0), 't']
+    data_OME = get_data_from_OMEtiff(iP)
+    if Save_OME:
+        fTxtName = Pid + '_OmeMd.txt'
+        fBinName = Pid + '_OmeMd.npy'
+        fCsvName = Pid + '_OmeMd.csv'
+        # np.savetxt(os.path.join(DirDst, fTxtName), data, fmt='%.0f', delimiter=' ', 
+        #            newline='\n', header='', footer='', comments='# ', encoding=None)
+        # np.save(os.path.join(DirDst, fBinName), data)
+        data_OME.to_csv(os.path.join(DirDst, fCsvName), float_format = '%.1f', index=False)
+    T = data_OME.loc[(data_OME['iC']==0) & (data_OME['iZ']==0), 't'].values
     dT = T[1:] - T[:-1]
-    medT = np.median(T)
-    stdT = np.std(T)
+    medT = np.median(dT)
+    stdT = np.std(dT)
     ExpData['film_dt'].append(medT)
     ExpData['film_dt_std'].append(stdT)
-
-# ResDict = ufun.dicts_concat(ListOfResDicts)
-# ResDf = pd.DataFrame(ResDict)
-# ResDf.to_csv(os.path.join(DirDst, 'FilmsAutoAnalysis.csv'), float_format = '%.5f', index=False)
-
-# Get the OME metadata, if possible
-# for sP in allStacksPath:
-#     d, f = os.path.split(sP)
-#     Pid = '_'.join(f.split('_')[:6])
-#     fTxtName = Pid + '_OmeMd.txt'
-#     fBinName = Pid + '_OmeMd.npy'
-#     fCsvName = Pid + '_OmeMd.csv'
-#     data = get_data_from_OMEtiff(sP)
-#     # np.savetxt(os.path.join(DirDst, fTxtName), data, fmt='%.0f', delimiter=' ', 
-#     #            newline='\n', header='', footer='', comments='# ', encoding=None)
-#     # np.save(os.path.join(DirDst, fBinName), data)
-#     data.to_csv(os.path.join(DirDst, fCsvName), float_format = '%.1f', index=False)
-#     T = data.loc[(data['iC']==0) & (data['iZ']==0), 't']
-#     medT = np.median(T)
-#     stdT = np.std(T)
-#     ExpData['film_dt'].append(medT)
-#     ExpData['film_dt_std'].append(stdT)
-
 
 for k in ExpData.keys():
     if len(ExpData[k]) == 0:
         ExpData[k] = np.ones(N) * np.nan
     
 ExpDf = pd.DataFrame(ExpData)
-ExpDf.to_csv(os.path.join(DirDst, 'Automatic_ExperimentalData.csv'), float_format = '%.5f', index=False)
+ExpDf.to_csv(os.path.join(DirDst, 'Automatic_ExperimentalConditions.csv'), float_format = '%.2f', index=False)
 
-# This almost works :)
-# id	date	manip id	cell id	pull id	cell type	injected	injection mix	
-# photo-activation	light wavelength	activation conds	activation est power	
-# activation duration	magnet	mag_fi	mag_ff	mag_x	mag_y	mag_r	bead	
-# b_r	film_pixel_size	film_dt	film_dt_std
 
-# %%
+
+
+# %% Tests
+
+# %%%
 
 def dicts_concat(list_of_dicts):
     dict_of_lists = {}
@@ -897,7 +891,6 @@ list_of_dicts = [d1, d2, d3]
 D = dicts_concat(list_of_dicts)
 
 
-# %% Tests
 
 # %%%
 
