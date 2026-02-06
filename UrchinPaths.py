@@ -18,7 +18,7 @@ COMPUTERNAME = os.environ['COMPUTERNAME']
 
 # 1.1 Init main directories
 
-if COMPUTERNAME == 'ORDI-JOSEPH': # Ordi Perso
+if COMPUTERNAME == 'PROCYON-PC': # Ordi Perso
     Path_AnalysisPulls = "C:/Users/josep/Desktop/Seafile/AnalysisPulls/"
     Path_WorkingData = "E:/WorkingData"
     
