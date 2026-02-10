@@ -728,24 +728,26 @@ def OMEData2Df(filepath):
     
     return(Df, shape)
 
-WD_path = 'C:/Users/Joseph/Desktop/WorkingData'    
-# # WD_path = 'E:/WorkingData'
-dirPath = WD_path + '/LeicaData/26-01-14_UVinLiveCells/D1_MyOne_200mM-I2959_20pHPMA/26-01-13_C3_beforeUV_1'
-filePath = dirPath + '/26-01-13_C3_beforeUV_1_MMStack_Default.ome.tif'
-# # dirPath = 'E:/WorkingData/LeicaData/25-12-18_WithJessica/25-12-18_Droplet01_JN-Magnet_MyOne-Gly80/'
-# # print(extractDT(dirPath))
-
-
-# dirPath = WD_path + "/Nikon2Data/25-10-16_TestSurvie_Dextran+I2959-50mM/25-10-16_Dex+I2959-50mM_UV100p10min_AfterFertil_LongFilm_1"
-# filePath = dirPath + '/25-10-16_Dex+I2959-50mM_UV100p10min_AfterFertil_LongFilm_1_MMStack_Pos4.ome.tif'
-
-ome = from_tiff(filePath)
-text = ome.to_xml()
-nC, nT, nZ = OMEReadField(text, ' SizeC=')[0], OMEReadField(text, ' SizeT=')[0], OMEReadField(text, ' SizeZ=')[0]
-nC, nT, nZ = int(nC), int(nT), int(nZ)
-nTot = nC * nT * nZ
-
-Df, shape = OMEData2Df(filePath)
+# =============================================================================
+# WD_path = 'C:/Users/Joseph/Desktop/WorkingData'    
+# # # WD_path = 'E:/WorkingData'
+# dirPath = WD_path + '/LeicaData/26-01-14_UVinLiveCells/D1_MyOne_200mM-I2959_20pHPMA/26-01-13_C3_beforeUV_1'
+# filePath = dirPath + '/26-01-13_C3_beforeUV_1_MMStack_Default.ome.tif'
+# # # dirPath = 'E:/WorkingData/LeicaData/25-12-18_WithJessica/25-12-18_Droplet01_JN-Magnet_MyOne-Gly80/'
+# # # print(extractDT(dirPath))
+# 
+# 
+# # dirPath = WD_path + "/Nikon2Data/25-10-16_TestSurvie_Dextran+I2959-50mM/25-10-16_Dex+I2959-50mM_UV100p10min_AfterFertil_LongFilm_1"
+# # filePath = dirPath + '/25-10-16_Dex+I2959-50mM_UV100p10min_AfterFertil_LongFilm_1_MMStack_Pos4.ome.tif'
+# 
+# ome = from_tiff(filePath)
+# text = ome.to_xml()
+# nC, nT, nZ = OMEReadField(text, ' SizeC=')[0], OMEReadField(text, ' SizeT=')[0], OMEReadField(text, ' SizeZ=')[0]
+# nC, nT, nZ = int(nC), int(nT), int(nZ)
+# nTot = nC * nT * nZ
+# 
+# Df, shape = OMEData2Df(filePath)
+# =============================================================================
 
 # %%%%
 
