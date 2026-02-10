@@ -27,9 +27,10 @@ from shapely.plotting import plot_polygon, plot_points # , plot_line
 
 # import scipy
 import scipy.ndimage as ndi
-from scipy import signal #, optimize, interpolate, 
+from scipy import signal, stats #, optimize, interpolate, 
 
-import GraphicStyles as gs
+import PlotMaker as pm
+import UrchinPaths as up
 import UtilityFunctions as ufun
 
 
@@ -341,12 +342,12 @@ def unwarpRA(R, A, Xcw, Ycw):
     Y = Ycw + (R*np.sin(A*np.pi/180)) # Degree -> Radian
     return(X, Y)
 
-def segment_single_cell(img, starting_contour = [], PLOT = False):
+def segment_single_cell(img, starting_contour = [], N_it_viterbi = 2, PLOT = False):
     #### Settings
     inPix_set, outPix_set = 20, 20
     blur_parm = 1
     relative_height_virebi = 0.2
-    warp_radius = round(55/SCALE)
+    warp_radius = round(60/SCALE)
     
     nY, nX = img.shape
     Angles = np.arange(0, 360, 1)
@@ -371,7 +372,7 @@ def segment_single_cell(img, starting_contour = [], PLOT = False):
         edge_viterbi_unwarped = np.array(unwarpRA(np.array(edge_viterbi), Angles, Xc, Yc)) # X, Y
         starting_contour = np.array([edge_viterbi_unwarped[1], edge_viterbi_unwarped[0]]).T
         
-    N_it_viterbi = 1
+    # N_it_viterbi = 1
     viterbi_contour = starting_contour
     for i in range(N_it_viterbi):
         # x.0 Locate cell
@@ -384,7 +385,7 @@ def segment_single_cell(img, starting_contour = [], PLOT = False):
         w_ny, w_nx = warped.shape
         Angles = np.arange(0, 360, 1)
         max_values = np.max(warped[:,Rc0-inPix_set:Rc0+outPix_set+1], axis=1)
-        inPix, outPix = inPix_set, outPix_set
+        inPix, outPix = 10, 10
         # x.2 Viterbi Smoothing
         edge_viterbi = viterbi_edge(warped, Rc0, inPix, outPix, blur_parm, relative_height_virebi)
         edge_viterbi_unwarped = unwarpRA(np.array(edge_viterbi), Angles, Xc, Yc)
@@ -414,27 +415,46 @@ def segment_single_cell(img, starting_contour = [], PLOT = False):
 def segment_single_cell_across_film(img, PLOT = False):
     nT, nY, nX = img.shape
     all_contours = np.zeros((nT, 360, 2))
+    all_centroids = np.zeros((nT, 2))
     starting_contour = []
     for t in range(nT):
         contour_t = segment_single_cell(img[t], 
                             starting_contour = starting_contour, 
-                            PLOT = False)
+                            N_it_viterbi = 1, PLOT = False)
+        P = shapely.Polygon(contour_t)
+        C = P.centroid
         all_contours[t] = contour_t
+        all_centroids[t] = [C.x, C.y] # In the right direction !! Don't inverse !
         starting_contour = contour_t
+        
+    # detect outliers
+    centroid_avg = np.mean(all_centroids, axis=0)
+    all_centroids_rel = all_centroids - (np.ones((1, nT)).T @ np.array([centroid_avg]))
+    centroids_r = np.array([(c[0]**2 + c[1]**2)**0.5 for c in all_centroids_rel])
+    Zs = stats.zscore(centroids_r)
+    outlier_mask = (Zs > 3)
+    # for t in range(nT):
+    #     if outlier_mask[t]:
+    #         segment_single_cell(img[t], starting_contour = [], N_it_viterbi = 4, PLOT = True)
+        
     if PLOT:
         fig, ax = plt.subplots(1, 1, figsize=(6,6))
         ax.imshow(img[-1], cmap='gray')
         for t in range(nT): 
             ax.plot(all_contours[t,:,1], all_contours[t,:,0], ls='-', lw=0.5)
+            ax.plot(all_centroids[t,1], all_centroids[t,0], marker='+')
         plt.show()
-    return(all_contours)
+    return(all_contours, all_centroids)
+
+
+
         
 
 # %% Scripts
 
 # %%% Import a pair of films
 
-dirPath = "C:/Users/Joseph/Desktop/TestCytoRoutine"
+dirPath = up.Path_AnalysisPulls + "/TestCytoRoutine"
 
 # fileName1 = "26-02-09_M1_Pos6_Pa0_C1_Film5min_Dt1sec_1.tif"
 # fileName2 = "26-02-09_M1_Pos6_Pa77_C1_Film5min_Dt1sec_1.tif"
@@ -466,12 +486,60 @@ img1 = img1_r
 img2 = img2_r
 
 
-all_contours = segment_single_cell_across_film(img2, PLOT = True)
+all_contours, all_centroids = segment_single_cell_across_film(img1, PLOT = True)
+
+# %%%
+centroid_avg = np.mean(all_centroids, axis=0)
+all_centroids_rel = all_centroids - (np.ones((1, all_centroids.shape[0])).T @ np.array([centroid_avg]))
+centroids_r = np.array([(c[0]**2 + c[1]**2)**0.5 for c in all_centroids_rel])
+Zs = stats.zscore(centroids_r)
+outlier_mask = (Zs > 3)
+for t in range(len(outlier_mask)):
+    if outlier_mask[t]:
+        print(t)
 
 # %%%
 
 dT = 10
 nT, nY, nX = shape
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+# %% Tests
+
+# %%% Second segment cell
 
 
 
@@ -561,39 +629,6 @@ viterbi_contour_1 = segmentCell(img1[50], starting_contour = viterbi_contour_0, 
 
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-# %% Tests
 
 # %%% Watershed
 
