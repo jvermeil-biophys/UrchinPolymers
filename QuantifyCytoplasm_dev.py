@@ -20,6 +20,7 @@ import pandas as pd
 # import pyjokes as pj
 import skimage as skm
 import matplotlib.pyplot as plt
+import xml.etree.ElementTree as ET
 
 import shapely
 from shapely.ops import polylabel
@@ -35,6 +36,27 @@ import UtilityFunctions as ufun
 
 
 # %% Functions
+
+def importTrackMateTracks(filepath):
+    """
+    Parse a TrackMate XML file and return list of tracks.
+    Each track: numpy array [t, x, y].
+    """
+    tree = ET.parse(filepath)
+    root = tree.getroot()
+    tracks = []
+    for particle in root.findall('particle'):
+        L = []
+        for detection in particle.iter("detection"):
+            # print(detection)
+            # ID = int(spot.attrib["ID"])
+            t = float(detection.attrib["t"])
+            x = float(detection.attrib["x"])
+            y = float(detection.attrib["y"])
+            L.append([t, x, y])
+        tracks.append(np.array(L))
+    return(tracks)
+
      
 def argmedian(x):
     """
@@ -506,32 +528,75 @@ nT, nY, nX = shape
 
 
 
+# %%% Import tracked trajectories
+
+dirPath = up.Path_AnalysisPulls + "/TestCytoRoutine"
+
+# fileName1 = "26-02-09_M1_Pos6_Pa0_C1_Film5min_Dt1sec_1.tif"
+# fileName2 = "26-02-09_M1_Pos6_Pa77_C1_Film5min_Dt1sec_1.tif"
+fileName1 = "26-02-09_M1_Pos6_Pa0_C1_Film5min_Dt1sec_1_Tracks.xml"
+fileName2 = "26-02-09_M1_Pos6_Pa77_C1_Film5min_Dt1sec_1_Tracks.xml"
+
+
+# fileName1 = "26-02-09_M1_Pos7_Pa0_C1_Film5min_Dt1sec_1_Tracks.xml"
+# fileName2 = "26-02-09_M1_Pos7_Pa33_C1_Film5min_Dt1sec_1_Tracks.xml"
+
+filePath1 = os.path.join(dirPath, fileName1)
+filePath2 = os.path.join(dirPath, fileName2)
+
+Tracks1 = importTrackMateTracks(filePath1)
+Tracks2 = importTrackMateTracks(filePath2)
 
 
 
 
 
 
+# %%% 
 
+from trackpy.motion import msd, imsd, emsd
 
+#### Format as table & filter
 
+Tables = []
+column_names = ['frame', 'x', 'y', 'particle']
+for Tracks in [Tracks1, Tracks2]:
+    all_tracks = []
+    for i, track in enumerate(Tracks):
+        nT = len(track)
+        track = np.concat((track, np.ones((len(track[:,0]), 1), dtype=int) * (i+1)), axis = 1)
+        track[:,0] = track[:,0].astype(int) + 1
+        all_tracks.append(track)
+    concat_tracks = np.concat(all_tracks, axis = 0)
+    d = {column_names[k] : concat_tracks[:,k] for k in range(len(column_names))}
+    df = pd.DataFrame(d)
+    Tables.append(df)
 
+#### Run msd
+fig, ax = plt.subplots(1, 1)
+colors = ['cyan', 'r']
+labels = ['Before UV', 'After UV']
 
+for k in range(2):
+    df = Tables[k]
+    
+    # res_imsd = imsd(df, SCALE, FPS).reset_index()
+    res_emsd = emsd(df, SCALE, FPS, max_lagtime=40).reset_index()
+    
+    T, MSD = res_emsd['lagt'], res_emsd['msd']
+    parms, results = ufun.fitLineHuber(T, MSD, with_intercept = False)
+    [D] = parms
+    
+    ax.plot(res_emsd['lagt'], res_emsd['msd'], color=colors[k], marker='.', lw=0.5, label=labels[k])
+    ax.axline(xy1=(0,0), slope=D, color=pm.lighten_color(colors[k], 0.5), ls='-', lw=1, label=f'D = {D:.2e} µm²/s')
 
+ax.grid()
+ax.set_xlabel('Lag time (s)')
+ax.set_ylabel('MSD (µm²)')
+ax.legend()
 
-
-
-
-
-
-
-
-
-
-
-
-
-
+fig.tight_layout()
+plt.show()
 
 
 

@@ -1298,7 +1298,9 @@ def sortMatrixByCol(A, col=0, direction = 1):
 
 
 
-def fitLine(X, Y):
+
+
+def fitLine(X, Y, with_intercept = True):
     """
     returns: results.params, results \n
     Y=a*X+b ; params[0] = b,  params[1] = a
@@ -1319,7 +1321,9 @@ def fitLine(X, Y):
         upper = params + q * bse \n
     """
     
-    X = sm.add_constant(X)
+    if with_intercept:
+        X = sm.add_constant(X)
+        
     model = sm.OLS(Y, X)
     results = model.fit()
     params = results.params 
@@ -1327,7 +1331,7 @@ def fitLine(X, Y):
     return(results.params, results)
 
 
-def fitLineHuber(X, Y, with_wlm_results = False):
+def fitLineHuber(X, Y, with_wlm_results = False, with_intercept = True):
     """
     returns: results.params, results \n
     Y=a*X+b ; params[0] = b,  params[1] = a
@@ -1347,8 +1351,9 @@ def fitLineHuber(X, Y, with_wlm_results = False):
         lower = params - q * bse \n
         upper = params + q * bse \n
     """
+    if with_intercept:
+        X = sm.add_constant(X)
     
-    X = sm.add_constant(X)
     model = sm.RLM(Y, X, M=sm.robust.norms.HuberT())
     results = model.fit()
     params = results.params
