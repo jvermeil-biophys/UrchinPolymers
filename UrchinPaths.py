@@ -26,7 +26,7 @@ elif COMPUTERNAME == 'MINC05': # IJM
     Path_AnalysisPulls = "C:/Users/Utilisateur/Desktop/AnalysisPulls"
     Path_WorkingData = "E:/WorkingData"
     
-elif COMPUTERNAME == '': # LJP
+elif COMPUTERNAME == 'DESKTOP-9J5NPMO': # LJP
     Path_AnalysisPulls = "C:/Users/Joseph/Desktop/AnalysisPulls/"
     Path_WorkingData = "E:/WorkingData"
     

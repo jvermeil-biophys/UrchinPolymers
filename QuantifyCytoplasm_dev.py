@@ -9,11 +9,12 @@ Created on Tue Feb 10 14:06:30 2026
 # %% Imports
 
 import os
-# import re
+import re
 # import cv2
 # import logging
 import tifffile
 # import traceback
+
 
 import numpy as np
 import pandas as pd
@@ -27,6 +28,8 @@ from shapely.ops import polylabel
 from shapely.plotting import plot_polygon, plot_points # , plot_line
 
 from trackpy.motion import msd, imsd, emsd
+
+from PIL import Image, ImageDraw
 
 # import scipy
 import scipy.ndimage as ndi
@@ -203,14 +206,16 @@ def find_cell_inner_circle(img, plot=False, k_th = 1.0):
 
 
 
-def viterbi_path_finder(treillis):
+def viterbi_path_finder(treillis, distance_power = 2):
     """
     To understand the idea, see : https://www.youtube.com/watch?v=6JVqutwtzmo
     """
     
-    def node2node_distance(node1, node2):
+    k = distance_power
+    
+    def node2node_distance(node1, node2, k):
         """Define a distance between nodes of the treillis graph"""
-        d = (np.abs(node1['pos'] - node2['pos']))**2 #+ np.abs(node1['val'] - node2['val'])
+        d = (np.abs(node1['pos'] - node2['pos']))**k #+ np.abs(node1['val'] - node2['val'])
         return(d)
     
     N_row = len(treillis)
@@ -225,7 +230,7 @@ def viterbi_path_finder(treillis):
         for node1 in current_row:
             costs = []
             for node2 in previous_row:
-                c = node2node_distance(node1, node2) + node2['accumCost']
+                c = node2node_distance(node1, node2, k) + node2['accumCost']
                 costs.append(c)
             best_previous_node = np.argmin(costs)
             accumCost = np.min(costs)
@@ -246,7 +251,7 @@ def viterbi_path_finder(treillis):
             
     return(best_path, nodes_list)
 
-#### Test of ViterbiPathFinder
+# Test of ViterbiPathFinder
 
 # A "treillis" is a type of graph
 # My understanding of it is the following
@@ -285,7 +290,8 @@ def viterbi_path_finder(treillis):
 
 # ViterbiPathFinder(treillis)
 
-def viterbi_edge(warped, Rc, inPix, outPix, blur_parm, relative_height_virebi):
+def viterbi_edge(warped, Rc, inPix, outPix, blur_parm, 
+                 relative_height_viterbi, distance_power_viterbi):
     """
     Wrapper around ViterbiPathFinder
     Use the principle of the Viterbi algorithm to smoothen the contour of the cell on a warped image.
@@ -302,7 +308,7 @@ def viterbi_edge(warped, Rc, inPix, outPix, blur_parm, relative_height_virebi):
         profile = warped_filtered[a, :] - np.min(warped_filtered[a, inBorder:outBorder])
         peaks, peaks_props = signal.find_peaks(profile[inBorder:outBorder], 
                                                 # width = 4,
-                                                height = relative_height_virebi*np.max(profile[inBorder:outBorder]))
+                                                height = relative_height_viterbi*np.max(profile[inBorder:outBorder]))
         AllPeaks.append(peaks + inBorder)
         TreillisRow = [{'angle':a, 'pos':p+inBorder, 'val':profile[p+inBorder], 'previous':0, 'accumCost':0} for p in peaks]
         TreillisGraph.append(TreillisRow)
@@ -339,7 +345,8 @@ def viterbi_edge(warped, Rc, inPix, outPix, blur_parm, relative_height_virebi):
     TreillisGraph.append([node.copy() for node in TreillisGraph[0]]) # Make the graph cyclical
     
     # Viterbi tracking
-    best_path, nodes_list = viterbi_path_finder(TreillisGraph)
+    best_path, nodes_list = viterbi_path_finder(TreillisGraph, 
+                                                distance_power = distance_power_viterbi)
     
     edge_viterbi = [p['pos'] for p in nodes_list[:-1]]
     edge_viterbi = edge_viterbi[1-starting_i:] + edge_viterbi[:1-starting_i] # Put it back in order
@@ -366,12 +373,27 @@ def unwarpRA(R, A, Xcw, Ycw):
     Y = Ycw + (R*np.sin(A*np.pi/180)) # Degree -> Radian
     return(X, Y)
 
+
+def contour_to_mask(shape, contour):
+    """
+    Adapted from https://stackoverflow.com/questions/3654289/scipy-create-2d-polygon-mask
+    """
+    nY, nX = shape
+    poly = np.round(contour[:,::-1], 0).astype(int)
+    poly = [(p[0], p[1]) for p in poly] + [(poly[0, 0], poly[0, 1])]
+    Im0 = Image.new('L', (nX, nY), 0)
+    ImageDraw.Draw(Im0).polygon(poly, outline=1, fill=1)
+    mask = np.array(Im0).astype(bool)
+    return(mask)
+    
+
 def segment_single_cell(img, starting_contour = [], N_it_viterbi = 2, 
-                        return_mask = False, PLOT = False):
+                        PLOT = False):
     #### Settings
-    inPix_set, outPix_set = 20, 20
-    blur_parm = 1
-    relative_height_virebi = 0.2
+    inPix_set, outPix_set = 30, 30
+    blur_parm = 2
+    relative_height_viterbi = 0.2
+    distance_power_viterbi = 3
     warp_radius = round(60/SCALE)
     
     nY, nX = img.shape
@@ -393,7 +415,8 @@ def segment_single_cell(img, starting_contour = [], N_it_viterbi = 2,
         # max_values = np.max(warped[:,Rc0-inPix_set:Rc0+outPix_set+1], axis=1)
             
         #### 2.2 Viterbi Smoothing
-        edge_viterbi = viterbi_edge(warped, Rc0, inPix_set, outPix_set, blur_parm, relative_height_virebi)
+        edge_viterbi = viterbi_edge(warped, Rc0, inPix_set, outPix_set, blur_parm, 
+                                    relative_height_viterbi, distance_power_viterbi)
         edge_viterbi_unwarped = np.array(unwarpRA(np.array(edge_viterbi), Angles, Xc, Yc)) # X, Y
         starting_contour = np.array([edge_viterbi_unwarped[1], edge_viterbi_unwarped[0]]).T
         
@@ -410,14 +433,13 @@ def segment_single_cell(img, starting_contour = [], N_it_viterbi = 2,
         w_ny, w_nx = warped.shape
         Angles = np.arange(0, 360, 1)
         max_values = np.max(warped[:,Rc0-inPix_set:Rc0+outPix_set+1], axis=1)
-        inPix, outPix = 10, 10
+        inPix, outPix = int(inPix_set / (2*(i+1))), int(outPix_set / (2*(i+1)))
         # x.2 Viterbi Smoothing
-        edge_viterbi = viterbi_edge(warped, Rc0, inPix, outPix, blur_parm, relative_height_virebi)
+        edge_viterbi = viterbi_edge(warped, Rc0, inPix, outPix, blur_parm, 
+                                    relative_height_viterbi, distance_power_viterbi)
         edge_viterbi_unwarped = unwarpRA(np.array(edge_viterbi), Angles, Xc, Yc)
         viterbi_contour = np.array([edge_viterbi_unwarped[1], edge_viterbi_unwarped[0]]).T
-        
-    if return_mask:
-        pass
+           
     
     if PLOT:
         fig, axes = plt.subplots(2, 2, figsize=(10,10))
@@ -425,10 +447,8 @@ def segment_single_cell(img, starting_contour = [], N_it_viterbi = 2,
         ax = axes_f[0]
         ax.imshow(img, cmap='gray')
         
-        
         ax = axes_f[1]
         ax.imshow(warped, cmap='gray')
-        
         
         ax = axes_f[2]
         ax.imshow(img, cmap='gray')
@@ -440,41 +460,41 @@ def segment_single_cell(img, starting_contour = [], N_it_viterbi = 2,
 
     return(viterbi_contour)
 
+
+def contour_to_centroid(contour):
+    P = shapely.Polygon(contour)
+    C = P.centroid
+    return((C.x, C.y)) # In the right direction !! Don't inverse !
+    
+
 def segment_single_cell_across_film(img, PLOT = False):
     nT, nY, nX = img.shape
     all_contours = np.zeros((nT, 360, 2))
-    all_centroids = np.zeros((nT, 2))
+    # all_centroids = np.zeros((nT, 2))
     starting_contour = []
     for t in range(nT):
         contour_t = segment_single_cell(img[t], 
                             starting_contour = starting_contour, 
-                            N_it_viterbi = 1, PLOT = False)
-        P = shapely.Polygon(contour_t)
-        C = P.centroid
+                            N_it_viterbi = 2, PLOT = False)
         all_contours[t] = contour_t
-        all_centroids[t] = [C.x, C.y] # In the right direction !! Don't inverse !
+        # all_centroids[t] = contour_to_centroid(contour_t)
         starting_contour = contour_t
-        
-    # detect outliers
-    centroid_avg = np.mean(all_centroids, axis=0)
-    all_centroids_rel = all_centroids - (np.ones((1, nT)).T @ np.array([centroid_avg]))
-    centroids_r = np.array([(c[0]**2 + c[1]**2)**0.5 for c in all_centroids_rel])
-    Zs = stats.zscore(centroids_r)
-    outlier_mask = (Zs > 3)
-    # for t in range(nT):
-    #     if outlier_mask[t]:
-    #         segment_single_cell(img[t], starting_contour = [], N_it_viterbi = 4, PLOT = True)
-        
     if PLOT:
         fig, ax = plt.subplots(1, 1, figsize=(6,6))
         ax.imshow(img[-1], cmap='gray')
         for t in range(nT): 
             ax.plot(all_contours[t,:,1], all_contours[t,:,0], ls='-', lw=0.5)
-            ax.plot(all_centroids[t,1], all_centroids[t,0], marker='+')
+            # ax.plot(all_centroids[t,1], all_centroids[t,0], marker='+')
         plt.show()
-    return(all_contours, all_centroids)
+    return(all_contours)
 
 
+def get_numbers_following_text(text, target):
+    m = re.search(r''+target, text)
+    m_num = re.search(r'[\d\.]+', text[m.end():m.end()+10])
+    res = int(text[m.end():m.end()+10][m_num.start():m_num.end()])
+    return(res)
+    
 
         
 
@@ -484,10 +504,10 @@ def segment_single_cell_across_film(img, PLOT = False):
 
 dirPath = up.Path_AnalysisPulls + "/TestCytoRoutine"
 
-# fileName1 = "26-02-09_M1_Pos6_Pa0_C1_Film5min_Dt1sec_1.tif"
-# fileName2 = "26-02-09_M1_Pos6_Pa77_C1_Film5min_Dt1sec_1.tif"
-fileName1 = "26-02-09_M1_Pos7_Pa0_C1_Film5min_Dt1sec_1-1.tif"
-fileName2 = "26-02-09_M1_Pos7_Pa33_C1_Film5min_Dt1sec_1-1.tif"
+fileName1 = "26-02-09_M1_Pos6_Pa0_C1_Film5min_Dt1sec_1.tif"
+fileName2 = "26-02-09_M1_Pos6_Pa77_C1_Film5min_Dt1sec_1.tif"
+# fileName1 = "26-02-09_M1_Pos7_Pa0_C1_Film5min_Dt1sec_1-1.tif"
+# fileName2 = "26-02-09_M1_Pos7_Pa33_C1_Film5min_Dt1sec_1-1.tif"
 
 filePath1 = os.path.join(dirPath, fileName1)
 filePath2 = os.path.join(dirPath, fileName2)
@@ -513,11 +533,100 @@ shape = shape1
 img1 = img1_r
 img2 = img2_r
 
+all_contours1  = segment_single_cell_across_film(img1, PLOT = False)
+all_contours2  = segment_single_cell_across_film(img2, PLOT = False)
 
-all_contours, all_centroids = segment_single_cell_across_film(img1, PLOT = True)
+# %%% Import a list of films
+
+SCALE = 0.222
+FPS = 1
+
+dirPath = up.Path_AnalysisPulls + "/TestCytoRoutine"
+
+fileNames = [
+             "26-02-09_M1_Pos6_Pa0_C1_Film5min_Dt1sec_1.tif",
+             "26-02-09_M1_Pos6_Pa7_C1_Film5min_Dt1sec_1.tif",
+             "26-02-09_M1_Pos6_Pa77_C1_Film5min_Dt1sec_1.tif",
+             ]
+# fileName1 = "26-02-09_M1_Pos7_Pa0_C1_Film5min_Dt1sec_1-1.tif"
+# fileName2 = "26-02-09_M1_Pos7_Pa33_C1_Film5min_Dt1sec_1-1.tif"
+
+filePaths = [os.path.join(dirPath, fN) for fN in fileNames]
+
+Images_raw = [skm.io.imread(fP) for fP in filePaths]
+Images = [np.zeros_like(img) for img in Images_raw]
+
+# Equalize histograms
+for Ir, I in zip(Images_raw, Images):
+    for t in range(I.shape[0]):
+        p2, p98 = np.percentile(Ir[t], (1, 99))
+        I[t] = skm.exposure.rescale_intensity(Ir[t], in_range=(p2, p98))
+
+Images_contours = [segment_single_cell_across_film(img, PLOT = False) for img in Images]
+Images_masks = [contour_to_mask((img.shape[1], img.shape[2]), contour) for (img, contour) in zip(Images, Images_contours)]
+
+# %%%
+
+dT = 10
+nT, nY, nX = shape
+errode_it = 7
+
+lag_times_set = np.arange(1, 25, 2)
+deltas_set = np.zeros_like(lag_times_set)
+
+fig, ax = plt.subplots(1, 1)
+for img, all_contours in zip([img1, img2], [all_contours1, all_contours2]):
+    nT, nY, nX = img.shape
+    all_masks = [contour_to_mask((nY, nX), C) for C in all_contours]
+    
+    lag_times = lag_times_set
+    deltas = deltas_set
+    
+    for i, dT in enumerate(lag_times):
+        scores = np.zeros(nT - dT)
+        for t in range(0, nT-dT):
+            t1, t2 = t, t+dT
+            
+            contour_t1 = all_contours[t1]
+            mask_t1 = all_masks[t1]
+            mask_t1 = ndi.binary_erosion(mask_t1, iterations=errode_it)
+            contour_t2 = all_contours[t2]
+            mask_t2 = all_masks[t2]
+            mask_t2 = ndi.binary_erosion(mask_t2, iterations=errode_it)
+            
+            mask = mask_t1 & mask_t2
+            img_delta = np.abs((img[t2]*mask).astype(float) - (img[t1]*mask).astype(float))
+            scores[t] = np.sum(img_delta) / np.sum(mask)       
+            # fig, ax = plt.subplots(1, 1)
+            # plt.imshow(img_delta, cmap='gray')
+            # plt.show()
+            
+        deltas[i] = np.mean(scores)
+
+    ax.plot(lag_times, deltas)
+
+plt.show()
+    
+
+# %%%
 
 # =============================================================================
-# #### Test centroid
+# #### Test polygon to mask
+# polygon = [(x1,y1),(x2,y2),...] or [x1,y1,x2,y2,...]
+# poly = np.round(viterbi_contour[:,::-1], 0).astype(int)
+# poly = [(p[0], p[1]) for p in poly] + [(poly[0, 0], poly[0, 1])]
+# height, width = img1[t].shape
+# 
+# Im0 = Image.new('L', (width, height), 0)
+# ImageDraw.Draw(Im0).polygon(poly, outline=1, fill=1)
+# mask = np.array(Im0)
+# plt.imshow(mask)
+# =============================================================================
+
+
+
+# =============================================================================
+# #### Test centroid & outliers detection
 # centroid_avg = np.mean(all_centroids, axis=0)
 # all_centroids_rel = all_centroids - (np.ones((1, all_centroids.shape[0])).T @ np.array([centroid_avg]))
 # centroids_r = np.array([(c[0]**2 + c[1]**2)**0.5 for c in all_centroids_rel])
@@ -530,8 +639,6 @@ all_contours, all_centroids = segment_single_cell_across_film(img1, PLOT = True)
 
 # %%%
 
-dT = 10
-nT, nY, nX = shape
 
 
 # %%% Version with tracking & MSD
@@ -552,7 +659,6 @@ filePath2 = os.path.join(dirPath, fileName2)
 
 Tracks1 = importTrackMateTracks(filePath1)
 Tracks2 = importTrackMateTracks(filePath2)
-
 
 #### Format as table & filter
 Tables = []
@@ -595,8 +701,83 @@ ax.legend()
 fig.tight_layout()
 plt.show()
 
+# %%% Version with a function to do tracking & MSD
 
+def analyse_white_blobs_MSD(trackPathList, SCALE, FPS):
+    res_dict = {
+                'id':[],
+                'Pa':[],
+                'D':[],
+                'k':[],
+                'D_k':[],
+                }
+    tables_dict = {}
+    # "26-02-09_M1_Pos6_Pa7_C3_"
+    
+    for p in trackPathList:
+        # Ids
+        _, fN = os.path.split(p)
+        cell_id = '_'.join(fN.split('_')[:5])
+        Pa = get_numbers_following_text(fN, '_Pa')
+        
+        # MSD
+        Tracks = importTrackMateTracks(p)
+        column_names = ['frame', 'x', 'y', 'particle']
+        all_tracks = []
+        for i, track in enumerate(Tracks):
+            nT = len(track)
+            if nT >= 30:
+                track = np.concat((track, np.ones((len(track[:,0]), 1), dtype=int) * (i+1)), axis = 1)
+                track[:,0] = track[:,0].astype(int) + 1
+                all_tracks.append(track)
+        concat_tracks = np.concat(all_tracks, axis = 0)
+        df = pd.DataFrame({column_names[k] : concat_tracks[:,k] for k in range(len(column_names))})
+        tables_dict[cell_id] = df
+    
+        #### Run msd
+        res_emsd = emsd(df, SCALE, FPS, max_lagtime=40).reset_index()
+        T, MSD = res_emsd['lagt'], res_emsd['msd']
+        parms, results = ufun.fitLineHuber(T, MSD, with_intercept = False)
+        D = parms[0]/4
+        
+        parms, results = ufun.fitLineHuber(np.log(T), np.log(MSD), with_intercept = True)
+        b, a = parms
+        k = a
+        D_k = np.exp(b)/4
+        
+        res_dict['id'].append(cell_id)
+        res_dict['Pa'].append(Pa)
+        res_dict['D'].append(D)
+        res_dict['k'].append(k)
+        res_dict['D_k'].append(D_k)
+        res_df = pd.DataFrame(res_dict)
+        
+    return(res_df)
+        
+        # fig, ax = plt.subplots(1, 1)
+        # colors = ['cyan', 'r']
+        # labels = ['Before UV', 'After UV']
+        # ax.plot(res_emsd['lagt'], res_emsd['msd'], color=colors[k], marker='.', lw=0.5, label=labels[k])
+        # ax.axline(xy1=(0,0), slope=D, color=pm.lighten_color(colors[k], 0.5), ls='-', lw=1, label=f'D = {D:.2e} µm²/s')
+        # ax.grid()
+        # ax.set_xlabel('Lag time (s)')
+        # ax.set_ylabel('MSD (µm²)')
+        # ax.legend()
+        # fig.tight_layout()
+        # plt.show()
 
+SCALE = 0.222
+FPS = 1
+dirPath = up.Path_AnalysisPulls + "/26-02-09_UVonCytoplasm"
+listFiles = [
+             "26-02-09_M1_Pos6_Pa0_C2_Film5min_Dt1sec_1-1_Tracks.xml",
+             "26-02-09_M1_Pos6_Pa7_C2_Film5min_Dt1sec_1-1_Tracks.xml",
+             "26-02-09_M1_Pos6_Pa77_C2_Film5min_Dt1sec_1-1_Tracks.xml",
+             "26-02-09_M1_Pos6_Pa777_C2_Film5min_Dt1sec_1-1_Tracks.xml",
+             ]
+listPaths = [os.path.join(dirPath, f) for f in listFiles]
+
+msd_df = analyse_white_blobs_MSD(listPaths, SCALE, FPS)
 
 
 # %% Tests
@@ -612,6 +793,14 @@ R, A = warpXY(XX, YY, Xcw, Ycw)
 
 XX2, YY2 = unwarpRA(R, A, Xcw, Ycw)
 
+# %%% 
+
+warped = np.zeros((360, 100))
+RR, AA = np.meshgrid(np.arange(warped.shape[1]), np.arange(warped.shape[0]))
+
+B = (np.repeat(np.arange(5), 20))
+C = np.resize(B, (5, 20))
+
 # %%% Second segment cell
 
 
@@ -620,7 +809,7 @@ def segmentCell(img, starting_contour = [], PLOT = False):
     #### Settings
     inPix_set, outPix_set = 20, 20
     blur_parm = 1
-    relative_height_virebi = 0.2
+    relative_height_viterbi = 0.2
     warp_radius = round(55/SCALE)
     
     nY, nX = img.shape
@@ -642,7 +831,7 @@ def segmentCell(img, starting_contour = [], PLOT = False):
         # max_values = np.max(warped[:,Rc0-inPix_set:Rc0+outPix_set+1], axis=1)
             
         #### 2.2 Viterbi Smoothing
-        edge_viterbi = viterbi_edge(warped, Rc0, inPix_set, outPix_set, blur_parm, relative_height_virebi)
+        edge_viterbi = viterbi_edge(warped, Rc0, inPix_set, outPix_set, blur_parm, relative_height_viterbi)
         edge_viterbi_unwarped = np.array(unwarpRA(np.array(edge_viterbi), Angles, Xc, Yc)) # X, Y
         starting_contour = np.array([edge_viterbi_unwarped[1], edge_viterbi_unwarped[0]]).T
         
@@ -661,7 +850,7 @@ def segmentCell(img, starting_contour = [], PLOT = False):
         max_values = np.max(warped[:,Rc0-inPix_set:Rc0+outPix_set+1], axis=1)
         inPix, outPix = inPix_set, outPix_set
         # x.2 Viterbi Smoothing
-        edge_viterbi = viterbi_edge(warped, Rc0, inPix, outPix, blur_parm, relative_height_virebi)
+        edge_viterbi = viterbi_edge(warped, Rc0, inPix, outPix, blur_parm, relative_height_viterbi)
         edge_viterbi_unwarped = unwarpRA(np.array(edge_viterbi), Angles, Xc, Yc)
         viterbi_contour = np.array([edge_viterbi_unwarped[1], edge_viterbi_unwarped[0]]).T
     
