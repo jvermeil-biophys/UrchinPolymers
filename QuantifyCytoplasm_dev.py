@@ -26,6 +26,8 @@ import shapely
 from shapely.ops import polylabel
 from shapely.plotting import plot_polygon, plot_points # , plot_line
 
+from trackpy.motion import msd, imsd, emsd
+
 # import scipy
 import scipy.ndimage as ndi
 from scipy import signal, stats #, optimize, interpolate, 
@@ -364,7 +366,8 @@ def unwarpRA(R, A, Xcw, Ycw):
     Y = Ycw + (R*np.sin(A*np.pi/180)) # Degree -> Radian
     return(X, Y)
 
-def segment_single_cell(img, starting_contour = [], N_it_viterbi = 2, PLOT = False):
+def segment_single_cell(img, starting_contour = [], N_it_viterbi = 2, 
+                        return_mask = False, PLOT = False):
     #### Settings
     inPix_set, outPix_set = 20, 20
     blur_parm = 1
@@ -412,6 +415,9 @@ def segment_single_cell(img, starting_contour = [], N_it_viterbi = 2, PLOT = Fal
         edge_viterbi = viterbi_edge(warped, Rc0, inPix, outPix, blur_parm, relative_height_virebi)
         edge_viterbi_unwarped = unwarpRA(np.array(edge_viterbi), Angles, Xc, Yc)
         viterbi_contour = np.array([edge_viterbi_unwarped[1], edge_viterbi_unwarped[0]]).T
+        
+    if return_mask:
+        pass
     
     if PLOT:
         fig, axes = plt.subplots(2, 2, figsize=(10,10))
@@ -510,15 +516,17 @@ img2 = img2_r
 
 all_contours, all_centroids = segment_single_cell_across_film(img1, PLOT = True)
 
-# %%%
-centroid_avg = np.mean(all_centroids, axis=0)
-all_centroids_rel = all_centroids - (np.ones((1, all_centroids.shape[0])).T @ np.array([centroid_avg]))
-centroids_r = np.array([(c[0]**2 + c[1]**2)**0.5 for c in all_centroids_rel])
-Zs = stats.zscore(centroids_r)
-outlier_mask = (Zs > 3)
-for t in range(len(outlier_mask)):
-    if outlier_mask[t]:
-        print(t)
+# =============================================================================
+# #### Test centroid
+# centroid_avg = np.mean(all_centroids, axis=0)
+# all_centroids_rel = all_centroids - (np.ones((1, all_centroids.shape[0])).T @ np.array([centroid_avg]))
+# centroids_r = np.array([(c[0]**2 + c[1]**2)**0.5 for c in all_centroids_rel])
+# Zs = stats.zscore(centroids_r)
+# outlier_mask = (Zs > 3)
+# for t in range(len(outlier_mask)):
+#     if outlier_mask[t]:
+#         print(t)
+# =============================================================================
 
 # %%%
 
@@ -526,9 +534,9 @@ dT = 10
 nT, nY, nX = shape
 
 
+# %%% Version with tracking & MSD
 
-
-# %%% Import tracked trajectories
+#### Import tracked trajectories
 
 dirPath = up.Path_AnalysisPulls + "/TestCytoRoutine"
 
@@ -536,10 +544,8 @@ dirPath = up.Path_AnalysisPulls + "/TestCytoRoutine"
 # fileName2 = "26-02-09_M1_Pos6_Pa77_C1_Film5min_Dt1sec_1.tif"
 fileName1 = "26-02-09_M1_Pos6_Pa0_C1_Film5min_Dt1sec_1_Tracks.xml"
 fileName2 = "26-02-09_M1_Pos6_Pa77_C1_Film5min_Dt1sec_1_Tracks.xml"
-
-
-# fileName1 = "26-02-09_M1_Pos7_Pa0_C1_Film5min_Dt1sec_1_Tracks.xml"
-# fileName2 = "26-02-09_M1_Pos7_Pa33_C1_Film5min_Dt1sec_1_Tracks.xml"
+fileName1 = "26-02-09_M1_Pos7_Pa0_C1_Film5min_Dt1sec_1_Tracks.xml"
+fileName2 = "26-02-09_M1_Pos7_Pa33_C1_Film5min_Dt1sec_1_Tracks.xml"
 
 filePath1 = os.path.join(dirPath, fileName1)
 filePath2 = os.path.join(dirPath, fileName2)
@@ -548,16 +554,7 @@ Tracks1 = importTrackMateTracks(filePath1)
 Tracks2 = importTrackMateTracks(filePath2)
 
 
-
-
-
-
-# %%% 
-
-from trackpy.motion import msd, imsd, emsd
-
 #### Format as table & filter
-
 Tables = []
 column_names = ['frame', 'x', 'y', 'particle']
 for Tracks in [Tracks1, Tracks2]:
@@ -603,6 +600,17 @@ plt.show()
 
 
 # %% Tests
+
+# %%% Warp test
+
+X, Y = np.arange(200), np.arange(100)
+XX, YY = np.meshgrid(X, Y)
+
+Xcw, Ycw = 100, 50
+
+R, A = warpXY(XX, YY, Xcw, Ycw)
+
+XX2, YY2 = unwarpRA(R, A, Xcw, Ycw)
 
 # %%% Second segment cell
 
