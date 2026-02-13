@@ -379,12 +379,18 @@ def contour_to_mask(shape, contour):
     Adapted from https://stackoverflow.com/questions/3654289/scipy-create-2d-polygon-mask
     """
     nY, nX = shape
-    poly = np.round(contour[:,::-1], 0).astype(int)
-    poly = [(p[0], p[1]) for p in poly] + [(poly[0, 0], poly[0, 1])]
+    poly = np.round(contour[:,::-1], 0).astype(int).tolist()
+    poly = [(p[0], p[1]) for p in poly[:]] + [(poly[0][0], poly[0][1])]
     Im0 = Image.new('L', (nX, nY), 0)
     ImageDraw.Draw(Im0).polygon(poly, outline=1, fill=1)
     mask = np.array(Im0).astype(bool)
     return(mask)
+
+
+def contour_to_centroid(contour):
+    P = shapely.Polygon(contour)
+    C = P.centroid
+    return((C.x, C.y)) # In the right direction !! Don't inverse !
     
 
 def segment_single_cell(img, starting_contour = [], N_it_viterbi = 2, 
@@ -461,10 +467,6 @@ def segment_single_cell(img, starting_contour = [], N_it_viterbi = 2,
     return(viterbi_contour)
 
 
-def contour_to_centroid(contour):
-    P = shapely.Polygon(contour)
-    C = P.centroid
-    return((C.x, C.y)) # In the right direction !! Don't inverse !
     
 
 def segment_single_cell_across_film(img, PLOT = False):
@@ -541,11 +543,11 @@ all_contours2  = segment_single_cell_across_film(img2, PLOT = False)
 SCALE = 0.222
 FPS = 1
 
-dirPath = up.Path_AnalysisPulls + "/TestCytoRoutine"
+dirPath = up.Path_AnalysisPulls + "/26-02-09_UVonCytoplasm"
 
 fileNames = [
              "26-02-09_M1_Pos6_Pa0_C1_Film5min_Dt1sec_1.tif",
-             "26-02-09_M1_Pos6_Pa7_C1_Film5min_Dt1sec_1.tif",
+             # "26-02-09_M1_Pos6_Pa7_C1_Film5min_Dt1sec_1.tif",
              "26-02-09_M1_Pos6_Pa77_C1_Film5min_Dt1sec_1.tif",
              ]
 # fileName1 = "26-02-09_M1_Pos7_Pa0_C1_Film5min_Dt1sec_1-1.tif"
@@ -563,7 +565,23 @@ for Ir, I in zip(Images_raw, Images):
         I[t] = skm.exposure.rescale_intensity(Ir[t], in_range=(p2, p98))
 
 Images_contours = [segment_single_cell_across_film(img, PLOT = False) for img in Images]
-Images_masks = [contour_to_mask((img.shape[1], img.shape[2]), contour) for (img, contour) in zip(Images, Images_contours)]
+Images_masks = np.array([[contour_to_mask((img_t.shape[1], img_t.shape[0]), contour_t) \
+                          for (img_t, contour_t) in zip(img, contour)] \
+                          for (img, contour) in zip(Images, Images_contours)])
+
+Images_dict = {fileNames[k] : {'images'  :Images[k],
+                               'contours':Images_contours[k],
+                               'masks'   :Images_masks[k],
+                               } \
+               for k in range(len(fileNames))}
+    
+
+# %%% Test something with autocorelation
+
+
+
+
+
 
 # %%%
 
@@ -738,7 +756,7 @@ def analyse_white_blobs_MSD(trackPathList, SCALE, FPS):
         res_emsd = emsd(df, SCALE, FPS, max_lagtime=40).reset_index()
         T, MSD = res_emsd['lagt'], res_emsd['msd']
         parms, results = ufun.fitLineHuber(T, MSD, with_intercept = False)
-        D = parms[0]/4
+        D = parms.values[0]/4
         
         parms, results = ufun.fitLineHuber(np.log(T), np.log(MSD), with_intercept = True)
         b, a = parms
@@ -769,15 +787,17 @@ def analyse_white_blobs_MSD(trackPathList, SCALE, FPS):
 SCALE = 0.222
 FPS = 1
 dirPath = up.Path_AnalysisPulls + "/26-02-09_UVonCytoplasm"
-listFiles = [
-             "26-02-09_M1_Pos6_Pa0_C2_Film5min_Dt1sec_1-1_Tracks.xml",
-             "26-02-09_M1_Pos6_Pa7_C2_Film5min_Dt1sec_1-1_Tracks.xml",
-             "26-02-09_M1_Pos6_Pa77_C2_Film5min_Dt1sec_1-1_Tracks.xml",
-             "26-02-09_M1_Pos6_Pa777_C2_Film5min_Dt1sec_1-1_Tracks.xml",
-             ]
-listPaths = [os.path.join(dirPath, f) for f in listFiles]
+listAllFiles = os.listdir(dirPath)
+listTrackFiles = [f for f in listAllFiles if f.endswith('_Tracks.xml')]
+# listFiles = [
+#              "26-02-09_M1_Pos6_Pa0_C2_Film5min_Dt1sec_1-1_Tracks.xml",
+#              "26-02-09_M1_Pos6_Pa7_C2_Film5min_Dt1sec_1-1_Tracks.xml",
+#              "26-02-09_M1_Pos6_Pa77_C2_Film5min_Dt1sec_1-1_Tracks.xml",
+#              "26-02-09_M1_Pos6_Pa777_C2_Film5min_Dt1sec_1-1_Tracks.xml",
+#              ]
+listPaths = [os.path.join(dirPath, f) for f in listTrackFiles]
 
-msd_df = analyse_white_blobs_MSD(listPaths, SCALE, FPS)
+msd_df = analyse_white_blobs_MSD(listPaths[:], SCALE, FPS)
 
 
 # %% Tests
