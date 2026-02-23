@@ -11,6 +11,7 @@ Created on Tue Feb 10 14:06:30 2026
 import os
 import re
 # import cv2
+import time
 # import logging
 import tifffile
 # import traceback
@@ -20,6 +21,7 @@ import numpy as np
 import pandas as pd
 # import pyjokes as pj
 import skimage as skm
+import seaborn as sns
 import matplotlib.pyplot as plt
 import xml.etree.ElementTree as ET
 
@@ -290,7 +292,7 @@ def viterbi_path_finder(treillis, distance_power = 2):
 
 # ViterbiPathFinder(treillis)
 
-def viterbi_edge(warped, Rc, inPix, outPix, blur_parm, 
+def viterbi_edge(warped, mode, Rc, inPix, outPix, blur_parm, 
                  relative_height_viterbi, distance_power_viterbi):
     """
     Wrapper around ViterbiPathFinder
@@ -302,6 +304,10 @@ def viterbi_edge(warped, Rc, inPix, outPix, blur_parm,
     AllPeaks = []
     TreillisGraph = []
     warped_filtered = skm.filters.gaussian(warped, sigma=(1, blur_parm), mode='wrap')
+    if mode == 'bright':
+        pass
+    elif mode == 'dark':
+        warped = skm.util.invert(warped)
     inBorder = round(Rc) - inPix
     outBorder = round(Rc) + outPix
     for a in Angles:
@@ -394,7 +400,7 @@ def contour_to_centroid(contour):
     
 
 def segment_single_cell(img, starting_contour = [], N_it_viterbi = 2, 
-                        PLOT = False):
+                        mode_edge = 'bright', PLOT = False):
     #### Settings
     inPix_set, outPix_set = 30, 30
     blur_parm = 2
@@ -421,7 +427,7 @@ def segment_single_cell(img, starting_contour = [], N_it_viterbi = 2,
         # max_values = np.max(warped[:,Rc0-inPix_set:Rc0+outPix_set+1], axis=1)
             
         #### 2.2 Viterbi Smoothing
-        edge_viterbi = viterbi_edge(warped, Rc0, inPix_set, outPix_set, blur_parm, 
+        edge_viterbi = viterbi_edge(warped, mode_edge, Rc0, inPix_set, outPix_set, blur_parm, 
                                     relative_height_viterbi, distance_power_viterbi)
         edge_viterbi_unwarped = np.array(unwarpRA(np.array(edge_viterbi), Angles, Xc, Yc)) # X, Y
         starting_contour = np.array([edge_viterbi_unwarped[1], edge_viterbi_unwarped[0]]).T
@@ -441,7 +447,7 @@ def segment_single_cell(img, starting_contour = [], N_it_viterbi = 2,
         max_values = np.max(warped[:,Rc0-inPix_set:Rc0+outPix_set+1], axis=1)
         inPix, outPix = int(inPix_set / (2*(i+1))), int(outPix_set / (2*(i+1)))
         # x.2 Viterbi Smoothing
-        edge_viterbi = viterbi_edge(warped, Rc0, inPix, outPix, blur_parm, 
+        edge_viterbi = viterbi_edge(warped, mode_edge, Rc0, inPix, outPix, blur_parm, 
                                     relative_height_viterbi, distance_power_viterbi)
         edge_viterbi_unwarped = unwarpRA(np.array(edge_viterbi), Angles, Xc, Yc)
         viterbi_contour = np.array([edge_viterbi_unwarped[1], edge_viterbi_unwarped[0]]).T
@@ -469,7 +475,7 @@ def segment_single_cell(img, starting_contour = [], N_it_viterbi = 2,
 
     
 
-def segment_single_cell_across_film(img, PLOT = False):
+def segment_single_cell_across_film(img, mode_edge = 'bright', PLOT = False):
     nT, nY, nX = img.shape
     all_contours = np.zeros((nT, 360, 2))
     # all_centroids = np.zeros((nT, 2))
@@ -477,7 +483,7 @@ def segment_single_cell_across_film(img, PLOT = False):
     for t in range(nT):
         contour_t = segment_single_cell(img[t], 
                             starting_contour = starting_contour, 
-                            N_it_viterbi = 2, PLOT = False)
+                            N_it_viterbi = 2, PLOT = False, mode_edge = mode_edge)
         all_contours[t] = contour_t
         # all_centroids[t] = contour_to_centroid(contour_t)
         starting_contour = contour_t
@@ -491,14 +497,261 @@ def segment_single_cell_across_film(img, PLOT = False):
     return(all_contours)
 
 
+def get_reasonable_inner_cell_contour(img, PLOT = False):
+    # nT, nY, nX = img.shape
+    img_min = np.min(img, axis = 0)
+    (Yc, Xc), Rc = find_cell_inner_circle(img_min, plot=PLOT, k_th = 1.0)
+    Angles = np.linspace(0, 2*np.pi, 360)
+    Xcontour = Xc + Rc*np.cos(Angles)
+    Ycontour = Yc + Rc*np.sin(Angles)
+    contour = np.array([Ycontour, Xcontour]).T
+    if PLOT:
+        fig, axes = plt.subplots(1, 2)
+        axes[0].imshow(img_min, cmap='gray')
+        axes[0].plot(contour[:,0], contour[:,1], 'r-')
+        axes[1].imshow(img[0]*mask, cmap='gray')
+        plt.show()
+    return(contour)
+
+
 def get_numbers_following_text(text, target):
     m = re.search(r''+target, text)
     m_num = re.search(r'[\d\.]+', text[m.end():m.end()+10])
     res = int(text[m.end():m.end()+10][m_num.start():m_num.end()])
     return(res)
     
+def save_contours(fileName, contours, dstDir):
+    fN_root = fileName.split('.')[0]
+    fN_contour = fN_root + '_Contours.npy'
+    # fN_mask = fN_root + '_Masks.npy'
+    np.save(os.path.join(dstDir, fN_contour), contours)
+    # np.save(os.path.join(dstDir, fN_mask), masks)
+
+def save_contours_and_masks(fileName, contours, masks, dstDir):
+    fN_root = fileName.split('.')[0]
+    fN_contour = fN_root + '_Contours.npy'
+    fN_mask = fN_root + '_Masks.npy'
+    np.save(os.path.join(dstDir, fN_contour), contours)
+    np.save(os.path.join(dstDir, fN_mask), masks)
+    
+def check_if_file_has_tracks(fileName, srcDir):
+    fN_root = fileName.split('.')[0]
+    fN_contour = fN_root + '_Tracks.xml'
+    has_contours = os.path.isfile(os.path.join(srcDir, fN_contour))
+    return(has_contours)
+
+def check_if_file_has_contours(fileName, srcDir):
+    fN_root = fileName.split('.')[0]
+    fN_contour = fN_root + '_Contours.npy'
+    has_contours = os.path.isfile(os.path.join(srcDir, fN_contour))
+    return(has_contours)
+    
+def check_if_file_has_contours_and_masks(fileName, srcDir):
+    fN_root = fileName.split('.')[0]
+    fN_contour = fN_root + '_Contours.npy'
+    fN_mask = fN_root + '_Masks.npy'
+    has_contours = os.path.isfile(os.path.join(srcDir, fN_contour))
+    has_masks = os.path.isfile(os.path.join(srcDir, fN_mask))
+    return((has_contours and has_masks))
+
+def import_contours(fileName, srcDir, mode='r'):
+    fN_root = fileName.split('.')[0]
+    fN_contour = fN_root + '_Contours.npy'
+    contours = np.load(os.path.join(srcDir, fN_contour), mmap_mode=mode)
+    return(contours)
+    
+def import_contours_and_masks(fileName, srcDir, mode='r'):
+    fN_root = fileName.split('.')[0]
+    fN_contour = fN_root + '_Contours.npy'
+    fN_mask = fN_root + '_Masks.npy'
+    contours = np.load(os.path.join(srcDir, fN_contour), mmap_mode=mode)
+    masks = np.load(os.path.join(srcDir, fN_mask), mmap_mode=mode)
+    return(contours, masks)
+
+#### V1 of analysis functions
+
+def compute_acor(image, mask, window_length, 
+                 EQUALIZE = True, PLOT = False):
+    if EQUALIZE:
+        for t in range(image.shape[0]):
+            p1, p99 = np.percentile(image[t].flatten()[mask.flatten()], (1, 99))
+            image[t] = skm.exposure.rescale_intensity(image[t], in_range=(p1, p99))
+    
+    short_len = window_length
+    long_len = image.shape[0] - short_len + 1
+    image_acor = np.zeros((long_len, image.shape[1], image.shape[2]))
+    
+    for i in range(image.shape[1]):
+        for j in range(image.shape[2]):
+            if mask[i, j]:
+                A = image[:, i, j]
+                if np.std(A) == 0:
+                    print(i, j)
+                B = (A - np.mean(A))/np.std(A)
+                acor = signal.correlate(B, B[:short_len], mode="valid")
+                acor = acor / acor[0]
+                image_acor[:, i, j] = acor
+                    
+    total_acor = np.zeros(long_len)
+    lags = np.arange(long_len)
+    for t in range(len(total_acor)):
+        total_acor[t] = np.mean(image_acor[t].flatten()[mask.flatten()])
+    
+    if PLOT:
+        fig, ax = plt.subplots(1, 1)
+        ax.plot(lags, cell_acor, label = fileName)
+        plt.show()
+        
+    return(total_acor, image_acor)
+
+
+def analyse_cells_ACF(imagePathList, SCALE, FPS):
+    res_dict = {
+                'id':[],
+                'pos_id':[],
+                'cell_id':[],
+                'Pa':[],
+                't_50p':[],
+                't_33p':[],
+                't_25p':[],
+                't_20p':[],
+                't_0p':[],
+                }
+    tables_dict = {}
+    ACF_dict = {}
+    
+    print(pm.BLUE + 'Starting ACF analysis' + pm.NORMAL)
+    
+    for p in imagePathList:
+        T0 = time.time()
+        
+        # Ids
+        _, fN = os.path.split(p)
+        
+        full_id = '_'.join(fN.split('_')[:5])
+        pos_id = get_numbers_following_text(fN, '_Pos')
+        cell_id = get_numbers_following_text(fN, '_C')
+        Pa = get_numbers_following_text(fN, '_Pa')
+        
+        # Get image and mask       
+        image_raw = skm.io.imread(p)
+        image = skm.util.img_as_float32(image_raw)
+        shape = image.shape
+
+        single_contour = get_reasonable_inner_cell_contour(image, PLOT = False)
+        single_mask = contour_to_mask([shape[1], shape[2]], single_contour)
+        single_mask = ndi.binary_erosion(single_mask, iterations = 50)
+        
+        window_length = shape[0]//3
+        
+        # ACF function
+        total_acor, image_acor = compute_acor(image, single_mask, window_length, 
+                         EQUALIZE = True, PLOT = False)
+        
+        ACF_dict[full_id] = total_acor
+        
+        timescales = ['t_50p', 't_33p', 't_25p', 't_20p', 't_0p']
+        th_timescales = [1/2, 1/3, 1/4, 1/5, 0]
+        dict_timescales = {k:0 for k in timescales}
+        # print(timescales)
+        # print(th_timescales)
+        # print(dict_timescales)
+        
+        for ts, th in zip(timescales, th_timescales):
+            test = (total_acor < th)
+            t = ufun.findFirst(1, test)
+            dict_timescales[ts] = t
+        
+        res_dict['id'].append(full_id)
+        res_dict['pos_id'].append(pos_id)
+        res_dict['cell_id'].append(cell_id)
+        res_dict['Pa'].append(Pa)
+        for ts in dict_timescales.keys():
+            res_dict[ts].append(dict_timescales[ts])
+        
+        
+        
+        Dt = time.time() - T0
+        print(pm.GREEN + f'Done with {fN}' + pm.NORMAL + f' ; Dt = {Dt:.4f}')
+        
+    
+    res_df = pd.DataFrame(res_dict)
 
         
+    return(res_df, ACF_dict)
+        
+        
+        
+
+def analyse_white_blobs_MSD(trackPathList, SCALE, FPS):
+    res_dict = {
+                'id':[],
+                'pos_id':[],
+                'cell_id':[],
+                'Pa':[],
+                'D':[],
+                'k_nl':[],
+                'D_nl':[],
+                }
+    tables_dict = {}
+    MSD_dict = {}
+
+    print(pm.BLUE + 'Starting MSD analysis' + pm.NORMAL)    
+    
+    for p in trackPathList:
+        T0 = time.time()
+        
+        # Ids
+        _, fN = os.path.split(p)
+        full_id = '_'.join(fN.split('_')[:5])
+        pos_id = get_numbers_following_text(fN, '_Pos')
+        cell_id = get_numbers_following_text(fN, '_C')
+        Pa = get_numbers_following_text(fN, '_Pa')
+        
+        # MSD
+        Tracks = importTrackMateTracks(p)
+        column_names = ['frame', 'x', 'y', 'particle']
+        all_tracks = []
+        for i, track in enumerate(Tracks):
+            nT = len(track)
+            if nT >= 30:
+                track = np.concat((track, np.ones((len(track[:,0]), 1), dtype=int) * (i+1)), axis = 1)
+                track[:,0] = track[:,0].astype(int) + 1
+                all_tracks.append(track)
+        concat_tracks = np.concat(all_tracks, axis = 0)
+        df = pd.DataFrame({column_names[k] : concat_tracks[:,k] for k in range(len(column_names))})
+        tables_dict[full_id] = df
+        
+        #### Run imsd -> Might be useful for SEM computation
+        # res_imsd = imsd(df, SCALE, FPS).reset_index()
+    
+        #### Run msd
+        res_emsd = emsd(df, SCALE, FPS, max_lagtime=40).reset_index()
+        T, MSD = res_emsd['lagt'], res_emsd['msd']
+        MSD_dict[full_id] = np.array([T, MSD]).T
+        
+        parms, results = ufun.fitLineHuber(T, MSD, with_intercept = False)
+        D = parms.values[0]/4
+        
+        parms, results = ufun.fitLineHuber(np.log(T), np.log(MSD), with_intercept = True)
+        b, a = parms
+        k_nl = a
+        D_nl = np.exp(b)/4
+        
+        res_dict['id'].append(full_id)
+        res_dict['pos_id'].append(pos_id)
+        res_dict['cell_id'].append(cell_id)
+        res_dict['Pa'].append(Pa)
+        res_dict['D'].append(D)
+        res_dict['k_nl'].append(k_nl)
+        res_dict['D_nl'].append(D_nl)
+        
+        Dt = time.time() - T0
+        print(pm.GREEN + f'Done with {fN}' + pm.NORMAL + f' ; Dt = {Dt:.4f}')
+        
+    res_df = pd.DataFrame(res_dict)
+        
+    return(res_df, MSD_dict)
 
 # %% Scripts
 
@@ -535,8 +788,11 @@ shape = shape1
 img1 = img1_r
 img2 = img2_r
 
-all_contours1  = segment_single_cell_across_film(img1, PLOT = False)
-all_contours2  = segment_single_cell_across_film(img2, PLOT = False)
+# get_reasonable_inner_cell_contour(img1, PLOT = True)
+
+
+# all_contours1  = segment_single_cell_across_film(img1, PLOT = False)
+# all_contours2  = segment_single_cell_across_film(img2, PLOT = False)
 
 # %%% Import a list of films
 
@@ -547,9 +803,12 @@ dirPath = up.Path_AnalysisPulls + "/26-02-09_UVonCytoplasm"
 
 fileNames = [
              "26-02-09_M1_Pos6_Pa0_C1_Film5min_Dt1sec_1.tif",
+             # "26-02-09_M1_Pos6_Pa77_C1_Film5min_Dt1sec_1.tif",
              # "26-02-09_M1_Pos6_Pa7_C1_Film5min_Dt1sec_1.tif",
-             "26-02-09_M1_Pos6_Pa77_C1_Film5min_Dt1sec_1.tif",
              ]
+listAllFiles = os.listdir(dirPath)
+listTifFiles = [f for f in listAllFiles if f.endswith('.tif')]
+
 # fileName1 = "26-02-09_M1_Pos7_Pa0_C1_Film5min_Dt1sec_1-1.tif"
 # fileName2 = "26-02-09_M1_Pos7_Pa33_C1_Film5min_Dt1sec_1-1.tif"
 
@@ -574,16 +833,386 @@ Images_dict = {fileNames[k] : {'images'  :Images[k],
                                'masks'   :Images_masks[k],
                                } \
                for k in range(len(fileNames))}
+
+#### Test Save / import
+
+# def save_contours_and_masks(Img_dict, dstDir):
+#     for fN in Img_dict.keys():
+#         fN_root = fN.split('.')[0]
+#         fN_contour = fN_root + '_Contours.npy'
+#         fN_mask = fN_root + '_Masks.npy'
+#         np.save(os.path.join(dstDir, fN_contour), Img_dict[fN]['contours'])
+#         np.save(os.path.join(dstDir, fN_mask), Img_dict[fN]['masks'])
+
+# save_contours_and_masks(Images_dict, dirPath)
+
+# %%% Get the contour & masks --> save them
+
+SCALE = 0.222
+FPS = 1
+
+redo_all_files = True
+dirPath = up.Path_AnalysisPulls + "/26-02-09_UVonCytoplasm"
+
+listAllFiles = os.listdir(dirPath)
+# listTifFiles = [f for f in listAllFiles if f.endswith('.tif')]
+listTifFiles = [f for f in listAllFiles if (f.endswith('.tif') and ('M1_Pos6_Pa77_C2' in f))]
+
+if not redo_all_files:
+    filesToAnalyze = {fN:True for fN in listTifFiles}
+    for fN in listTifFiles:
+        check = check_if_file_has_contours_and_masks(fN, dirPath)
+        filesToAnalyze[fN] = (not check)
+    listTifFiles = [fN for fN in listTifFiles if filesToAnalyze[fN]]
     
-
-# %%% Test something with autocorelation
-
+listTifPaths = [os.path.join(dirPath, fN) for fN in listTifFiles]
 
 
+# for k in range(len(listTifFiles)):
+#     fN, fP = listTifFiles[k], listTifPaths[k]
+#     img = skm.io.imread(fP)
+    
+#     for t in range(img.shape[0]):
+#         p2, p98 = np.percentile(img[t], (1, 99))
+#         img[t] = skm.exposure.rescale_intensity(img[t], in_range=(p2, p98))
+    
+#     img_contours = segment_single_cell_across_film(img, mode = 'dark', PLOT = False)
+    #### ----
+    # img_masks = np.array([contour_to_mask((img_t.shape[1], img_t.shape[0]), contour_t) \
+                              # for (img_t, contour_t) in zip(img, img_contours)])
+    
+    # save_contours_and_masks(fileName, contours, masks, dstDir)
+    # import_contours_and_masks(fileName, srcDir, mode='r')
+    # save_contours_and_masks(fN, img_contours, img_masks, dirPath)
+    #### ----
+    # save_contours(fN, img_contours, dirPath)
+
+
+# %%% Tracking & MSD V1
+
+#### Import tracked trajectories
+
+dirPath = up.Path_AnalysisPulls + "/TestCytoRoutine"
+
+# fileName1 = "26-02-09_M1_Pos6_Pa0_C1_Film5min_Dt1sec_1.tif"
+# fileName2 = "26-02-09_M1_Pos6_Pa77_C1_Film5min_Dt1sec_1.tif"
+fileName1 = "26-02-09_M1_Pos6_Pa0_C1_Film5min_Dt1sec_1_Tracks.xml"
+fileName2 = "26-02-09_M1_Pos6_Pa77_C1_Film5min_Dt1sec_1_Tracks.xml"
+fileName1 = "26-02-09_M1_Pos7_Pa0_C1_Film5min_Dt1sec_1_Tracks.xml"
+fileName2 = "26-02-09_M1_Pos7_Pa33_C1_Film5min_Dt1sec_1_Tracks.xml"
+
+filePath1 = os.path.join(dirPath, fileName1)
+filePath2 = os.path.join(dirPath, fileName2)
+
+Tracks1 = importTrackMateTracks(filePath1)
+Tracks2 = importTrackMateTracks(filePath2)
+
+#### Format as table & filter
+Tables = []
+column_names = ['frame', 'x', 'y', 'particle']
+for Tracks in [Tracks1, Tracks2]:
+    all_tracks = []
+    for i, track in enumerate(Tracks):
+        nT = len(track)
+        track = np.concat((track, np.ones((len(track[:,0]), 1), dtype=int) * (i+1)), axis = 1)
+        track[:,0] = track[:,0].astype(int) + 1
+        all_tracks.append(track)
+    concat_tracks = np.concat(all_tracks, axis = 0)
+    d = {column_names[k] : concat_tracks[:,k] for k in range(len(column_names))}
+    df = pd.DataFrame(d)
+    Tables.append(df)
+
+#### Run msd
+fig, ax = plt.subplots(1, 1)
+colors = ['cyan', 'r']
+labels = ['Before UV', 'After UV']
+
+for k in range(2):
+    df = Tables[k]
+    
+    res_imsd = imsd(df, SCALE, FPS).reset_index()
+    res_emsd = emsd(df, SCALE, FPS, max_lagtime=40).reset_index()
+    
+    T, MSD = res_emsd['lagt'], res_emsd['msd']
+    parms, results = ufun.fitLineHuber(T, MSD, with_intercept = False)
+    [D] = parms/4
+    
+    ax.plot(res_emsd['lagt'], res_emsd['msd'], color=colors[k], marker='.', lw=0.5, label=labels[k])
+    ax.axline(xy1=(0,0), slope=D*4, color=pm.lighten_color(colors[k], 0.5), ls='-', lw=1, label=f'D = {D:.2e} µm²/s')
+
+ax.grid()
+ax.set_xlabel('Lag time (s)')
+ax.set_ylabel('MSD (µm²)')
+ax.legend()
+
+fig.tight_layout()
+plt.show()
+
+# %%% Tracking & MSD V2
+
+
+        # fig, ax = plt.subplots(1, 1)
+        # colors = ['cyan', 'r']
+        # labels = ['Before UV', 'After UV']
+        # ax.plot(res_emsd['lagt'], res_emsd['msd'], color=colors[k], marker='.', lw=0.5, label=labels[k])
+        # ax.axline(xy1=(0,0), slope=D, color=pm.lighten_color(colors[k], 0.5), ls='-', lw=1, label=f'D = {D:.2e} µm²/s')
+        # ax.grid()
+        # ax.set_xlabel('Lag time (s)')
+        # ax.set_ylabel('MSD (µm²)')
+        # ax.legend()
+        # fig.tight_layout()
+        # plt.show()
+
+SCALE = 0.222
+FPS = 1
+dirPath = up.Path_AnalysisPulls + "/26-02-09_UVonCytoplasm"
+listAllFiles = os.listdir(dirPath)
+listTifFiles = [f for f in listAllFiles if f.endswith('.tif')]
+
+filesWithTracks = {fN:True for fN in listTifFiles}
+for fN in listTifFiles:
+    check = check_if_file_has_tracks(fN, dirPath)
+    filesWithTracks[fN] = (check)
+listTifFiles = [fN for fN in listTifFiles if filesWithTracks[fN]]
+listTrackFiles = [fN[:-4] + '_Tracks.xml' for fN in listTifFiles if filesWithTracks[fN]]
+
+listTifPaths = [os.path.join(dirPath, f) for f in listTifFiles]
+listTrackPaths = [os.path.join(dirPath, f) for f in listTrackFiles]
+
+# msd_df = analyse_white_blobs_MSD(listPaths[:], SCALE, FPS)
+
+
+# %%% Autocorelation V1
+
+
+dirPath = up.Path_AnalysisPulls + "/26-02-09_UVonCytoplasm"
+
+listAllFiles = os.listdir(dirPath)
+listTifFiles = [f for f in listAllFiles if f.endswith('.tif')]
+# filesAnalyzed = {fN:True for fN in listTifFiles}
+# for fN in listTifFiles:
+#     check = check_if_file_has_contours_and_masks(fN, dirPath)
+#     filesAnalyzed[fN] = (check)
+# listTifFiles = [fN for fN in listTifFiles if filesAnalyzed[fN]]
+listTifPaths = [os.path.join(dirPath, fN) for fN in listTifFiles]
+
+fig, ax = plt.subplots(1, 1)
+
+# index_list = [0, 6, 3] # Pa0, 6, 66
+# index_list = [10, 17, 13] # Pa0, 7, 77
+# index_list = [23, 26] # Pa0, 33
+index_list = [10]
+fileNames = [listTifFiles[i] for i in index_list]
+filePaths = [listTifPaths[i] for i in index_list]
+
+for fileName, filePath in zip(fileNames, filePaths):
+    image_raw = skm.io.imread(filePath)
+    image = skm.util.img_as_float32(image_raw)
+    shape = image.shape
+    
+    # contours, masks = import_contours_and_masks(fileName, dirPath, mode='r')
+    # contours = import_contours(fileName, dirPath, mode='r')
+    # masks = [contour_to_mask([shape[1], shape[2]], C) for C in contours]
+    # single_mask = ndi.binary_erosion(np.all(masks, axis=0), iterations = 20)
+
+    single_contour = get_reasonable_inner_cell_contour(image, PLOT = False)
+    single_mask = contour_to_mask([shape[1], shape[2]], single_contour)
+    single_mask = ndi.binary_erosion(single_mask, iterations = 50)
+    
+    fig_i, ax_i = plt.subplots(3, 1)
+    ax_i[0].imshow(image[10], cmap='gray')
+    ax_i[0].plot(single_contour[:,1], single_contour[:,0], 'r--')
+    ax_i[1].imshow(single_mask, cmap='gray')
+    ax_i[2].imshow(image[10]*single_mask, cmap='gray')
+    plt.show()
+
+#### UNCOMMENT HERE FOR AUTOCORR !!
+    for t in range(image.shape[0]):
+        p1, p99 = np.percentile(image[t].flatten()[single_mask.flatten()], (1, 99))
+        image[t] = skm.exposure.rescale_intensity(image[t], in_range=(p1, p99))
+    
+    # image_masked = image*single_mask
+    short_len = image.shape[0]//3
+    long_len = image.shape[0] - short_len + 1
+    image_acor = np.zeros((long_len, image.shape[1], image.shape[2]))
+    
+    for i in range(image.shape[1]):
+        for j in range(image.shape[2]):
+            if single_mask[i, j]:
+                A = image[:, i, j]
+                if np.std(A) == 0:
+                    print(i, j)
+                B = (A - np.mean(A))/np.std(A)
+                acor = signal.correlate(B, B[:short_len], mode="valid") #[len(A)//2:]
+                acor = acor / acor[0]
+                # lags = signal.correlation_lags(len(A), len(A), mode="full")[len(A):]
+                image_acor[:, i, j] = acor
+                
+    # skm.io.imsave(filePath[:-4] + '_acor.tif', image_acor)
+    
+    cell_acor = np.zeros(long_len)
+    lags = np.arange(0, long_len)
+    for t in range(len(cell_acor)):
+        cell_acor[t] = np.mean(image_acor[t].flatten()[single_mask.flatten()])
+    
+    ax.plot(lags, cell_acor, label = fileName)
+
+ax.legend()
+plt.show()
+
+
+# %%% Better script for ACF and MSD
+
+SCALE = 0.222
+FPS = 1
+
+redo_all_files = False
+
+dirPath = up.Path_AnalysisPulls + "/26-02-09_UVonCytoplasm"
+listAllFiles = os.listdir(dirPath)
+listTifFiles = [f for f in listAllFiles if f.endswith('.tif')]
+
+filesWithTracks = {fN:True for fN in listTifFiles}
+for fN in listTifFiles:
+    check = check_if_file_has_tracks(fN, dirPath)
+    filesWithTracks[fN] = (check)
+listTifFiles = [fN for fN in listTifFiles if filesWithTracks[fN]]
+listTrackFiles = [fN[:-4] + '_Tracks.xml' for fN in listTifFiles if filesWithTracks[fN]]
+
+listTifPaths = [os.path.join(dirPath, f) for f in listTifFiles]
+listTrackPaths = [os.path.join(dirPath, f) for f in listTrackFiles]
+
+ACF_res_df, ACF_dict = analyse_cells_ACF(listTifPaths[:], SCALE, FPS)
+ufun.dict2json(ACF_dict, dirPath + '/Results', 'ACF_dict')
+ACF_res_df.to_csv(os.path.join(dirPath, 'Results', 'results_ACF.csv'), index=False)
+
+MSD_res_df, MSD_dict = analyse_white_blobs_MSD(listTrackPaths[:], SCALE, FPS)
+ufun.dict2json(MSD_dict, dirPath + '/Results', 'MSD_dict')
+MSD_res_df.to_csv(os.path.join(dirPath, 'Results', 'results_MSD.csv'), index=False)
+
+
+# %%% Plot the results
+
+SCALE = 0.222
+FPS = 1
+
+dirPath = up.Path_AnalysisPulls + "/26-02-09_UVonCytoplasm"
+listAllFiles = os.listdir(dirPath)
+
+df_ACF = pd.read_csv(os.path.join(dirPath, 'Results', 'results_ACF.csv'))
+df_MSD = pd.read_csv(os.path.join(dirPath, 'Results', 'results_MSD.csv'))
+
+
+#### ACF
+
+Id_cols = ['pos_id',]
+Group_cols = ('Pa')
+Yplot = 't_33p'
+
+group_ACF = df_ACF.groupby(Group_cols)
+agg_dict = {k:'first' for k in Id_cols}
+agg_dict.update({Yplot:'mean'})
+df_ACF_g = group_ACF.agg(agg_dict).reset_index()
+
+fig, ax = plt.subplots(1, 1)
+sns.swarmplot(data=df_ACF, ax=ax, x='Pa', y=Yplot)
+plt.tight_layout()
+plt.show()
+
+
+#### MSD
+
+Id_cols = ['pos_id',]
+Group_cols = ('Pa')
+Yplot = 'D'
+
+group_MSD = df_MSD.groupby(Group_cols)
+agg_dict = {k:'first' for k in Id_cols}
+agg_dict.update({Yplot:'mean'})
+df_MSD_g = group_MSD.agg(agg_dict).reset_index()
+
+fig, ax = plt.subplots(1, 1)
+ax.set_yscale('log')
+sns.swarmplot(data=df_MSD, ax=ax, x='Pa', y=Yplot)
+plt.tight_layout()
+plt.show()
 
 
 
-# %%%
+#### Check consistency
+
+df_merged = pd.merge(left=df_MSD, right=df_ACF, on='id', how='inner')
+df_merged['Pa_x'] = df_merged['Pa_x'].apply(lambda x : str(x))
+Xplot = 'D'
+Yplot = 't_33p'
+
+fig, ax = plt.subplots(1, 1)
+# ax.set_yscale('log')
+sns.scatterplot(data=df_merged, ax=ax, x=Xplot, y=Yplot, 
+                hue='Pa_x',
+                )
+plt.tight_layout()
+plt.show()
+
+
+#### Check consistency 2
+
+df_merged = pd.merge(left=df_MSD, right=df_ACF, on='id', how='inner')
+df_merged['Pa_x'] = df_merged['Pa_x'].apply(lambda x : str(x))
+Xplot = 'D'
+Yplot = 't_0p'
+
+fig, ax = plt.subplots(1, 1)
+# ax.set_yscale('log')
+sns.scatterplot(data=df_merged, ax=ax, x=Xplot, y=Yplot, 
+                hue='Pa_x',
+                )
+plt.tight_layout()
+plt.show()
+
+# %% ------------
+
+
+
+
+
+# %% Tests
+
+# %%% Test with simple image difference
+
+dirPath = up.Path_AnalysisPulls + "/TestCytoRoutine"
+
+fileName1 = "26-02-09_M1_Pos6_Pa0_C1_Film5min_Dt1sec_1.tif"
+fileName2 = "26-02-09_M1_Pos6_Pa77_C1_Film5min_Dt1sec_1.tif"
+# fileName1 = "26-02-09_M1_Pos7_Pa0_C1_Film5min_Dt1sec_1-1.tif"
+# fileName2 = "26-02-09_M1_Pos7_Pa33_C1_Film5min_Dt1sec_1-1.tif"
+
+filePath1 = os.path.join(dirPath, fileName1)
+filePath2 = os.path.join(dirPath, fileName2)
+
+shape1, type1 = tiff_inspect(filePath1)
+shape2, type2 = tiff_inspect(filePath2)
+img1 = skm.io.imread(filePath1)
+img2 = skm.io.imread(filePath2)
+
+img1_r = np.zeros_like(img1)
+img2_r = np.zeros_like(img2)
+
+# Equalize histograms
+for I, I_r in zip([img1, img2], [img1_r, img2_r]):
+    for t in range(I.shape[0]):
+        p2, p98 = np.percentile(I[t], (1, 99))
+        I_r[t] = skm.exposure.rescale_intensity(I[t], in_range=(p2, p98))
+
+SCALE = 0.222
+FPS = 1
+
+shape = shape1
+img1 = img1_r
+img2 = img2_r
+
+all_contours1  = segment_single_cell_across_film(img1, PLOT = False)
+all_contours2  = segment_single_cell_across_film(img2, PLOT = False)
 
 dT = 10
 nT, nY, nX = shape
@@ -626,25 +1255,84 @@ for img, all_contours in zip([img1, img2], [all_contours1, all_contours2]):
 plt.show()
     
 
-# %%%
+# %%% Test with ACF on checkerboard
 
-# =============================================================================
-# #### Test polygon to mask
+image_raw = skm.data.checkerboard()
+image = skm.util.img_as_float32(image_raw)
+s = image.shape
+
+nT = 200
+film = np.zeros((nT, s[0], s[1]), dtype=float)
+for t in range(nT):
+    film[t] = np.roll(image, t, axis=1)
+    
+single_mask = np.ones((s[0], s[1]), dtype=bool)
+image = film
+    
+# for t in range(image.shape[0]):
+#     p1, p99 = np.percentile(image[t].flatten()[single_mask.flatten()], (1, 99))
+#     image[t] = skm.exposure.rescale_intensity(image[t], in_range=(p1, p99))
+    
+
+# image_masked = image*single_mask
+fig, ax = plt.subplots(1, 1)
+short_len = 75
+long_len = image.shape[0]-short_len + 1
+image_acor = np.zeros((long_len, image.shape[1], image.shape[2]))
+
+for i in range(single_mask.shape[0]):
+    for j in range(single_mask.shape[1]):
+        if single_mask[i, j]:
+            A = image[:, i, j]
+            if np.std(A) == 0:
+                print(i, j)
+            B = (A - np.mean(A))/np.std(A)
+            acor = signal.correlate(B, B[:short_len], mode="valid")#[len(A)//2:]
+            acor = acor / acor[0]
+            # lags = signal.correlation_lags(len(A), len(A), mode="full")[len(A):]
+            image_acor[:, i, j] = acor
+            
+# skm.io.imsave(filePath[:-4] + '_acor.tif', image_acor)
+
+cell_acor = np.zeros(long_len)
+lags = np.arange(0, long_len)
+for t in range(len(cell_acor)):
+    cell_acor[t] = np.mean(image_acor[t].flatten()[single_mask.flatten()])
+
+ax.plot(lags, cell_acor, label = fileName)
+    
+# fig, axes = plt.subplots(1, 3)
+# for k in range(len(axes)):
+#     ax = axes[k]
+#     ax.imshow(film[k*10], cmap='gray')
+
+plt.show()
+
+# %%% Test autocorr over an example
+
+A = np.array([11, 10, 11, 10, 11, 12, 5, 2, 1, 0, 1, 0, 1])
+A = A*10
+B = (A - np.mean(A))/np.std(A)
+
+print(B)
+AC = signal.correlate(B, B, mode="full")
+
+print(AC)
+
+# %%% Test polygon to mask
 # polygon = [(x1,y1),(x2,y2),...] or [x1,y1,x2,y2,...]
 # poly = np.round(viterbi_contour[:,::-1], 0).astype(int)
 # poly = [(p[0], p[1]) for p in poly] + [(poly[0, 0], poly[0, 1])]
 # height, width = img1[t].shape
-# 
+
 # Im0 = Image.new('L', (width, height), 0)
 # ImageDraw.Draw(Im0).polygon(poly, outline=1, fill=1)
 # mask = np.array(Im0)
 # plt.imshow(mask)
-# =============================================================================
 
 
 
-# =============================================================================
-# #### Test centroid & outliers detection
+# %%% Test centroid & outliers detection
 # centroid_avg = np.mean(all_centroids, axis=0)
 # all_centroids_rel = all_centroids - (np.ones((1, all_centroids.shape[0])).T @ np.array([centroid_avg]))
 # centroids_r = np.array([(c[0]**2 + c[1]**2)**0.5 for c in all_centroids_rel])
@@ -653,154 +1341,6 @@ plt.show()
 # for t in range(len(outlier_mask)):
 #     if outlier_mask[t]:
 #         print(t)
-# =============================================================================
-
-# %%%
-
-
-
-# %%% Version with tracking & MSD
-
-#### Import tracked trajectories
-
-dirPath = up.Path_AnalysisPulls + "/TestCytoRoutine"
-
-# fileName1 = "26-02-09_M1_Pos6_Pa0_C1_Film5min_Dt1sec_1.tif"
-# fileName2 = "26-02-09_M1_Pos6_Pa77_C1_Film5min_Dt1sec_1.tif"
-fileName1 = "26-02-09_M1_Pos6_Pa0_C1_Film5min_Dt1sec_1_Tracks.xml"
-fileName2 = "26-02-09_M1_Pos6_Pa77_C1_Film5min_Dt1sec_1_Tracks.xml"
-fileName1 = "26-02-09_M1_Pos7_Pa0_C1_Film5min_Dt1sec_1_Tracks.xml"
-fileName2 = "26-02-09_M1_Pos7_Pa33_C1_Film5min_Dt1sec_1_Tracks.xml"
-
-filePath1 = os.path.join(dirPath, fileName1)
-filePath2 = os.path.join(dirPath, fileName2)
-
-Tracks1 = importTrackMateTracks(filePath1)
-Tracks2 = importTrackMateTracks(filePath2)
-
-#### Format as table & filter
-Tables = []
-column_names = ['frame', 'x', 'y', 'particle']
-for Tracks in [Tracks1, Tracks2]:
-    all_tracks = []
-    for i, track in enumerate(Tracks):
-        nT = len(track)
-        track = np.concat((track, np.ones((len(track[:,0]), 1), dtype=int) * (i+1)), axis = 1)
-        track[:,0] = track[:,0].astype(int) + 1
-        all_tracks.append(track)
-    concat_tracks = np.concat(all_tracks, axis = 0)
-    d = {column_names[k] : concat_tracks[:,k] for k in range(len(column_names))}
-    df = pd.DataFrame(d)
-    Tables.append(df)
-
-#### Run msd
-fig, ax = plt.subplots(1, 1)
-colors = ['cyan', 'r']
-labels = ['Before UV', 'After UV']
-
-for k in range(2):
-    df = Tables[k]
-    
-    # res_imsd = imsd(df, SCALE, FPS).reset_index()
-    res_emsd = emsd(df, SCALE, FPS, max_lagtime=40).reset_index()
-    
-    T, MSD = res_emsd['lagt'], res_emsd['msd']
-    parms, results = ufun.fitLineHuber(T, MSD, with_intercept = False)
-    [D] = parms
-    
-    ax.plot(res_emsd['lagt'], res_emsd['msd'], color=colors[k], marker='.', lw=0.5, label=labels[k])
-    ax.axline(xy1=(0,0), slope=D, color=pm.lighten_color(colors[k], 0.5), ls='-', lw=1, label=f'D = {D:.2e} µm²/s')
-
-ax.grid()
-ax.set_xlabel('Lag time (s)')
-ax.set_ylabel('MSD (µm²)')
-ax.legend()
-
-fig.tight_layout()
-plt.show()
-
-# %%% Version with a function to do tracking & MSD
-
-def analyse_white_blobs_MSD(trackPathList, SCALE, FPS):
-    res_dict = {
-                'id':[],
-                'Pa':[],
-                'D':[],
-                'k':[],
-                'D_k':[],
-                }
-    tables_dict = {}
-    # "26-02-09_M1_Pos6_Pa7_C3_"
-    
-    for p in trackPathList:
-        # Ids
-        _, fN = os.path.split(p)
-        cell_id = '_'.join(fN.split('_')[:5])
-        Pa = get_numbers_following_text(fN, '_Pa')
-        
-        # MSD
-        Tracks = importTrackMateTracks(p)
-        column_names = ['frame', 'x', 'y', 'particle']
-        all_tracks = []
-        for i, track in enumerate(Tracks):
-            nT = len(track)
-            if nT >= 30:
-                track = np.concat((track, np.ones((len(track[:,0]), 1), dtype=int) * (i+1)), axis = 1)
-                track[:,0] = track[:,0].astype(int) + 1
-                all_tracks.append(track)
-        concat_tracks = np.concat(all_tracks, axis = 0)
-        df = pd.DataFrame({column_names[k] : concat_tracks[:,k] for k in range(len(column_names))})
-        tables_dict[cell_id] = df
-    
-        #### Run msd
-        res_emsd = emsd(df, SCALE, FPS, max_lagtime=40).reset_index()
-        T, MSD = res_emsd['lagt'], res_emsd['msd']
-        parms, results = ufun.fitLineHuber(T, MSD, with_intercept = False)
-        D = parms.values[0]/4
-        
-        parms, results = ufun.fitLineHuber(np.log(T), np.log(MSD), with_intercept = True)
-        b, a = parms
-        k = a
-        D_k = np.exp(b)/4
-        
-        res_dict['id'].append(cell_id)
-        res_dict['Pa'].append(Pa)
-        res_dict['D'].append(D)
-        res_dict['k'].append(k)
-        res_dict['D_k'].append(D_k)
-        res_df = pd.DataFrame(res_dict)
-        
-    return(res_df)
-        
-        # fig, ax = plt.subplots(1, 1)
-        # colors = ['cyan', 'r']
-        # labels = ['Before UV', 'After UV']
-        # ax.plot(res_emsd['lagt'], res_emsd['msd'], color=colors[k], marker='.', lw=0.5, label=labels[k])
-        # ax.axline(xy1=(0,0), slope=D, color=pm.lighten_color(colors[k], 0.5), ls='-', lw=1, label=f'D = {D:.2e} µm²/s')
-        # ax.grid()
-        # ax.set_xlabel('Lag time (s)')
-        # ax.set_ylabel('MSD (µm²)')
-        # ax.legend()
-        # fig.tight_layout()
-        # plt.show()
-
-SCALE = 0.222
-FPS = 1
-dirPath = up.Path_AnalysisPulls + "/26-02-09_UVonCytoplasm"
-listAllFiles = os.listdir(dirPath)
-listTrackFiles = [f for f in listAllFiles if f.endswith('_Tracks.xml')]
-# listFiles = [
-#              "26-02-09_M1_Pos6_Pa0_C2_Film5min_Dt1sec_1-1_Tracks.xml",
-#              "26-02-09_M1_Pos6_Pa7_C2_Film5min_Dt1sec_1-1_Tracks.xml",
-#              "26-02-09_M1_Pos6_Pa77_C2_Film5min_Dt1sec_1-1_Tracks.xml",
-#              "26-02-09_M1_Pos6_Pa777_C2_Film5min_Dt1sec_1-1_Tracks.xml",
-#              ]
-listPaths = [os.path.join(dirPath, f) for f in listTrackFiles]
-
-msd_df = analyse_white_blobs_MSD(listPaths[:], SCALE, FPS)
-
-
-# %% Tests
 
 # %%% Warp test
 
@@ -813,7 +1353,7 @@ R, A = warpXY(XX, YY, Xcw, Ycw)
 
 XX2, YY2 = unwarpRA(R, A, Xcw, Ycw)
 
-# %%% 
+# %%% Warp test 2
 
 warped = np.zeros((360, 100))
 RR, AA = np.meshgrid(np.arange(warped.shape[1]), np.arange(warped.shape[0]))
