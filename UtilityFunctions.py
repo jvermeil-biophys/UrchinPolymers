@@ -1016,6 +1016,16 @@ def max_entropy_threshold(I):
     T = max_entropy(H)
     return(T)
 
+def resize_1Dinterp(A, new_nx=None, fx=None):
+    nX = len(A)
+    X = np.arange(0, nX, 1)
+    try:
+        newX = np.arange(0, nX, nX/new_nx)
+    except:
+        newX = np.arange(0, nX, 1/fx)
+    spl = interpolate.CubicSpline(X, A)
+    new_A = spl(newX)
+    return(new_A)
 
 def resize_2Dinterp(I, new_nx=None, new_ny=None, fx=None, fy=None):
     

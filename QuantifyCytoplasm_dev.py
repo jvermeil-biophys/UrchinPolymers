@@ -148,7 +148,10 @@ def get_largest_object(img, mode = 'dark', out_type = 'contour'):
         output = img_bin_object
     return(output)
     
-def find_cell_inner_circle(img, plot=False, k_th = 1.0):
+def find_cell_inner_circle(img, 
+                           binarize = False, k_th = 1.0,
+                           zero_padding = 0,
+                           PLOT=False):
     """
     On a picture of a cell in fluo, find the approximate position of the cell.
     The idea is to fit the largest circle which can be contained in a mask of the cell.
@@ -157,15 +160,24 @@ def find_cell_inner_circle(img, plot=False, k_th = 1.0):
     See : https://github.com/mapbox/polylabel and https://sites.google.com/site/polesofinaccessibility/
     Interesting topic !
     """
-    
-    th1 = skm.filters.threshold_isodata(img) * k_th
-    img_bin = (img < th1)
-    img_bin = ndi.binary_opening(img_bin, iterations = 2)
+    if binarize:
+        th1 = skm.filters.threshold_otsu(img) * k_th
+        # img_min = ndi.binary_fill_holes(img_min)
+        # img_min = ndi.binary_closing(img_min, iterations=5)
+        img_bin = (img < th1)
+        img_bin = ndi.binary_opening(img_bin, iterations = 2)
+    else:
+        img_bin = img
     img_label, num_features = ndi.label(img_bin)
     df = pd.DataFrame(skm.measure.regionprops_table(img_label, img, properties = ['label', 'area']))
     df = df.sort_values(by='area', ascending=False)
     i_label = df.label.values[0]
     img_rawCell = (img_label == i_label)
+    if zero_padding > 0:
+        pad_width = zero_padding
+        img_rawCell = np.pad(img_rawCell, pad_width, mode='constant')
+        if PLOT:
+            img = np.pad(img, pad_width, mode='constant')
     img_rawCell = ndi.binary_fill_holes(img_rawCell)
     
     # [contour_rawCell] = skm.measure.find_contours(img_rawCell, 0.5)
@@ -184,8 +196,10 @@ def find_cell_inner_circle(img, plot=False, k_th = 1.0):
     circle = center.buffer(R)
     
     X, Y = list(center.coords)[0]
+    X = X - zero_padding
+    Y = Y - zero_padding
     
-    if plot:
+    if PLOT:
         fig, axes = plt.subplots(1,2, figsize = (8,4))
         ax = axes[0]
         ax.imshow(img_rawCell, cmap='gray')
@@ -497,10 +511,31 @@ def segment_single_cell_across_film(img, mode_edge = 'bright', PLOT = False):
     return(all_contours)
 
 
+
+def get_Pa_value(df, manip_id, Pa):
+    df['manip_id'] = df['date'] + '_' + df['manip']
+    dff = df[df['manip_id'] == manip_id]
+    Pa = str(Pa)
+    L_irr = []
+    L_Dt = []
+    L_pow = []
+    for n in Pa:
+        Irr = dff.loc[dff['Pa']==int(n), 'irradiance'].values[0]
+        Dt = dff.loc[dff['Pa']==int(n), 'duration'].values[0]
+        L_irr.append(Irr)
+        L_Dt.append(Dt)
+        L_pow.append(Irr*Dt)
+    return(np.array(L_irr), np.array(L_Dt), np.array(L_pow))
+
+
+
 def get_reasonable_inner_cell_contour(img, PLOT = False):
-    # nT, nY, nX = img.shape
+    nT, nY, nX = img.shape
     img_min = np.min(img, axis = 0)
-    (Yc, Xc), Rc = find_cell_inner_circle(img_min, plot=PLOT, k_th = 1.0)
+    
+    (Yc, Xc), Rc = find_cell_inner_circle(img_min, binarize = True, 
+                                          zero_padding = 10,
+                                          PLOT=PLOT)
     Angles = np.linspace(0, 2*np.pi, 360)
     Xcontour = Xc + Rc*np.cos(Angles)
     Ycontour = Yc + Rc*np.sin(Angles)
@@ -508,7 +543,8 @@ def get_reasonable_inner_cell_contour(img, PLOT = False):
     if PLOT:
         fig, axes = plt.subplots(1, 2)
         axes[0].imshow(img_min, cmap='gray')
-        axes[0].plot(contour[:,0], contour[:,1], 'r-')
+        axes[0].plot(contour[:,1], contour[:,0], 'r-')
+        mask = contour_to_mask([nY, nX], contour)
         axes[1].imshow(img[0]*mask, cmap='gray')
         plt.show()
     return(contour)
@@ -577,20 +613,31 @@ def compute_acor(image, mask, window_length,
             p1, p99 = np.percentile(image[t].flatten()[mask.flatten()], (1, 99))
             image[t] = skm.exposure.rescale_intensity(image[t], in_range=(p1, p99))
     
+    if PLOT:
+        fig, axes = plt.subplots(1, 2)
+        axes[0].imshow(image[0]*mask, cmap = 'gray')
+        axes[1].imshow(image[-1]*mask, cmap = 'gray')
+        plt.show()
+    
     short_len = window_length
     long_len = image.shape[0] - short_len + 1
     image_acor = np.zeros((long_len, image.shape[1], image.shape[2]))
     
+    Zero_std_found = False
+    
     for i in range(image.shape[1]):
         for j in range(image.shape[2]):
-            if mask[i, j]:
-                A = image[:, i, j]
-                if np.std(A) == 0:
-                    print(i, j)
+            A = image[:, i, j]
+            if mask[i, j] and np.std(A) != 0:
                 B = (A - np.mean(A))/np.std(A)
                 acor = signal.correlate(B, B[:short_len], mode="valid")
                 acor = acor / acor[0]
                 image_acor[:, i, j] = acor
+            if mask[i, j] and np.std(A) == 0:
+                mask[i, j] = False
+                if not Zero_std_found:
+                    Zero_std_found = True
+                    print(pm.ORANGE + 'Found always null pixel' + pm.NORMAL)
                     
     total_acor = np.zeros(long_len)
     lags = np.arange(long_len)
@@ -599,18 +646,24 @@ def compute_acor(image, mask, window_length,
     
     if PLOT:
         fig, ax = plt.subplots(1, 1)
-        ax.plot(lags, cell_acor, label = fileName)
+        ax.imshow(mask, cmap='gray')
+        plt.show()
+        fig, ax = plt.subplots(1, 1)
+        ax.plot(lags, total_acor, label = fileName)
         plt.show()
         
     return(total_acor, image_acor)
 
 
-def analyse_cells_ACF(imagePathList, SCALE, FPS):
+def analyse_cells_ACF(imagePathList, df_Pa, SCALE, FPS):
     res_dict = {
                 'id':[],
                 'pos_id':[],
                 'cell_id':[],
                 'Pa':[],
+                'Pa_total_power':[],
+                'Pa_irradiance':[],
+                'Pa_dt':[],
                 't_50p':[],
                 't_33p':[],
                 't_25p':[],
@@ -627,11 +680,17 @@ def analyse_cells_ACF(imagePathList, SCALE, FPS):
         
         # Ids
         _, fN = os.path.split(p)
+        print(pm.GREEN + f'Analysing {fN}' + pm.NORMAL)
         
         full_id = '_'.join(fN.split('_')[:5])
+        manip_id = '_'.join(fN.split('_')[:2])
         pos_id = get_numbers_following_text(fN, '_Pos')
         cell_id = get_numbers_following_text(fN, '_C')
         Pa = get_numbers_following_text(fN, '_Pa')
+        Irr, DT, Pow = get_Pa_value(df_Pa, manip_id, Pa) # mW/cm2 ; mJ/cm2
+        str_irr = '_'.join(Irr.astype(str))
+        str_dt = '_'.join(DT.astype(str))
+        total_power = np.sum(Pow)/1000 # J/cm2
         
         # Get image and mask       
         image_raw = skm.io.imread(p)
@@ -657,38 +716,44 @@ def analyse_cells_ACF(imagePathList, SCALE, FPS):
         # print(th_timescales)
         # print(dict_timescales)
         
+        interp_factor = 10
+        total_acor_interp = ufun.resize_1Dinterp(total_acor, 
+                                                 fx=interp_factor)
+        
         for ts, th in zip(timescales, th_timescales):
-            test = (total_acor < th)
-            t = ufun.findFirst(1, test)
+            test = (total_acor_interp < th)
+            t = ufun.findFirst(1, test)/interp_factor
             dict_timescales[ts] = t
         
         res_dict['id'].append(full_id)
         res_dict['pos_id'].append(pos_id)
         res_dict['cell_id'].append(cell_id)
         res_dict['Pa'].append(Pa)
+        res_dict['Pa_total_power'].append(total_power)
+        res_dict['Pa_irradiance'].append(str_irr)
+        res_dict['Pa_dt'].append(str_dt)
         for ts in dict_timescales.keys():
             res_dict[ts].append(dict_timescales[ts])
         
-        
-        
         Dt = time.time() - T0
-        print(pm.GREEN + f'Done with {fN}' + pm.NORMAL + f' ; Dt = {Dt:.4f}')
+        print(f'Done in Dt = {Dt:.4f}')
         
-    
     res_df = pd.DataFrame(res_dict)
-
         
     return(res_df, ACF_dict)
         
         
         
 
-def analyse_white_blobs_MSD(trackPathList, SCALE, FPS):
+def analyse_white_blobs_MSD(trackPathList, df_Pa, SCALE, FPS):
     res_dict = {
                 'id':[],
                 'pos_id':[],
                 'cell_id':[],
                 'Pa':[],
+                'Pa_total_power':[],
+                'Pa_irradiance':[],
+                'Pa_dt':[],
                 'D':[],
                 'k_nl':[],
                 'D_nl':[],
@@ -703,10 +768,17 @@ def analyse_white_blobs_MSD(trackPathList, SCALE, FPS):
         
         # Ids
         _, fN = os.path.split(p)
+        print(pm.GREEN + f'Analysing {fN}' + pm.NORMAL)
+        
         full_id = '_'.join(fN.split('_')[:5])
+        manip_id = '_'.join(fN.split('_')[:2])
         pos_id = get_numbers_following_text(fN, '_Pos')
         cell_id = get_numbers_following_text(fN, '_C')
         Pa = get_numbers_following_text(fN, '_Pa')
+        Irr, DT, Pow = get_Pa_value(df_Pa, manip_id, Pa) # mW/cm2 ; mJ/cm2
+        str_irr = '_'.join(Irr.astype(str))
+        str_dt = '_'.join(DT.astype(str))
+        total_power = np.sum(Pow)/1000 # J/cm2
         
         # MSD
         Tracks = importTrackMateTracks(p)
@@ -742,27 +814,51 @@ def analyse_white_blobs_MSD(trackPathList, SCALE, FPS):
         res_dict['pos_id'].append(pos_id)
         res_dict['cell_id'].append(cell_id)
         res_dict['Pa'].append(Pa)
+        res_dict['Pa_total_power'].append(total_power)
+        res_dict['Pa_irradiance'].append(str_irr)
+        res_dict['Pa_dt'].append(str_dt)
         res_dict['D'].append(D)
         res_dict['k_nl'].append(k_nl)
         res_dict['D_nl'].append(D_nl)
         
         Dt = time.time() - T0
-        print(pm.GREEN + f'Done with {fN}' + pm.NORMAL + f' ; Dt = {Dt:.4f}')
+        print(f'Done in Dt = {Dt:.4f}')
         
     res_df = pd.DataFrame(res_dict)
         
     return(res_df, MSD_dict)
 
+def add_irr_and_pow_to_table(df, df_Pa):
+    list_id = df['id'].values
+    L_pow = []
+    L_Irr = []
+    L_Dt = []
+    for i in list_id:
+        manip_id = '_'.join(i.split('_')[:2])
+        Pa = df.loc[df['id']==i, 'Pa'].values[0]
+        irr, dt, power = get_Pa_value(df_Pa, manip_id, Pa)
+        str_irr = '_'.join(irr.astype(str))
+        str_dt = '_'.join(dt.astype(str))
+        power = int(np.sum(power)/1000)
+        L_pow.append(power)
+        L_Irr.append(str_irr)
+        L_Dt.append(str_dt)
+    df['Pa_total_power'] = L_pow
+    df['Pa_irradiance'] = L_Irr
+    df['Pa_dt'] = L_Dt
+    return(df)
+
 # %% Scripts
 
 # %%% Import a pair of films
 
-dirPath = up.Path_AnalysisPulls + "/TestCytoRoutine"
+dirPath = up.Path_AnalysisPulls + "/26-02-09_UVonCytoplasm"
 
 fileName1 = "26-02-09_M1_Pos6_Pa0_C1_Film5min_Dt1sec_1.tif"
 fileName2 = "26-02-09_M1_Pos6_Pa77_C1_Film5min_Dt1sec_1.tif"
 # fileName1 = "26-02-09_M1_Pos7_Pa0_C1_Film5min_Dt1sec_1-1.tif"
 # fileName2 = "26-02-09_M1_Pos7_Pa33_C1_Film5min_Dt1sec_1-1.tif"
+fileName1 = "26-02-09_M1_Pos5_Pa0_C4_Film5min_Dt1sec.tif"
 
 filePath1 = os.path.join(dirPath, fileName1)
 filePath2 = os.path.join(dirPath, fileName2)
@@ -1061,7 +1157,108 @@ ax.legend()
 plt.show()
 
 
-# %%% Better script for ACF and MSD
+# %%% Better script for ACF 
+
+SCALE = 0.222
+FPS = 1
+file2id = lambda x : '_'.join(x.split('_')[:5])
+
+redo_all_files = True
+ 
+dirPath = up.Path_AnalysisPulls + "/26-02-09_UVonCytoplasm"
+listAllFiles = os.listdir(dirPath)
+listTifFiles = [f for f in listAllFiles if f.endswith('.tif')]
+
+PaTableName = "MainIrradianceConditions.csv"
+PaTablePath = os.path.join(up.Path_AnalysisPulls, PaTableName)
+df_Pa = pd.read_csv(PaTablePath, sep=',')
+
+if not redo_all_files:
+    ACF_res_df = pd.read_csv(os.path.join(dirPath, 'Results', 'results_ACF.csv'))
+    ACF_dict = ufun.json2dict(dirPath + '/Results', 'ACF_dict')
+    for col in ACF_res_df.columns:
+        if 'Unnamed' in col:
+            ACF_res_df = ACF_res_df.drop(labels = col, axis = 1)
+    analyzed_id = ACF_res_df['id'].unique()
+    listTifFiles = [f for f in listTifFiles if file2id(f) not in analyzed_id]
+
+listTifPaths = [os.path.join(dirPath, f) for f in listTifFiles]
+
+new_ACF_res_df, new_ACF_dict = analyse_cells_ACF(listTifPaths[:], df_Pa, 
+                                                 SCALE, FPS)
+
+if redo_all_files:
+    ACF_res_df = new_ACF_res_df
+    ACF_dict = new_ACF_dict
+if not redo_all_files:
+    ACF_res_df = pd.concat([ACF_res_df, new_ACF_res_df], axis=0)
+    ACF_dict.update(new_ACF_dict)
+
+ufun.dict2json(ACF_dict, dirPath + '/Results', 'ACF_dict')
+ACF_res_df.to_csv(os.path.join(dirPath, 'Results', 'results_ACF.csv'), index=False)
+
+
+# %%% Add numeric value for Power and Irradiance
+
+# dirPath = up.Path_AnalysisPulls + "/26-02-09_UVonCytoplasm"
+# listAllFiles = os.listdir(dirPath)
+# listTifFiles = [f for f in listAllFiles if f.endswith('.tif')]
+
+# PaTableName = "MainIrradianceConditions.csv"
+# PaTablePath = os.path.join(up.Path_AnalysisPulls, fileName)
+# df_Pa = pd.read_csv(PaTablePath)
+
+# ACF_res_df = pd.read_csv(os.path.join(dirPath, 'Results', 'results_ACF.csv'))
+# ACF_dict = ufun.json2dict(dirPath + '/Results', 'ACF_dict')
+
+# ACF_res_df_2 = add_irr_and_pow_to_table(ACF_res_df, df_Pa)
+# ACF_res_df_2.to_csv(os.path.join(dirPath, 'Results', 'results_ACF.csv'), index=False)
+
+# %%% Test a problematic cell
+
+dirPath = up.Path_AnalysisPulls + "/26-02-09_UVonCytoplasm"
+fileName = "26-02-09_M1_Pos5_Pa66_C4_Film5min_Dt1sec.tif"
+filePath = os.path.join(dirPath, fileName)
+
+# Get image and mask       
+image_raw = skm.io.imread(filePath)
+image = skm.util.img_as_float32(image_raw)
+shape = image.shape
+
+single_contour = get_reasonable_inner_cell_contour(image, PLOT = True)
+single_mask = contour_to_mask([shape[1], shape[2]], single_contour)
+single_mask = ndi.binary_erosion(single_mask, iterations = 50)
+
+window_length = shape[0]//3
+
+# ACF function
+total_acor, image_acor = compute_acor(image, single_mask, window_length, 
+                 EQUALIZE = True, PLOT = True)
+
+timescales = ['t_50p', 't_33p', 't_25p', 't_20p', 't_0p']
+th_timescales = [1/2, 1/3, 1/4, 1/5, 0]
+dict_timescales = {k:0 for k in timescales}
+# print(timescales)
+# print(th_timescales)
+# print(dict_timescales)
+
+interp_factor = 10
+total_acor_interp = ufun.resize_1Dinterp(total_acor, 
+                                         fx=interp_factor)
+x = np.arange(0, len(total_acor), 1)
+x_interp = np.arange(0, len(total_acor), 1/interp_factor)
+# fig, ax = plt.subplots(1, 1)
+# ax.plot(x_interp, total_acor_interp, 'r-')
+# ax.plot(x, total_acor, 'b.')
+# plt.show()
+
+for ts, th in zip(timescales, th_timescales):
+    test = (total_acor_interp < th)
+    t = ufun.findFirst(1, test)/interp_factor
+    dict_timescales[ts] = t
+
+# %%% Better script for MSD
+
 
 SCALE = 0.222
 FPS = 1
@@ -1072,6 +1269,19 @@ dirPath = up.Path_AnalysisPulls + "/26-02-09_UVonCytoplasm"
 listAllFiles = os.listdir(dirPath)
 listTifFiles = [f for f in listAllFiles if f.endswith('.tif')]
 
+PaTableName = "MainIrradianceConditions.csv"
+PaTablePath = os.path.join(dirPath, fileName)
+df_Pa = pd.read_csv(PaTablePath)
+
+if not redo_all_files:
+    ACF_res_df = pd.read_csv(os.path.join(dirPath, 'Results', 'results_ACF.csv'))
+    for col in ACF_res_df.columns:
+        if 'Unnamed' in col:
+            ACF_res_df = ACF_res_df.drop(label = col, axis = 1)
+    analyzed_id = ACF_res_df['id'].unique()
+    listTifFiles = [f for f in listAllFiles if file2id(f) not in analyzed_id]
+
+
 filesWithTracks = {fN:True for fN in listTifFiles}
 for fN in listTifFiles:
     check = check_if_file_has_tracks(fN, dirPath)
@@ -1079,17 +1289,31 @@ for fN in listTifFiles:
 listTifFiles = [fN for fN in listTifFiles if filesWithTracks[fN]]
 listTrackFiles = [fN[:-4] + '_Tracks.xml' for fN in listTifFiles if filesWithTracks[fN]]
 
+
 listTifPaths = [os.path.join(dirPath, f) for f in listTifFiles]
 listTrackPaths = [os.path.join(dirPath, f) for f in listTrackFiles]
 
-ACF_res_df, ACF_dict = analyse_cells_ACF(listTifPaths[:], SCALE, FPS)
-ufun.dict2json(ACF_dict, dirPath + '/Results', 'ACF_dict')
-ACF_res_df.to_csv(os.path.join(dirPath, 'Results', 'results_ACF.csv'), index=False)
-
-MSD_res_df, MSD_dict = analyse_white_blobs_MSD(listTrackPaths[:], SCALE, FPS)
+MSD_res_df, MSD_dict = analyse_white_blobs_MSD(listTrackPaths[:], df_Pa, 
+                                               SCALE, FPS)
 ufun.dict2json(MSD_dict, dirPath + '/Results', 'MSD_dict')
 MSD_res_df.to_csv(os.path.join(dirPath, 'Results', 'results_MSD.csv'), index=False)
 
+
+# %%% Add numeric value for Power and Irradiance
+
+# dirPath = up.Path_AnalysisPulls + "/26-02-09_UVonCytoplasm"
+# listAllFiles = os.listdir(dirPath)
+# listTifFiles = [f for f in listAllFiles if f.endswith('.tif')]
+
+# PaTableName = "MainIrradianceConditions.csv"
+# PaTablePath = os.path.join(up.Path_AnalysisPulls, fileName)
+# df_Pa = pd.read_csv(PaTablePath)
+
+# MSD_res_df = pd.read_csv(os.path.join(dirPath, 'Results', 'results_ACF.csv'))
+# # ACF_dict = ufun.json2dict(dirPath + '/Results', 'ACF_dict')
+
+# MSD_res_df_2 = add_irr_and_pow_to_table(MSD_res_df, df_Pa)
+# MSD_res_df_2.to_csv(os.path.join(dirPath, 'Results', 'results_MSD.csv'), index=False)
 
 # %%% Plot the results
 
@@ -1116,6 +1340,31 @@ df_ACF_g = group_ACF.agg(agg_dict).reset_index()
 
 fig, ax = plt.subplots(1, 1)
 sns.swarmplot(data=df_ACF, ax=ax, x='Pa', y=Yplot)
+ax.set_ylim([0, ax.get_ylim()[1]])
+plt.tight_layout()
+plt.show()
+
+
+#### ACF - 2
+
+Id_cols = ['pos_id']
+Group_cols = ('Pa')
+Xplot = 'Pa_total_power'
+Yplot = 't_25p'
+
+group_ACF = df_ACF.groupby(Xplot)
+agg_dict = {k:'first' for k in Id_cols}
+agg_dict.update({Yplot:'mean'})
+df_ACF_g = group_ACF.agg(agg_dict).reset_index()
+
+fig, ax = plt.subplots(1, 1)
+ax = ax
+ax.grid(zorder=0)
+sns.scatterplot(data=df_ACF, ax=ax, x=Xplot, y=Yplot, zorder=6)
+sns.scatterplot(data=df_ACF_g, ax=ax, x=Xplot, y=Yplot, s=100, zorder=6)
+ax.set_ylim([0, ax.get_ylim()[1]])
+
+
 plt.tight_layout()
 plt.show()
 
@@ -1134,6 +1383,7 @@ df_MSD_g = group_MSD.agg(agg_dict).reset_index()
 fig, ax = plt.subplots(1, 1)
 ax.set_yscale('log')
 sns.swarmplot(data=df_MSD, ax=ax, x='Pa', y=Yplot)
+ax.set_ylim([0, ax.get_ylim()[1]])
 plt.tight_layout()
 plt.show()
 
@@ -1177,6 +1427,18 @@ plt.show()
 
 
 # %% Tests
+
+# %%% Test grabbing Pa values
+
+mainDir = up.Path_AnalysisPulls
+PaTableName = "MainIrradianceConditions.csv"
+PaTablePath = os.path.join(mainDir, fileName)
+df_Pa = pd.read_csv(PaTablePath)
+
+print(get_Pa_value(df_Pa, '26-02-09_M1', '0'))
+print(get_Pa_value(df_Pa, '26-02-09_M1', '352'))
+print(get_Pa_value(df_Pa, '26-02-09_M1', '55'))
+print(get_Pa_value(df_Pa, '26-02-09_M1', '556'))
 
 # %%% Test with simple image difference
 
