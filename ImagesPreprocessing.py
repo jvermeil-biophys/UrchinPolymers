@@ -38,7 +38,8 @@ import skimage as skm
 import scipy.ndimage as ndi
 import matplotlib.pyplot as plt
 
-import GraphicStyles as gs
+import PlotMaker as pm
+import UrchinPaths as up
 import UtilityFunctions as ufun
 
 # Unused imports
@@ -471,14 +472,14 @@ def crop_and_copy(DirSrc, DirDst, allRefPoints, allStackPaths,
             N_suffix = 0
             suffix_1 = ''
             
-        print(gs.BLUE + 'Loading '+ stackPath +'...' + gs.NORMAL)
+        print(pm.BLUE + 'Loading '+ stackPath +'...' + pm.NORMAL)
         
         try:
             if source_format == 'single file':
                 FilesList = os.listdir(stackPath)
                 TifList = [f for f in FilesList if f.endswith('.tif')]
                 if len(TifList) != 1:
-                    print(gs.BRIGHTRED + '/! Several images in the folder in single file mode' + gs.NORMAL)
+                    print(pm.BRIGHTRED + '/! Several images in the folder in single file mode' + pm.NORMAL)
                     continue
                 else:
                     stackPath = os.path.join(stackPath, TifList[0])
@@ -494,7 +495,7 @@ def crop_and_copy(DirSrc, DirDst, allRefPoints, allStackPaths,
                 FilesList = os.listdir(stackPath)
                 TifList = [f for f in FilesList if f.endswith('.tif')]
                 if len(TifList) <= 1:
-                    print(gs.BRIGHTRED + '/! Single image in the folder in image collection mode' + gs.NORMAL)
+                    print(pm.BRIGHTRED + '/! Single image in the folder in image collection mode' + pm.NORMAL)
                     continue
                 else:
                     stackPaths = [os.path.join(stackPath, f) for f in TifList]
@@ -516,11 +517,11 @@ def crop_and_copy(DirSrc, DirDst, allRefPoints, allStackPaths,
             outputPath = os.path.join(DirDst, FileDst)
             skm.io.imsave(os.path.join(DirDst, FileDst), cropped_stack)
             allOutputPaths.append(outputPath)
-            print(gs.GREEN + os.path.join(DirDst, FileDst) + '\nSaved sucessfully' + gs.NORMAL)
+            print(pm.GREEN + os.path.join(DirDst, FileDst) + '\nSaved sucessfully' + pm.NORMAL)
         
         except Exception:
             traceback.print_exc()
-            print(gs.RED + os.path.join(DirDst, FileDst) + '\nError when saving' + gs.NORMAL)
+            print(pm.RED + os.path.join(DirDst, FileDst) + '\nError when saving' + pm.NORMAL)
             continue
         
         if count%5 == 0:
@@ -543,6 +544,9 @@ DirDst = 'C:/Users/Joseph/Desktop/Test_Preprocessing/DestinDir'
 DirSrc = 'C:/Users/Joseph/Desktop/WorkingData/LeicaData/26-01-27/Pulls'
 DirDst = 'C:/Users/Joseph/Desktop/AnalysisPulls/26-01-27_BeadTracking'
 
+DirSrc = up.Path_LeicaData + "/26-02-11_UVonCytoplasm_withPI"
+DirDst = up.Path_AnalysisPulls + "/26-02-11_UVonCytoplasmAndBeads/output"
+
 microscope = 'Leica'
 source_format = 'single file' # 'image collection'
 # imagePrefix = 'im'
@@ -552,7 +556,7 @@ GetOMEdata = True
 scaleFactor = 1/8
 
 forbiddenWords = ['capture', 'captures', 'crop', 'crops', 'croped']
-compulsaryWords = []
+compulsaryWords = ['M1']
 
 # Disable the Warnings from TiffFile
 logging.getLogger('tifffile').setLevel(logging.ERROR)
@@ -580,7 +584,7 @@ checkIfAlreadyExist = True
 if not os.path.exists(DirDst):
     os.mkdir(DirDst)
 
-print(gs.BLUE + 'Constructing all Z-Projections...' + gs.NORMAL)
+print(pm.BLUE + 'Constructing all Z-Projections...' + pm.NORMAL)
 
 for i in range(len(allStackPaths)):
     print(i)
@@ -590,11 +594,11 @@ for i in range(len(allStackPaths)):
         
     if not ufun.containsFilesWithExt(StackFolder, '.tif'):
         validStackFolder = False
-        print(gs.BRIGHTRED + '/! Is not a valid stack' + gs.NORMAL)
+        print(pm.BRIGHTRED + '/! Is not a valid stack' + pm.NORMAL)
         
     elif checkIfAlreadyExist and os.path.isfile(os.path.join(DirDst, StackFolderName + '.tif')):
         validStackFolder = False
-        print(gs.GREEN + ':-) Has already been copied' + gs.NORMAL)
+        print(pm.GREEN + ':-) Has already been copied' + pm.NORMAL)
         
     if validStackFolder:
         
@@ -602,7 +606,7 @@ for i in range(len(allStackPaths)):
             FilesList = os.listdir(StackFolder)
             TifList = [f for f in FilesList if f.endswith('.tif')]
             if len(TifList) != 1:
-                print(gs.BRIGHTRED + '/! Several images in the folder in single file mode' + gs.NORMAL)
+                print(pm.BRIGHTRED + '/! Several images in the folder in single file mode' + pm.NORMAL)
                 continue
             else:
                 stackPath = os.path.join(StackFolder, TifList[0])
@@ -617,7 +621,7 @@ for i in range(len(allStackPaths)):
             FilesList = os.listdir(StackFolder)
             TifList = [f for f in FilesList if f.endswith('.tif')]
             if len(TifList) <= 1:
-                print(gs.BRIGHTRED + '/! Single image in the folder in image collection mode' + gs.NORMAL)
+                print(pm.BRIGHTRED + '/! Single image in the folder in image collection mode' + pm.NORMAL)
                 continue
             else:
                 stackPaths = [os.path.join(StackFolder, f) for f in TifList]
@@ -631,9 +635,9 @@ for i in range(len(allStackPaths)):
         Zimg = Z_projection(stack, kind = 'min', scaleFactor = scaleFactor, normalize = True)
         allStacks.append(StackFolder)
         allZimg.append(Zimg)
-        print(gs.CYAN + '--> Will be copied' + gs.NORMAL)
+        print(pm.CYAN + '--> Will be copied' + pm.NORMAL)
         # except:
-        #     print(gs.BRIGHTRED + '/!\ Unexpected error during file handling' + gs.NORMAL)
+        #     print(pm.BRIGHTRED + '/!\ Unexpected error during file handling' + pm.NORMAL)
 
 
 # copy_metadata_files(allStacks, DirDst, suffix = '_Status.txt')
@@ -654,7 +658,7 @@ instructionText += "\n\nLet's gooooo !\n"
 # !! WARNING: Sometimes choosing too many can make your computer bug !!
 limiter = 30
 
-print(gs.YELLOW + instructionText + gs.NORMAL)
+print(pm.YELLOW + instructionText + pm.NORMAL)
 
 # if reset == 1:
     
@@ -731,7 +735,7 @@ for i in range(min(len(allZimg), limiter)):
 cv2.destroyAllWindows()
 
 print(allStacksToCrop)
-print(gs.BLUE + 'Saving all tiff stacks...' + gs.NORMAL)
+print(pm.BLUE + 'Saving all tiff stacks...' + pm.NORMAL)
 
 allOutputPaths = crop_and_copy(DirSrc, DirDst, allRefPoints[:], allStacksToCrop[:], 
                                source_format = source_format, suffix = '',
@@ -803,7 +807,7 @@ for i, oPid in enumerate(allOutputPid):
         FilesList = os.listdir(StackFolder)
         TifList = [f for f in FilesList if f.endswith('.tif')]
         if len(TifList) != 1:
-            print(gs.BRIGHTRED + '/! Several images in the folder in single file mode' + gs.NORMAL)
+            print(pm.BRIGHTRED + '/! Several images in the folder in single file mode' + pm.NORMAL)
             continue
         else:
             stackPath = os.path.join(StackFolder, TifList[0])
@@ -1058,7 +1062,7 @@ checkIfAlreadyExist = True
 if not os.path.exists(DirDst):
     os.mkdir(DirDst)
 
-print(gs.BLUE + 'Constructing all Z-Projections...' + gs.NORMAL)
+print(pm.BLUE + 'Constructing all Z-Projections...' + pm.NORMAL)
 
 for i in range(len(allStackPaths)):
     print(i)
@@ -1068,11 +1072,11 @@ for i in range(len(allStackPaths)):
         
     if not ufun.containsFilesWithExt(StackFolder, '.tif'):
         validStackFolder = False
-        print(gs.BRIGHTRED + '/! Is not a valid stack' + gs.NORMAL)
+        print(pm.BRIGHTRED + '/! Is not a valid stack' + pm.NORMAL)
         
     elif checkIfAlreadyExist and os.path.isfile(os.path.join(DirDst, StackFolderName + '.tif')):
         validStackFolder = False
-        print(gs.GREEN + ':-) Has already been copied' + gs.NORMAL)
+        print(pm.GREEN + ':-) Has already been copied' + pm.NORMAL)
         
     if validStackFolder:
         
@@ -1080,7 +1084,7 @@ for i in range(len(allStackPaths)):
             FilesList = os.listdir(StackFolder)
             TifList = [f for f in FilesList if f.endswith('.tif')]
             if len(TifList) != 1:
-                print(gs.BRIGHTRED + '/! Several images in the folder in single file mode' + gs.NORMAL)
+                print(pm.BRIGHTRED + '/! Several images in the folder in single file mode' + pm.NORMAL)
                 continue
             else:
                 stackPath = os.path.join(StackFolder, TifList[0])
@@ -1095,7 +1099,7 @@ for i in range(len(allStackPaths)):
             FilesList = os.listdir(StackFolder)
             TifList = [f for f in FilesList if f.endswith('.tif')]
             if len(TifList) <= 1:
-                print(gs.BRIGHTRED + '/! Single image in the folder in image collection mode' + gs.NORMAL)
+                print(pm.BRIGHTRED + '/! Single image in the folder in image collection mode' + pm.NORMAL)
                 continue
             else:
                 stackPaths = [os.path.join(StackFolder, f) for f in TifList]
@@ -1109,9 +1113,9 @@ for i in range(len(allStackPaths)):
         Zimg = Z_projection(stack, kind = 'min', scaleFactor = scaleFactor, normalize = True)
         allStacks.append(StackFolder)
         allZimg.append(Zimg)
-        print(gs.CYAN + '--> Will be copied' + gs.NORMAL)
+        print(pm.CYAN + '--> Will be copied' + pm.NORMAL)
         # except:
-        #     print(gs.BRIGHTRED + '/!\ Unexpected error during file handling' + gs.NORMAL)
+        #     print(pm.BRIGHTRED + '/!\ Unexpected error during file handling' + pm.NORMAL)
 
 
 # copy_metadata_files(allStacks, DirDst, suffix = '_Status.txt')
@@ -1132,7 +1136,7 @@ instructionText += "\n\nLet's gooooo !\n"
 # !! WARNING: Sometimes choosing too many can make your computer bug !!
 limiter = 15
 
-print(gs.YELLOW + instructionText + gs.NORMAL)
+print(pm.YELLOW + instructionText + pm.NORMAL)
 
 # if reset == 1:
     
@@ -1198,7 +1202,7 @@ for i in range(min(len(allZimg), limiter)):
 cv2.destroyAllWindows()
 
 print(allStacksToCrop)
-print(gs.BLUE + 'Saving all tiff stacks...' + gs.NORMAL)
+print(pm.BLUE + 'Saving all tiff stacks...' + pm.NORMAL)
 
 crop_and_copy(DirSrc, DirDst, allRefPoints[:], allStacksToCrop[:], 
             source_format = source_format, suffix = '',

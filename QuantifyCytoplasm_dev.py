@@ -655,6 +655,8 @@ def compute_acor(image, mask, window_length,
     return(total_acor, image_acor)
 
 
+
+
 def analyse_cells_ACF(imagePathList, df_Pa, SCALE, FPS):
     res_dict = {
                 'id':[],

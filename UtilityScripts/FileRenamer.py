@@ -318,10 +318,10 @@ findPatternAndRename(path, target_pattern, new_pattern,
 # -----------------------------------------------------------------------------------------------
 # %% Script Other renaming
 
-s1 = '2025-'
-s2 = '25-'
+s1 = '26-02-09'
+s2 = '26-02-11'
 
-path0 = 'C:/Users/Joseph/Desktop/RheoMacro/25-10-30_Rheology'
+path0 = 'C:/Users/Utilisateur/Desktop/AnalysisPulls/26-02-11_UVonCytoplasmAndBeads'
 sub = ''
 path = path0 + sub
 

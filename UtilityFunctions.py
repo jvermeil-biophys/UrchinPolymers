@@ -26,6 +26,7 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 # 1. Imports
 import numpy as np
 import pandas as pd
+import skimage as skm
 import scipy.ndimage as ndi
 import statsmodels.api as sm
 import matplotlib.pyplot as plt
@@ -43,24 +44,27 @@ import matplotlib
 import traceback
 
 from scipy import interpolate
-from scipy import signal
+# from scipy import signal
 from scipy import odr
+# from scipy.signal import find_peaks, savgol_filter
+from scipy.optimize import least_squares # linear_sum_assignment, 
 
-from PIL import Image
+from PIL import Image, ImageDraw
 from PIL.TiffTags import TAGS
 from ome_types import from_tiff
 
-from skimage import io, filters, exposure, measure, transform, util, color
-from scipy.signal import find_peaks, savgol_filter
-from scipy.optimize import linear_sum_assignment, least_squares
-from matplotlib.gridspec import GridSpec
-from datetime import date, datetime
+import shapely
+from shapely.ops import polylabel
+from shapely.plotting import plot_polygon, plot_points # , plot_line
+
 from collections.abc import Collection
-from copy import deepcopy
+# from matplotlib.gridspec import GridSpec
+# from datetime import date, datetime
+# from copy import deepcopy
 
 #### Local Imports
 
-import GraphicStyles as gs
+import PlotMaker as pm
 
 
 # %% (1) Utility functions
@@ -95,7 +99,7 @@ def renamePrefix(DirExt, currentCell, newPrefix):
                     os.rename(os.path.join(path,i), os.path.join(path, newName))
                 except:
                     print(currentCell)
-                    print(gs.ORANGE + "Error! There may be other files with the new prefix you can trying to incorporate" + gs.NORMAL)
+                    print(pm.ORANGE + "Error! There may be other files with the new prefix you can trying to incorporate" + pm.NORMAL)
         
         if i.endswith('.nd'):
             newName = newPrefix+'.nd'
@@ -103,7 +107,7 @@ def renamePrefix(DirExt, currentCell, newPrefix):
                 os.rename(os.path.join(path,i), os.path.join(path, newName))
             except:
                 print(currentCell)
-                print(gs.YELLOW + "Error! There may be other .nd files with the new prefix you can trying to incorporate" + gs.NORMAL)
+                print(pm.YELLOW + "Error! There may be other .nd files with the new prefix you can trying to incorporate" + pm.NORMAL)
             
 # %%% Data management
 
@@ -749,6 +753,10 @@ def OMEData2Df(filepath):
 # Df, shape = OMEData2Df(filePath)
 # =============================================================================
 
+
+
+
+
 # %%%%
 
 nT = 10
@@ -1012,7 +1020,7 @@ def max_entropy_threshold(I):
     """
     Function based on the previous one that directly takes an image for argument.
     """
-    H, bins = exposure.histogram(I, nbins=256, source_range='image', normalize=False)
+    H, bins = skm.exposure.histogram(I, nbins=256, source_range='image', normalize=False)
     T = max_entropy(H)
     return(T)
 
@@ -1089,6 +1097,121 @@ def fitCircle(contour, loss = 'huber'):
     
     return(center, R)
 
+
+def contour_to_mask(shape, contour):
+    """
+    Adapted from https://stackoverflow.com/questions/3654289/scipy-create-2d-polygon-mask
+    """
+    nY, nX = shape
+    poly = np.round(contour[:,::-1], 0).astype(int).tolist()
+    poly = [(p[0], p[1]) for p in poly[:]] + [(poly[0][0], poly[0][1])]
+    Im0 = Image.new('L', (nX, nY), 0)
+    ImageDraw.Draw(Im0).polygon(poly, outline=1, fill=1)
+    mask = np.array(Im0).astype(bool)
+    return(mask)
+
+
+def get_largest_object(img, mode = 'dark', out_type = 'contour'):
+    th = skm.filters.threshold_otsu(img)
+    if mode == 'dark':
+        img_bin = (img < th)
+    elif mode == 'bright':
+        img_bin = (img > th)
+    img_label, num_features = ndi.label(img_bin)
+    
+    df = pd.DataFrame(skm.measure.regionprops_table(img_label, img, properties = ['label', 'area']))
+    df = df.sort_values(by='area', ascending=False)
+    i_label = df.label.values[0]
+    img_bin_object = (img_label == i_label)
+    img_bin_object = ndi.binary_fill_holes(img_bin_object)
+    if out_type == 'contour':
+        FoundContours = skm.measure.find_contours(img_bin_object, 0.5)
+        if len(FoundContours) == 1:
+            contour = FoundContours[0]
+        else:
+            L = [len(c) for c in FoundContours]
+            im = np.argmax(L)
+            contour = FoundContours[im]    
+        output = contour
+    elif out_type == 'mask':
+        output = img_bin_object
+    return(output)
+
+
+
+def find_cell_inner_circle(img, 
+                           binarize = False, k_th = 1.0,
+                           zero_padding = 0,
+                           PLOT=False):
+    """
+    On a picture of a cell in fluo, find the approximate position of the cell.
+    The idea is to fit the largest circle which can be contained in a mask of the cell.
+    It uses the library shapely, and more precisely the function polylabel,
+    to find the "pole of inaccessibility" of the cell mask.
+    See : https://github.com/mapbox/polylabel and https://sites.google.com/site/polesofinaccessibility/
+    Interesting topic !
+    """
+    if binarize:
+        th1 = skm.filters.threshold_otsu(img) * k_th
+        # img_min = ndi.binary_fill_holes(img_min)
+        # img_min = ndi.binary_closing(img_min, iterations=5)
+        img_bin = (img < th1)
+        img_bin = ndi.binary_opening(img_bin, iterations = 2)
+    else:
+        img_bin = img
+    img_label, num_features = ndi.label(img_bin)
+    df = pd.DataFrame(skm.measure.regionprops_table(img_label, img, properties = ['label', 'area']))
+    df = df.sort_values(by='area', ascending=False)
+    i_label = df.label.values[0]
+    img_rawCell = (img_label == i_label)
+    if zero_padding > 0:
+        pad_width = zero_padding
+        img_rawCell = np.pad(img_rawCell, pad_width, mode='constant')
+        if PLOT:
+            img = np.pad(img, pad_width, mode='constant')
+    img_rawCell = ndi.binary_fill_holes(img_rawCell)
+    
+    # [contour_rawCell] = skm.measure.find_contours(img_rawCell, 0.5)
+    FoundContours = skm.measure.find_contours(img_rawCell, 0.5)
+    if len(FoundContours) == 1:
+        contour_rawCell = FoundContours[0]
+    else:
+        L = [len(c) for c in FoundContours]
+        im = np.argmax(L)
+        contour_rawCell = FoundContours[im]    
+
+    polygon_cell = shapely.Polygon(contour_rawCell[:, ::-1])
+    center = polylabel(polygon_cell, tolerance=1)
+    exterior_ring_cell = shapely.get_exterior_ring(polygon_cell)
+    R = shapely.distance(center, exterior_ring_cell)
+    circle = center.buffer(R)
+    
+    X, Y = list(center.coords)[0]
+    X = X - zero_padding
+    Y = Y - zero_padding
+    
+    if PLOT:
+        fig, axes = plt.subplots(1,2, figsize = (8,4))
+        ax = axes[0]
+        ax.imshow(img_rawCell, cmap='gray')
+        ax = axes[1]
+        ax.imshow(img, cmap='gray')
+        
+        for ax in axes:
+            plot_polygon(circle, ax=ax, add_points=False, color='green')
+            plot_points(center, ax=ax, color='green', alpha=1)
+            ax.set_xticks([])
+            ax.set_yticks([])
+            ax.set_xticklabels([])
+            ax.set_yticklabels([])
+        fig.tight_layout()
+        plt.show()
+    
+    Y, X = round(Y), round(X)
+    # mask =  img_rawCell
+    return((Y, X), R)
+
+
 # %%% Physics
 
 
@@ -1112,7 +1235,7 @@ def computeForce_M450(B, D, d):
     return(F)
 
 def plotForce(d = 200e-9):
-    fig, axes = plt.subplots(1, 2, figsize = (17/gs.cm_in, 6/gs.cm_in)) 
+    fig, axes = plt.subplots(1, 2, figsize = (17/pm.cm_in, 6/pm.cm_in)) 
     ax = axes[0]
     B = np.linspace(1, 1000, 1000)
     D = 4500e-9
@@ -1144,9 +1267,8 @@ def plotForce(d = 200e-9):
     
 def plotMandForce(d = 0):
     D = 4500e-9
-    gs.set_manuscript_options_jv()
     
-    fig, axes = plt.subplots(2, 2, figsize = (12.5/gs.cm_in, 8.5/gs.cm_in),
+    fig, axes = plt.subplots(2, 2, figsize = (12.5/pm.cm_in, 8.5/pm.cm_in),
                              sharex = 'col', sharey = 'row') 
     
     #### 1.
@@ -1202,9 +1324,8 @@ def plotMandForce(d = 0):
 
 def plotForce_Insert(d = 0):
     D = 4500e-9
-    gs.set_manuscript_options_jv()
     
-    fig, axes = plt.subplots(1, 1, figsize = (3*1.5/gs.cm_in, 2*1.5/gs.cm_in),
+    fig, axes = plt.subplots(1, 1, figsize = (3*1.5/pm.cm_in, 2*1.5/pm.cm_in),
                              sharex = 'col', sharey = 'row') 
     
     #### 1.
