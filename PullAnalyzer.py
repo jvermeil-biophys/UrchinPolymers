@@ -646,6 +646,7 @@ def pullAnalyzer_multiFiles(mainDir, date, prefix_id,
     df_manips = pd.read_csv(os.path.join(analysisDir, 'MainExperimentalConditions.csv'))
     df_pulls = pd.read_csv(os.path.join(analysisDir, date + '_ExperimentalConditions.csv'))
     listTrackFiles = [f for f in os.listdir(tracksDir) if ('Track' in f) and (f.endswith('.xml'))]
+
     listTrackIds = ['_'.join(string.split('_')[:6]) for string in listTrackFiles]
     listPullIds = ['_'.join(string.split('_')[:5]) for string in listTrackFiles]
     dict_TrackIds2File = {tid : tf for (tid, tf) in zip(listTrackIds, listTrackFiles)}
@@ -658,6 +659,7 @@ def pullAnalyzer_multiFiles(mainDir, date, prefix_id,
         already_analyzed = []
     
     prefix_id_manip = ('_').join(prefix_id.split('_')[:1 + ('_' in prefix_id)])
+    
     listManips = [m for m in df_manips['id'] if m.startswith(prefix_id_manip)]
     
     id_cols = ['track_id']
@@ -683,11 +685,13 @@ def pullAnalyzer_multiFiles(mainDir, date, prefix_id,
     results_dict = {c:[] for c in id_cols}
     results_dict.update({c:[] for c in results_cols})
     results_dict.update({c:[] for c in co_cols})
-    
+
     for M_id in listManips:
         co_dict = df_manips[df_manips['id'] == M_id].to_dict('list')
+        print(co_dict)
         listTracks = [t for t in listTrackIds if \
                       t.startswith(prefix_id) and (Redo or (t not in already_analyzed))]
+
         for T_id in listTracks:
             trackFileName = dict_TrackIds2File[T_id]
             tracks = importTrackMateTracks(os.path.join(tracksDir, trackFileName))
@@ -773,9 +777,14 @@ def pullAnalyzer(track, track_id, dict_pull, mag_d2f,
     film_dt = dict_pull['film_dt']/1000      # s
     mag_r = dict_pull['mag_r']*pixel_size # µm
     b_r = dict_pull['b_r'] # µm
+
     
     X, Y = track[:,1] * pixel_size, track[:,2] * pixel_size
     t_idx, t = track[:,0], track[:,0]*film_dt
+    
+    # In case the bead is lost before the magnet is removed
+    if np.max(t_idx) <= (frame_endPull - 1):
+        frame_endPull = np.max(t_idx) + 1
     
     initPullTime = np.where(t_idx == (frame_initPull - 1))[0][0]
     finPullTime = np.where(t_idx == (frame_endPull - 1))[0][0]
@@ -813,9 +822,9 @@ def pullAnalyzer(track, track_id, dict_pull, mag_d2f,
     
     #### Filters
     if mode == 'newton':
-        Filter1 = ((5 < tpulling) & (tpulling < 20))
+        Filter1 = (5 < tpulling) # ((5 < tpulling) & (tpulling < 25))
     elif mode == 'jeffrey':
-        Filter1 = (tpulling < 15)
+        Filter1 = (tpulling < 20)
     # Filter2 = (np.abs(dx_pulling[0] - dx_pulling[:]) <= 100) # keep only first 100 µm of movement
     
     filterPull = Filter1
@@ -1404,10 +1413,10 @@ def pullAnalyzer_compareTracks(list_tracks, list_track_ids, list_dict_pull, list
 # %%% ... on many files
 
 # mainDir = os.path.join("C:/Users/Utilisateur/Desktop/") # Ordi IJM
-# mainDir = os.path.join("C:/Users/josep/Desktop/Seafile") # Ordi perso
-mainDir = os.path.join("C:/Users/Joseph/Desktop/") # Ordi LJP
-date = '26-01-27'
-subfolder = date + '_BeadTracking'
+mainDir = os.path.join("C:/Users/josep/Desktop/Seafile") # Ordi perso
+# mainDir = os.path.join("C:/Users/Joseph/Desktop/") # Ordi LJP
+date = '26-02-11'
+subfolder = date + '_UVonCytoplasmAndBeads'
 
 
 analysisDir = os.path.join(mainDir, 'AnalysisPulls') # where the csv tables are
@@ -1417,13 +1426,13 @@ plotsDir = os.path.join(analysisDir, subfolder, 'Plots')
 
 # cell = '_M1_C1_Pa0_P3'
 
-prefix_id = '26-01-27' # + cell # used to select a subset of the track files if needed
+prefix_id = '26-02-11_M1_C1_Pa0_P1' # + cell # used to select a subset of the track files if needed
 
 Results = pullAnalyzer_multiFiles(mainDir, date, prefix_id,
                                     analysisDir, tracksDir, resultsDir, plotsDir,
                                     fits = ['newton', 'jeffrey'], calibFuncType='PowerLaw',
-                                    resultsFileName = date + '_BeadsPulling',
-                                    Redo = True, PLOT = True, SHOW = False)
+                                    resultsFileName = date + '_BeadsPulling_onebead',
+                                    Redo = True, PLOT = True, SHOW = True)
 
 # plt.close('all')
 

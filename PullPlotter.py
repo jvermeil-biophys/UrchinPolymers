@@ -38,12 +38,17 @@ def PlotPullMetrics_swarm(df, group_by_cell = 'False', agg_func = 'mean'):
     metric_names = ['$k_1$ (pN/µm)', '$\gamma_1$ (pN.s/µm)', '$\gamma_2$ (pN.s/µm)', '$\eta_N$ (Pa.s)']
     metric_dict = {m:mn for (m,mn) in zip(metrics, metric_names)}
     
-    if group_by_cell:
-        group = df.groupby(['Cell_textId', 'Pa_id'])
-        agg_dict = {m:agg_func for m in metrics}
-        dfg = group.agg(agg_dict)
-        df = dfg.reset_index()
+    Pa_ids = df['Pa_id'].unique()
+    
+    # print(df)
+    
+    # if group_by_cell:
+    #     group = df.groupby(['Cell_textId', 'Pa_id'])
+    #     agg_dict = {m:agg_func for m in metrics}
+    #     dfg = group.agg(agg_dict)
+    #     df = dfg.reset_index()
         
+    # print(df)
     
     fig, axes = plt.subplots(2, 2, figsize=(8,5))
     axes_f = axes.flatten()
@@ -52,9 +57,9 @@ def PlotPullMetrics_swarm(df, group_by_cell = 'False', agg_func = 'mean'):
         ax = axes_f[k]
         metric = metrics[k]
         
-        medians = [np.median(df.loc[df['Pa_id']==i, metric]) for i in [0, 1]]
+        medians = [np.median(df.loc[df['Pa_id']==i, metric]) for i in Pa_ids]
         
-        for i in [0, 1]:
+        for i in range(len(Pa_ids)):
             HW = 0.35
             ax.plot([i-HW, i+HW], [medians[i], medians[i]], ls='--', lw=2, c='dimgrey')
         
@@ -62,15 +67,16 @@ def PlotPullMetrics_swarm(df, group_by_cell = 'False', agg_func = 'mean'):
                       x = 'Pa_id', y = metric, hue = 'Cell_textId',
                       size = 6)
     
-        ax.set_xlim([-0.5, 1.5])
-        ax.set_xticks([0, 1], ['Ctrl', '+UV'])
+        ax.set_xlim([-0.5, len(Pa_ids)-0.5])
+        xticks_labels = ['Ctrl'] + [f'+UV (Pa{str(k)})' for k in Pa_ids[1:]]
+        ax.set_xticks([k for k in range(len(Pa_ids))], xticks_labels, rotation=10)
         ax.set_xlabel('')
         ax.set_ylabel(metric_dict[metric])
         yM = ax.get_ylim()[1]
         ax.set_ylim([0, 1.25*yM])
         ax.grid(axis='y')
         
-        for i in [0, 1]:
+        for i in range(len(Pa_ids)):
             ax.text(i, 1.1*yM, f'{medians[i]:.2f}', ha='center', size = 10, style='italic', c='dimgrey')
         
         if k == 1:
@@ -93,6 +99,10 @@ def PlotPullMetrics_bipart(df, agg_func = 'mean', normalized = False):
     """
     
     """
+    
+    Pa_ids = df['Pa_id'].unique()
+    Pa_ids_X = {Pa_ids[k]:k for k in range(len(Pa_ids))}
+    
     metrics = ['J_k', 'J_gamma1', 'J_gamma2', 'N_viscosity', ]
     metric_names = ['$k_1$ (pN/µm)', '$\gamma_1$ (pN.s/µm)', '$\gamma_2$ (pN.s/µm)', '$\eta_N$ (Pa.s)']
     metric_names_2 = ['$k_1$ (ratio)', '$\gamma_1$ (ratio)', '$\gamma_2$ (ratio)', '$\eta_N$ (ratio)']
@@ -106,11 +116,13 @@ def PlotPullMetrics_bipart(df, agg_func = 'mean', normalized = False):
     agg_dict = {m:agg_func for m in metrics}
     dfg = group.agg(agg_dict)
     dfg = dfg.reset_index()
+    # return(dfg)
     
     list_cell_id = df['Cell_textId'].values
     for metric in agg_dict.keys():
         A_norm = np.array([dfg.loc[((dfg['Pa_id']==0) & (dfg['Cell_textId']==cid)), metric] for cid in list_cell_id]).T
         A_norm = A_norm[0]
+        print(dfg[metric], A_norm)
         dfg[metric + '_norm'] = dfg[metric] / A_norm   
         
     fig, axes = plt.subplots(2, 2)
@@ -124,14 +136,29 @@ def PlotPullMetrics_bipart(df, agg_func = 'mean', normalized = False):
             metric = metrics[k] + '_norm'
         
         for cid, c in zip(dfg['Cell_textId'].unique(), pm.colorList10):
-            val0 = dfg.loc[((dfg['Pa_id']==0) & (dfg['Cell_textId']==cid)), metric].values[0]
-            val1 = dfg.loc[((dfg['Pa_id']==1) & (dfg['Cell_textId']==cid)), metric].values[0]
-            ax.plot(0, val0, 'o', c=c, zorder = 5)
-            ax.plot(1, val1, 'o', c=c, zorder = 5)
-            ax.plot([0, 1], [val0, val1], ls='-', c='dimgray', zorder = 4)
+            dfg_cell = dfg[dfg['Cell_textId']==cid]
+            Pa_ids_cell = dfg_cell['Pa_id'].unique()
+            vals_cell = []
+            X_cell = []
+            for Pa_val in Pa_ids_cell:
+                val = dfg_cell.loc[dfg['Pa_id']==Pa_val, metric].values[0]
+                X = Pa_ids_X[Pa_val]
+                ax.plot(X, val, 'o', c=c, zorder = 5)
+                vals_cell.append(val)
+                X_cell.append(X)
+                
+            ax.plot(Pa_ids_cell, vals_cell, ls='-', c='dimgray', zorder = 4)
+                
+            # val0 = dfg_cell.loc[((dfg['Pa_id']==0) & (dfg['Cell_textId']==cid)), metric].values[0]
+            # val1 = dfg_cell.loc[((dfg['Pa_id']==1) & (dfg['Cell_textId']==cid)), metric].values[0]
+            # ax.plot(0, val0, 'o', c=c, zorder = 5)
+            # ax.plot(1, val1, 'o', c=c, zorder = 5)
+            # ax.plot([0, 1], [val0, val1], ls='-', c='dimgray', zorder = 4)
             
         ax.set_xlim([-0.5, 1.5])
-        ax.set_xticks([0, 1], ['Ctrl', '+UV'])
+        # ax.set_xticks([0, 1], ['Ctrl', '+UV'])
+        xticks_labels = ['Ctrl'] + [f'+UV (Pa{str(k)})' for k in Pa_ids[1:]]
+        ax.set_xticks([k for k in range(len(Pa_ids))], xticks_labels)
         ax.set_xlabel('')
         ax.set_ylabel(metric_dict[metric])
         yM = ax.get_ylim()[1]
@@ -197,6 +224,44 @@ def PlotPullMetrics_oneBead(df, Cell_textId, BeadNo=1, iUV=2):
 
 # %% 3. Run plots
 
+# %%% 26-02-11
+
+mainDir = up.Path_AnalysisPulls
+fileName = 'AllResults_BeadsPulling.csv'
+filePath = os.path.join(mainDir, fileName)
+
+specif = '_26-02-11'
+excluded_cells = ['26-01-14_M1_C1']
+
+df = pd.read_csv(filePath)
+
+df['date'] = df['track_id'].apply(lambda x : x.split('_')[0])
+df['Lc'] = 6*np.pi*df['bead radius']
+df['J_modulus'] = df['J_k'] / df['Lc']
+df['J_visco1'] = df['J_gamma1'] / df['Lc']
+df['J_visco2'] = df['J_gamma2'] / df['Lc']
+
+Filters = [
+           (df['J_gamma2'] < 500),
+           (df['J_fit_error'] == False),
+           (df['J_R2'] >= 0.7),
+           (df['date'] == '26-02-11'),
+           (df['Cell_textId'].apply(lambda x : x not in excluded_cells)),
+           ]
+GlobalFilter = np.ones_like(Filters[0]).astype(bool)
+for F in Filters:
+    GlobalFilter = GlobalFilter & F
+
+df = df[GlobalFilter]
+savePath = mainDir
+
+OneBead_Cell_textId = '26-02-11_M1_C1'
+
+fig, axes = PlotPullMetrics_swarm(df, group_by_cell = 'False', agg_func = 'mean')
+# dfg = PlotPullMetrics_bipart(df, agg_func = 'mean', normalized = False)
+# fig, axes = PlotPullMetrics_bipart(df, agg_func = 'mean', normalized = False)
+# fig, axes = PlotPullMetrics_oneBead(df, OneBead_Cell_textId, BeadNo=1, iUV=3)
+
 # %%% 26-01-27
 
 mainDir = up.Path_AnalysisPulls
@@ -204,6 +269,7 @@ fileName = 'AllResults_BeadsPulling.csv'
 filePath = os.path.join(mainDir, fileName)
 
 specif = '_26-01-27_NoI2959'
+excluded_cells = ['26-01-14_M1_C1']
 
 df = pd.read_csv(filePath)
 
@@ -217,7 +283,7 @@ Filters = [(df['J_gamma2'] < 500),
            (df['J_fit_error'] == False),
            (df['J_R2'] >= 0.7),
            (df['date'] == '26-01-27'),
-           (df['Cell_textId'] != '26-01-14_M1_C1'),
+           (df['Cell_textId'].apply(lambda x : x not in excluded_cells)),
            ]
 GlobalFilter = np.ones_like(Filters[0]).astype(bool)
 for F in Filters:
@@ -239,6 +305,7 @@ fileName = 'AllResults_BeadsPulling.csv'
 filePath = os.path.join(mainDir, fileName)
 
 specif = '_26-01-14_FullMix'
+excluded_cells = ['26-01-14_M1_C1']
 
 df = pd.read_csv(filePath)
 
@@ -252,7 +319,7 @@ Filters = [(df['J_gamma2'] < 500),
            (df['J_fit_error'] == False),
            (df['J_R2'] >= 0.7),
            (df['date'] == '26-01-14'),
-           (df['Cell_textId'] != '26-01-14_M1_C1'),
+           (df['Cell_textId'].apply(lambda x : x not in excluded_cells)),
            ]
 GlobalFilter = np.ones_like(Filters[0]).astype(bool)
 for F in Filters:

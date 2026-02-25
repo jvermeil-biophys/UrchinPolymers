@@ -6,7 +6,9 @@ Created on Tue Feb 24 10:00:29 2026
 """
 
 
-# %% Imports
+# %% Imports & settings
+
+#### Imports
 
 import os
 import re
@@ -32,7 +34,7 @@ import PlotMaker as pm
 import UrchinPaths as up
 import UtilityFunctions as ufun
 
-# %% Settings
+#### Settings
 
 SCALE = 0.222
 FPS = 1
@@ -591,7 +593,7 @@ FPS = 1
 dirPath = up.Path_AnalysisPulls + "/26-02-11_UVonCytoplasmAndBeads"
 listAllFiles = os.listdir(dirPath)
 
-df_ACF = pd.read_csv(os.path.join(dirPath, 'Results', 'results_ACF.csv'))
+df_ACF = pd.read_csv(os.path.join(dirPath, 'Results', '26-02-11_results_ACF.csv'))
 # if 'long_cell_id' not in df_ACF.columns:
 #     get_long_cell_id = lambda x : '_'.join(x.split('_')[:4])# + [x.split('_')[-1]])
 #     df_ACF['long_cell_id'] = df_ACF['id'].apply(get_long_cell_id)
@@ -609,6 +611,16 @@ for k, cid in enumerate(df_ACF['long_cell_id'].unique()):
         val_ctrl = df_ACF.loc[index_cell_control, mc].values[0]
         df_ACF.loc[index_cell, mcn] /= val_ctrl
     
+#### Filters
+# df = df_ACF
+# Filters = [
+#            (df['id'].apply(lambda x : x.startswith('26-02-11_M2'))),
+#            ]
+# GlobalFilter = np.ones_like(Filters[0]).astype(bool)
+# for F in Filters:
+#     GlobalFilter = GlobalFilter & F
+# df = df[GlobalFilter]
+# df_ACF = df
 
 # df_MSD = pd.read_csv(os.path.join(dirPath, 'Results', 'results_MSD.csv'))
 
@@ -635,10 +647,11 @@ plt.show()
 
 # %%% ACF - 2
 
+
 Id_cols = ['pos_id']
 Group_cols = ('Pa')
 Xplot = 'Pa_total_power'
-Yplot = 't_33p'
+Yplot = 't_0p'
 Hplot = 'Pa_irradiance'
 hue_order=['0', '200', '200_200', '400', '400_400', '800', '800_800', 
            '1600', '1600_1600', '2400', '2400_2400', '2400_2400_2400']
@@ -657,7 +670,7 @@ sns.scatterplot(data=df_ACF, ax=ax, x=Xplot, y=Yplot,
                 alpha = 0.75, zorder=6)
 sns.scatterplot(data=df_ACF_g, ax=ax, x=Xplot, y=Yplot, marker = 'o',
                 color='None', edgecolor='k', s=75, zorder=6)
-ax.set_ylim([0, ax.get_ylim()[1]])
+ax.set_ylim([0, ax.get_ylim()[1]*1.2])
 ax.set_xlabel(r'Total energy (J/cm2)')
 ax.set_ylabel(r'$T_{33\%}$ (s)')
 ax.legend().set_visible(False)
@@ -669,7 +682,7 @@ sns.scatterplot(data=df_ACF, ax=ax, x=Xplot, y=Yplot + '_norm',
                 alpha = 0.75, zorder=6)
 sns.scatterplot(data=df_ACF_g, ax=ax, x=Xplot, y=Yplot + '_norm', marker = 'o',
                 color='None', edgecolor='k', s=75, zorder=6, label='Median values')
-ax.set_ylim([0, ax.get_ylim()[1]])
+ax.set_ylim([0, ax.get_ylim()[1]*1.2])
 ax.set_xlabel(r'Total energy (J/cm2)')
 ax.set_ylabel(r'$T_{33\%}$ - normalized')
 ax.legend(title='Photo-activation\nsequence [mW/cm2]', 
