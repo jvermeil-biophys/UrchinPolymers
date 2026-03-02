@@ -366,7 +366,8 @@ def analyse_cells_ACF(imagePathList, df_Pa, SCALE, FPS):
         
         
 
-def analyse_white_blobs_MSD(trackPathList, df_Pa, SCALE, FPS):
+def analyse_white_blobs_MSD(trackPathList, df_Pa, SCALE, FPS,
+                            PLOT = False):
     res_dict = {
                 'id':[],
                 'pos_id':[],
@@ -384,7 +385,16 @@ def analyse_white_blobs_MSD(trackPathList, df_Pa, SCALE, FPS):
 
     print(pm.BLUE + 'Starting MSD analysis' + pm.NORMAL)    
     
-    for p in trackPathList:
+    if PLOT:
+        fig, ax = plt.subplots(1, 1)
+        Nt = len(trackPathList)
+        Nc = len(pm.cL_Set21)
+        if Nt <= Nc:
+            listColors = pm.cL_Set21[:Nt]
+        else:
+            listColors = pm.cL_Set21
+    
+    for k, p in enumerate(trackPathList):
         T0 = time.time()
         
         # Ids
@@ -419,12 +429,20 @@ def analyse_white_blobs_MSD(trackPathList, df_Pa, SCALE, FPS):
         # res_imsd = imsd(df, SCALE, FPS).reset_index()
     
         #### Run msd
-        res_emsd = emsd(df, SCALE, FPS, max_lagtime=40).reset_index()
+        res_emsd = emsd(df, SCALE, FPS, max_lagtime=30).reset_index()
         T, MSD = res_emsd['lagt'], res_emsd['msd']
         MSD_dict[full_id] = np.array([T, MSD]).T
         
         parms, results = ufun.fitLineHuber(T, MSD, with_intercept = False)
         D = parms.values[0]/4
+        
+        if PLOT:
+            color = listColors[k%Nc]
+            dark_color = pm.lighten_color(color, 0.5)
+            ax.plot(res_emsd['lagt'], res_emsd['msd'], color=color, marker='.', lw=0.5, 
+                    label=full_id)
+            ax.axline(xy1=(0,0), slope=D*4, color=dark_color, ls='-', lw=1, 
+                      label=f'D = {D:.2e} µm²/s')
         
         parms, results = ufun.fitLineHuber(np.log(T), np.log(MSD), with_intercept = True)
         b, a = parms
@@ -444,6 +462,14 @@ def analyse_white_blobs_MSD(trackPathList, df_Pa, SCALE, FPS):
         
         Dt = time.time() - T0
         print(f'Done in Dt = {Dt:.4f}')
+        
+    if PLOT:
+        ax.set_xlabel('Lag times (s)')
+        ax.set_ylabel('MSD (µm²)')
+        ax.grid()
+        ax.legend()
+        fig.tight_layout()
+        plt.show()
         
     res_df = pd.DataFrame(res_dict)
         
@@ -578,6 +604,30 @@ ufun.dict2json(MSD_dict, dirPath + '/Results', 'MSD_dict')
 MSD_res_df.to_csv(os.path.join(dirPath, 'Results', 'results_MSD.csv'), index=False)
 
 
+# %%% Run MSD on a few films
+
+PaTableName = "MainIrradianceConditions.csv"
+PaTablePath = os.path.join(up.Path_AnalysisPulls, PaTableName)
+df_Pa = pd.read_csv(PaTablePath)
+
+dirPath = up.Path_AnalysisPulls + "/26-02-09_UVonCytoplasm"
+
+fileNames = [
+             "26-02-09_M1_Pos4_Pa0_C1_Film5min_Dt1sec_Tracks.xml",
+             "26-02-09_M1_Pos4_Pa44_C1_Film5min_Dt1sec_Tracks.xml",
+             "26-02-09_M1_Pos6_Pa0_C1_Film5min_Dt1sec_1_Tracks.xml",
+             "26-02-09_M1_Pos6_Pa77_C1_Film5min_Dt1sec_1_Tracks.xml",
+             ]
+# listAllFiles = os.listdir(dirPath)
+# listTifFiles = [f for f in listAllFiles if f.endswith('_Tracks.xml')]
+# listTifPaths = [os.path.join(dirPath, f) for f in listTifFiles]
+
+listTrackPaths = [os.path.join(dirPath, f) for f in fileNames]
+
+MSD_res_df, MSD_dict = analyse_white_blobs_MSD(listTrackPaths[:], df_Pa, SCALE, FPS, 
+                                 PLOT = True)
+
+
 
 
 # %% Plots
@@ -590,10 +640,10 @@ FPS = 1
 # "/26-02-09_UVonCytoplasm"
 # "/26-02-11_UVonCytoplasmAndBeads"
 
-dirPath = up.Path_AnalysisPulls + "/26-02-11_UVonCytoplasmAndBeads"
+dirPath = up.Path_AnalysisPulls + "/26-02-09_UVonCytoplasm" # AndBeads
 listAllFiles = os.listdir(dirPath)
 
-df_ACF = pd.read_csv(os.path.join(dirPath, 'Results', '26-02-11_results_ACF.csv'))
+df_ACF = pd.read_csv(os.path.join(dirPath, 'Results', '26-02-09_results_ACF.csv'))
 # if 'long_cell_id' not in df_ACF.columns:
 #     get_long_cell_id = lambda x : '_'.join(x.split('_')[:4])# + [x.split('_')[-1]])
 #     df_ACF['long_cell_id'] = df_ACF['id'].apply(get_long_cell_id)
