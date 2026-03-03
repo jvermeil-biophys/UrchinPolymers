@@ -36,7 +36,8 @@ import UtilityFunctions as ufun
 
 #### Settings
 
-SCALE = 0.222
+SCALE_20X = 0.461
+SCALE_40X = 0.229
 FPS = 1
 
 
@@ -272,7 +273,8 @@ def compute_acor(image, mask, window_length, FPS,
 
 
 
-def analyse_cells_ACF(imagePathList, df_Pa, SCALE, FPS):
+def analyse_cells_ACF(imagePathList, df_Pa, SCALE, FPS,
+                      PLOT = False):
     res_dict = {
                 'id':[],
                 'pos_id':[],
@@ -294,7 +296,16 @@ def analyse_cells_ACF(imagePathList, df_Pa, SCALE, FPS):
     
     print(pm.BLUE + 'Starting ACF analysis' + pm.NORMAL)
     
-    for p in imagePathList:
+    if PLOT:
+        fig, ax = plt.subplots(1, 1)
+        Nt = len(imagePathList)
+        Nc = len(pm.cL_Set21)
+        if Nt <= Nc:
+            listColors = pm.cL_Set21[:Nt]
+        else:
+            listColors = pm.cL_Set21
+    
+    for k, p in enumerate(imagePathList):
         T0 = time.time()
         
         # Ids
@@ -355,9 +366,30 @@ def analyse_cells_ACF(imagePathList, df_Pa, SCALE, FPS):
         res_dict['Pa_dt'].append(str_dt)
         for ts in dict_timescales.keys():
             res_dict[ts].append(dict_timescales[ts])
+            
+        if PLOT:
+            color = listColors[k%Nc]
+            dark_color = pm.lighten_color(color, 0.5)
+            #
+            lags = np.arange(0, len(total_acor_interp))/interp_factor
+            th_plot = 0.33
+            test_plot = (total_acor_interp < th_plot)
+            t_plot = ufun.findFirst(1, test_plot)/interp_factor
+            #
+            ax.plot(lags, total_acor_interp, color=color, label = full_id)
+            ax.axhline(th_plot, color = 'k', ls='--', lw=1)
+            ax.axvline(t_plot, color = dark_color, ls='-.', lw=1, label=r'$T_{33\%}$' + f' = {t_plot:.1f}')
         
         Dt = time.time() - T0
         print(f'Done in Dt = {Dt:.4f}')
+        
+    if PLOT:
+        ax.set_xlabel('Lag times (s)')
+        ax.set_ylabel('Total Normalized Autocorr')
+        ax.grid()
+        ax.legend()
+        fig.tight_layout()
+        plt.show()
         
     res_df = pd.DataFrame(res_dict)
         
@@ -512,13 +544,13 @@ def add_irr_and_pow_to_table(df, df_Pa):
 
 # %%% Main script for ACF 
 
-SCALE = 0.222
+SCALE = SCALE_40X
 FPS = 1
 file2id = lambda x : '_'.join(x.split('_')[:5])
 
-redo_all_files = True
+redo_all_files = False
  
-dirPath = up.Path_AnalysisPulls + "/26-02-11_UVonCytoplasmAndBeads"
+dirPath = up.Path_AnalysisPulls + "/26-03-02_UVonCytoplasm" # "AndBeads"
 listAllFiles = os.listdir(dirPath)
 listTifFiles = [f for f in listAllFiles if ((f.endswith('.tif')) and ('Film5min' in f))]
 
@@ -538,7 +570,7 @@ if not redo_all_files:
 listTifPaths = [os.path.join(dirPath, f) for f in listTifFiles]
 
 new_ACF_res_df, new_ACF_dict = analyse_cells_ACF(listTifPaths[:], df_Pa, 
-                                                 SCALE, FPS)
+                                                 SCALE, FPS, PLOT = False)
 
 if redo_all_files:
     ACF_res_df = new_ACF_res_df
@@ -550,13 +582,36 @@ if not redo_all_files:
 ufun.dict2json(ACF_dict, dirPath + '/Results', 'ACF_dict')
 ACF_res_df.to_csv(os.path.join(dirPath, 'Results', 'results_ACF.csv'), index=False)
 
+# %%% Run ACF on a few films
+
+PaTableName = "MainIrradianceConditions.csv"
+PaTablePath = os.path.join(up.Path_AnalysisPulls, PaTableName)
+df_Pa = pd.read_csv(PaTablePath)
+
+dirPath = up.Path_AnalysisPulls + "/26-02-09_UVonCytoplasm"
+
+fileNames = [
+             "26-02-09_M1_Pos4_Pa0_C1_Film5min_Dt1sec.tif",
+             "26-02-09_M1_Pos4_Pa44_C1_Film5min_Dt1sec.tif",
+             "26-02-09_M1_Pos6_Pa0_C1_Film5min_Dt1sec_1.tif",
+             "26-02-09_M1_Pos6_Pa77_C1_Film5min_Dt1sec_1.tif",
+             ]
+# listAllFiles = os.listdir(dirPath)
+# listTifFiles = [f for f in listAllFiles if f.endswith('_Tracks.xml')]
+# listTifPaths = [os.path.join(dirPath, f) for f in listTifFiles]
+
+listTifPaths = [os.path.join(dirPath, f) for f in fileNames]
+
+ACF_res_df, ACF_dict = analyse_cells_ACF(listTifPaths[:], df_Pa, SCALE_40X, FPS,
+                                         PLOT = True)
+
 
 
 
 # %%% Script for MSD
 
 
-SCALE = 0.222
+SCALE = SCALE_40X
 FPS = 1
 
 redo_all_files = True
@@ -634,16 +689,20 @@ MSD_res_df, MSD_dict = analyse_white_blobs_MSD(listTrackPaths[:], df_Pa, SCALE, 
 
 # %%% Datasets
 
-SCALE = 0.222
+SCALE = SCALE_40X
 FPS = 1
 
 # "/26-02-09_UVonCytoplasm"
 # "/26-02-11_UVonCytoplasmAndBeads"
 
-dirPath = up.Path_AnalysisPulls + "/26-02-09_UVonCytoplasm" # AndBeads
+# dirPath = up.Path_AnalysisPulls + "/26-02-09_UVonCytoplasm"
+# dirPath = up.Path_AnalysisPulls + "/26-02-11_UVonCytoplasmAndBeads"
+dirPath = up.Path_AnalysisPulls + "/26-03-02_UVonCytoplasm"
+
 listAllFiles = os.listdir(dirPath)
 
-df_ACF = pd.read_csv(os.path.join(dirPath, 'Results', '26-02-09_results_ACF.csv'))
+df_ACF = pd.read_csv(os.path.join(dirPath, 'Results', '26-03-02_results_ACF.csv'))
+df_ACF['N_Pa'] = df_ACF['Pa_dt'].apply(lambda x : len(x.split('_')))
 # if 'long_cell_id' not in df_ACF.columns:
 #     get_long_cell_id = lambda x : '_'.join(x.split('_')[:4])# + [x.split('_')[-1]])
 #     df_ACF['long_cell_id'] = df_ACF['id'].apply(get_long_cell_id)
@@ -697,28 +756,41 @@ plt.show()
 
 # %%% ACF - 2
 
+df = df_ACF
+Filters = [
+           (df['N_Pa'] == 2),
+           ]
+GlobalFilter = np.ones_like(Filters[0]).astype(bool)
+for F in Filters:
+    GlobalFilter = GlobalFilter & F
+df = df[GlobalFilter]
 
 Id_cols = ['pos_id']
 Group_cols = ('Pa')
 Xplot = 'Pa_total_power'
-Yplot = 't_0p'
+Yplot = 't_50p'
 Hplot = 'Pa_irradiance'
-hue_order=['0', '200', '200_200', '400', '400_400', '800', '800_800', 
-           '1600', '1600_1600', '2400', '2400_2400', '2400_2400_2400']
-hue_order = [h for h in hue_order if h in df_ACF[Hplot].unique()]
+# hue_order=['0', '200', '200_200', '400', '400_400', '800', '800_800', 
+#            '1600', '1600_1600', '2400', '2400_2400', '2400_2400_2400']
+hue_order = []
+for k in range(0, 3100, 100):
+    hue_order += [f'{k:.0f}', f'{k:.0f}_{k:.0f}', f'{k:.0f}_{k:.0f}_{k:.0f}', f'{k:.0f}_{k:.0f}_{k:.0f}_{k:.0f}']
+    
+hue_order = [h for h in hue_order if h in df[Hplot].unique()]
 
-group_ACF = df_ACF.groupby(Xplot)
+group = df.groupby(Xplot)
 agg_dict = {k:'first' for k in Id_cols}
-agg_dict.update({Yplot:'median', Yplot + '_norm':'median'})
-df_ACF_g = group_ACF.agg(agg_dict).reset_index()
+agg_dict.update({Yplot:'mean', Yplot + '_norm':'mean'})
+df_g = group.agg(agg_dict).reset_index()
 
-fig, axes = plt.subplots(1, 2, figsize=(10, 4))
+
+fig, axes = plt.subplots(1, 2, figsize=(14, 4))
 ax = axes[0]
 ax.grid(zorder=0)
-sns.scatterplot(data=df_ACF, ax=ax, x=Xplot, y=Yplot, 
+sns.scatterplot(data=df, ax=ax, x=Xplot, y=Yplot, 
                 hue=Hplot, hue_order = hue_order,
                 alpha = 0.75, zorder=6)
-sns.scatterplot(data=df_ACF_g, ax=ax, x=Xplot, y=Yplot, marker = 'o',
+sns.scatterplot(data=df_g, ax=ax, x=Xplot, y=Yplot, marker = 'o',
                 color='None', edgecolor='k', s=75, zorder=6)
 ax.set_ylim([0, ax.get_ylim()[1]*1.2])
 ax.set_xlabel(r'Total energy (J/cm2)')
@@ -727,16 +799,108 @@ ax.legend().set_visible(False)
 
 ax = axes[1]
 ax.grid(zorder=0)
-sns.scatterplot(data=df_ACF, ax=ax, x=Xplot, y=Yplot + '_norm', 
+sns.scatterplot(data=df, ax=ax, x=Xplot, y=Yplot + '_norm', 
                 hue=Hplot, hue_order = hue_order,
                 alpha = 0.75, zorder=6)
-sns.scatterplot(data=df_ACF_g, ax=ax, x=Xplot, y=Yplot + '_norm', marker = 'o',
-                color='None', edgecolor='k', s=75, zorder=6, label='Median values')
+sns.scatterplot(data=df_g, ax=ax, x=Xplot, y=Yplot + '_norm', marker = 'o',
+                color='None', edgecolor='k', s=75, zorder=6, label='Mean values')
 ax.set_ylim([0, ax.get_ylim()[1]*1.2])
 ax.set_xlabel(r'Total energy (J/cm2)')
 ax.set_ylabel(r'$T_{33\%}$ - normalized')
 ax.legend(title='Photo-activation\nsequence [mW/cm2]', 
-          loc="upper left", bbox_to_anchor=(1, 0, 0.5, 1))
+          loc="upper left", bbox_to_anchor=(1, 0, 0.5, 1), ncols = 2)
+
+
+plt.tight_layout()
+plt.show()
+
+
+# %%% ACF - 3
+
+df = df_ACF
+
+Filters = [
+           (df['N_Pa'] == 1),
+           ]
+GlobalFilter = np.ones_like(Filters[0]).astype(bool)
+for F in Filters:
+    GlobalFilter = GlobalFilter & F
+df1 = df[GlobalFilter]
+
+Filters = [
+           (df['N_Pa'] == 2),
+           ]
+GlobalFilter = np.ones_like(Filters[0]).astype(bool)
+for F in Filters:
+    GlobalFilter = GlobalFilter & F
+df2 = df[GlobalFilter]
+
+Filters = [
+           (df['N_Pa'] > 2),
+           ]
+GlobalFilter = np.ones_like(Filters[0]).astype(bool)
+for F in Filters:
+    GlobalFilter = GlobalFilter & F
+df3 = df[GlobalFilter]
+
+Id_cols = ['pos_id']
+Group_cols = ('Pa')
+Xplot = 'Pa_total_power'
+Yplot = 't_50p'
+Hplot = 'Pa_irradiance'
+# hue_order=['0', '200', '200_200', '400', '400_400', '800', '800_800', 
+#            '1600', '1600_1600', '2400', '2400_2400', '2400_2400_2400']
+hue_order = []
+for k in range(0, 3100, 100):
+    hue_order += [f'{k:.0f}', f'{k:.0f}_{k:.0f}', f'{k:.0f}_{k:.0f}_{k:.0f}', f'{k:.0f}_{k:.0f}_{k:.0f}_{k:.0f}']
+    
+hue_order = [h for h in hue_order if h in df[Hplot].unique()]
+
+agg_dict = {k:'first' for k in Id_cols}
+agg_dict.update({Yplot:'mean', Yplot + '_norm':'mean'})
+
+group = df1.groupby(Xplot)
+df_g1 = group.agg(agg_dict).reset_index()
+group = df2.groupby(Xplot)
+df_g2 = group.agg(agg_dict).reset_index()
+group = df3.groupby(Xplot)
+df_g3 = group.agg(agg_dict).reset_index()
+
+
+
+fig, axes = plt.subplots(1, 2, figsize=(14, 4))
+ax = axes[0]
+ax.grid(zorder=0)
+sns.scatterplot(data=df, ax=ax, x=Xplot, y=Yplot, 
+                hue=Hplot, hue_order = hue_order,
+                alpha = 0.75, zorder=6)
+sns.scatterplot(data=df_g1, ax=ax, x=Xplot, y=Yplot, marker = 'o',
+                color='None', edgecolor='b', s=75, zorder=6)
+sns.scatterplot(data=df_g2, ax=ax, x=Xplot, y=Yplot, marker = 'o',
+                color='None', edgecolor='g', s=75, zorder=6)
+sns.scatterplot(data=df_g3, ax=ax, x=Xplot, y=Yplot, marker = 'o',
+                color='None', edgecolor='r', s=75, zorder=6)
+ax.set_ylim([0, ax.get_ylim()[1]*1.2])
+ax.set_xlabel(r'Total energy (J/cm2)')
+ax.set_ylabel(r'$T_{33\%}$ (s)')
+ax.legend().set_visible(False)
+
+ax = axes[1]
+ax.grid(zorder=0)
+sns.scatterplot(data=df, ax=ax, x=Xplot, y=Yplot + '_norm', 
+                hue=Hplot, hue_order = hue_order,
+                alpha = 0.75, zorder=6)
+sns.scatterplot(data=df_g1, ax=ax, x=Xplot, y=Yplot + '_norm', marker = 'o',
+                color='None', edgecolor='b', s=75, zorder=6, label='Mean values - NPa=1')
+sns.scatterplot(data=df_g2, ax=ax, x=Xplot, y=Yplot + '_norm', marker = 'o',
+                color='None', edgecolor='g', s=75, zorder=6, label='Mean values - NPa=2')
+sns.scatterplot(data=df_g3, ax=ax, x=Xplot, y=Yplot + '_norm', marker = 'o',
+                color='None', edgecolor='r', s=75, zorder=6, label='Mean values - NPa>2')
+ax.set_ylim([0, ax.get_ylim()[1]*1.2])
+ax.set_xlabel(r'Total energy (J/cm2)')
+ax.set_ylabel(r'$T_{33\%}$ - normalized')
+ax.legend(title='Photo-activation\nsequence [mW/cm2]', 
+          loc="upper left", bbox_to_anchor=(1, 0, 0.5, 1), ncols = 2)
 
 
 plt.tight_layout()

@@ -69,7 +69,7 @@ def PlotPullMetrics_swarm(df, group_by_cell = 'False', agg_func = 'mean'):
     
         ax.set_xlim([-0.5, len(Pa_ids)-0.5])
         xticks_labels = ['Ctrl'] + [f'+UV (Pa{str(k)})' for k in Pa_ids[1:]]
-        ax.set_xticks([k for k in range(len(Pa_ids))], xticks_labels, rotation=10)
+        ax.set_xticks([k for k in range(len(Pa_ids))], xticks_labels, rotation=15)
         ax.set_xlabel('')
         ax.set_ylabel(metric_dict[metric])
         yM = ax.get_ylim()[1]
