@@ -222,7 +222,7 @@ def check_if_file_has_tracks(fileName, srcDir):
 #### Main functions
 
 
-def compute_acor(image, mask, window_length, FPS,
+def compute_acor(image, mask, window_length, FPS, 
                  EQUALIZE = True, PLOT = False):
     if EQUALIZE:
         for t in range(image.shape[0]):
@@ -243,6 +243,61 @@ def compute_acor(image, mask, window_length, FPS,
     
     image_mean = np.mean(image, axis=0)
     image_std = np.std(image, axis=0)
+    non_zero_std = (image_std > 0)
+    mask_2 = (mask & non_zero_std)
+    image_normalized = (image - image_mean) / (image_std + (1-mask_2))
+    
+    for i in range(image.shape[1]):
+        for j in range(image.shape[2]):
+            if mask_2[i, j]:
+                acor = signal.correlate(image_normalized[:,i,j], 
+                                        image_normalized[:short_len,i,j], 
+                                        mode="valid")
+                acor = acor / acor[0]
+                image_acor[:, i, j] = acor
+                    
+    total_acor = np.zeros(long_len)
+    lags = np.arange(long_len) * (1/FPS)
+    for t in range(len(total_acor)):
+        total_acor[t] = np.mean(image_acor[t].flatten()[mask.flatten()])
+    
+    if PLOT:
+        fig, ax = plt.subplots(1, 1)
+        ax.imshow(mask, cmap='gray')
+        plt.show()
+        fig, ax = plt.subplots(1, 1)
+        ax.plot(lags, total_acor)
+        plt.show()
+        
+    return(total_acor, image_acor)
+
+
+
+def compute_acor_test(image, mask, window_length, FPS, image_ref,
+                 EQUALIZE = True, PLOT = False):
+    if EQUALIZE:
+        for t in range(image.shape[0]):
+            p1, p99 = np.percentile(image[t].flatten()[mask.flatten()], (1, 99))
+            image[t] = skm.exposure.rescale_intensity(image[t], in_range=(p1, p99))
+            
+        for t in range(image.shape[0]):
+            p1, p99 = np.percentile(image_ref[t].flatten()[mask.flatten()], (1, 99))
+            image_ref[t] = skm.exposure.rescale_intensity(image_ref[t], in_range=(p1, p99))
+    
+    if PLOT:
+        fig, axes = plt.subplots(1, 2)
+        axes[0].imshow(image[0]*mask, cmap = 'gray')
+        axes[1].imshow(image[-1]*mask, cmap = 'gray')
+        plt.show()
+    
+    short_len = window_length
+    long_len = image.shape[0] - short_len + 1
+    image_acor = np.zeros((long_len, image.shape[1], image.shape[2]))
+    
+    Zero_std_found = False
+    
+    image_mean = np.mean(image[:], axis=0)
+    image_std = np.std(image[:], axis=0)
     non_zero_std = (image_std > 0)
     mask_2 = (mask & non_zero_std)
     image_normalized = (image - image_mean) / (image_std + (1-mask_2))
@@ -605,8 +660,152 @@ listTifPaths = [os.path.join(dirPath, f) for f in fileNames]
 ACF_res_df, ACF_dict = analyse_cells_ACF(listTifPaths[:], df_Pa, SCALE_40X, FPS,
                                          PLOT = True)
 
+# %%% Test minimum length for valid ACF
+
+PLOT = True
+
+PaTableName = "MainIrradianceConditions.csv"
+PaTablePath = os.path.join(up.Path_AnalysisPulls, PaTableName)
+df_Pa = pd.read_csv(PaTablePath)
+
+dirPath = up.Path_AnalysisPulls + "/26-02-09_UVonCytoplasm"
+
+fileNames = [
+             # "26-02-09_M1_Pos4_Pa0_C1_Film5min_Dt1sec.tif",
+             # "26-02-09_M1_Pos4_Pa44_C1_Film5min_Dt1sec.tif",
+             # "26-02-09_M1_Pos6_Pa0_C1_Film5min_Dt1sec_1.tif",
+             "26-02-09_M1_Pos6_Pa77_C1_Film5min_Dt1sec_1.tif",
+             ]
+imagePathList = [os.path.join(dirPath, f) for f in fileNames]
 
 
+imageLength = [300, 250, 200, 150]
+
+
+res_dict = {
+            'id':[],
+            'pos_id':[],
+            'cell_id':[],
+            'long_cell_id':[],
+            'image_length':[],
+            'Pa':[],
+            'Pa_total_power':[],
+            'Pa_irradiance':[],
+            'Pa_dt':[],
+            't_50p':[],
+            't_33p':[],
+            't_25p':[],
+            't_20p':[],
+            't_0p':[],
+            }
+ACF_dict = {}
+
+get_long_cell_id = lambda x : '_'.join(x.split('_')[:3] + [x.split('_')[-1]])
+
+print(pm.BLUE + 'Starting ACF analysis' + pm.NORMAL)
+
+for k, p in enumerate(imagePathList):
+    T0 = time.time()
+    
+    if PLOT:
+        fig, ax = plt.subplots(1, 1)
+        Nt = len(imageLength)
+        Nc = len(pm.cL_Set21)
+        if Nt <= Nc:
+            listColors = pm.cL_Set21[:Nt]
+        else:
+            listColors = pm.cL_Set21
+    
+    # Ids
+    _, fN = os.path.split(p)
+    print(pm.GREEN + f'Analysing {fN}' + pm.NORMAL)
+    full_id = '_'.join(fN.split('_')[:5])
+    manip_id = '_'.join(fN.split('_')[:2])
+    long_cell_id = get_long_cell_id(full_id)
+    pos_id = get_numbers_following_text(fN, '_Pos', output='string')
+    cell_id = get_numbers_following_text(fN, '_C')
+    Pa = get_numbers_following_text(fN, '_Pa')
+    Irr, DT, Pow = get_Pa_value(df_Pa, manip_id, Pa) # mW/cm2 ; mJ/cm2
+    str_irr = '_'.join(Irr.astype(str))
+    str_dt = '_'.join(DT.astype(str))
+    total_power = np.sum(Pow)/1000 # J/cm2
+    
+    # Get image and mask       
+    image_raw = skm.io.imread(p)
+    image = skm.util.img_as_float32(image_raw)
+    shape = image.shape
+
+    single_contour = get_reasonable_inner_cell_contour(image, PLOT = False)
+    single_mask = contour_to_mask([shape[1], shape[2]], single_contour)
+    single_mask = ndi.binary_erosion(single_mask, iterations = 50)
+    
+    for l, L in enumerate(imageLength):
+        image_ref = image
+        new_image = image[:L]
+    
+        shape = new_image.shape
+        window_length = 100 # shape[0]//3
+        
+        # ACF function
+        total_acor, image_acor = compute_acor_test(new_image, single_mask, 
+                                              window_length, FPS, image_ref,
+                                              EQUALIZE = True, PLOT = False)
+        
+        ACF_dict[full_id] = total_acor
+        
+        timescales = ['t_50p', 't_33p', 't_25p', 't_20p', 't_0p']
+        th_timescales = [1/2, 1/3, 1/4, 1/5, 0]
+        dict_timescales = {k:0 for k in timescales}
+        # print(timescales)
+        # print(th_timescales)
+        # print(dict_timescales)
+        
+        interp_factor = 10
+        total_acor_interp = ufun.resize_1Dinterp(total_acor, 
+                                                 fx=interp_factor)
+        
+        for ts, th in zip(timescales, th_timescales):
+            test = (total_acor_interp < th)
+            t = ufun.findFirst(1, test)/interp_factor
+            dict_timescales[ts] = t
+        
+        res_dict['id'].append(full_id)
+        res_dict['pos_id'].append(pos_id)
+        res_dict['cell_id'].append(cell_id)
+        res_dict['image_length'].append(L)
+        res_dict['long_cell_id'].append(long_cell_id)
+        res_dict['Pa'].append(Pa)
+        res_dict['Pa_total_power'].append(total_power)
+        res_dict['Pa_irradiance'].append(str_irr)
+        res_dict['Pa_dt'].append(str_dt)
+        for ts in dict_timescales.keys():
+            res_dict[ts].append(dict_timescales[ts])
+        
+        if PLOT:
+            color = listColors[l%Nc]
+            dark_color = pm.lighten_color(color, 0.5)
+            #
+            lags = np.arange(0, len(total_acor_interp))/interp_factor
+            th_plot = 0.33
+            test_plot = (total_acor_interp < th_plot)
+            t_plot = ufun.findFirst(1, test_plot)/interp_factor
+            #
+            ax.plot(lags, total_acor_interp, color=color, label = full_id)
+            ax.axhline(th_plot, color = 'k', ls='--', lw=1)
+            ax.axvline(t_plot, color = dark_color, ls='-.', lw=1, label=r'$T_{33\%}$' + f' = {t_plot:.1f} --- L = {L:.0f}')
+    
+    Dt = time.time() - T0
+    print(f'Done in Dt = {Dt:.4f}')
+    
+    if PLOT:
+        ax.set_xlabel('Lag times (s)')
+        ax.set_ylabel('Total Normalized Autocorr')
+        ax.grid()
+        ax.legend()
+        fig.tight_layout()
+        plt.show()
+    
+res_df = pd.DataFrame(res_dict)
 
 # %%% Script for MSD
 
