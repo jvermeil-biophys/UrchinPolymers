@@ -28,7 +28,7 @@ elif COMPUTERNAME == 'MINC05': # IJM
     
 elif COMPUTERNAME == 'DESKTOP-9J5NPMO': # LJP
     Path_AnalysisPulls = "C:/Users/Joseph/Desktop/AnalysisPulls/"
-    Path_WorkingData = "E:/WorkingData"
+    Path_WorkingData = "C:/Users/Joseph/Desktop/WorkingData/"
     
 Path_LeicaData = os.path.join(Path_WorkingData, "LeicaData")
 Path_Nikon1Data = os.path.join(Path_WorkingData, "Nikon1Data_X1")

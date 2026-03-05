@@ -605,7 +605,7 @@ file2id = lambda x : '_'.join(x.split('_')[:5])
 
 redo_all_files = False
  
-dirPath = up.Path_AnalysisPulls + "/26-03-02_UVonCytoplasm" # "AndBeads"
+dirPath = up.Path_AnalysisPulls + "/26-03-04_UVonCytoplasmAndBeads/Films5min/"
 listAllFiles = os.listdir(dirPath)
 listTifFiles = [f for f in listAllFiles if ((f.endswith('.tif')) and ('Film5min' in f))]
 
@@ -622,7 +622,7 @@ if not redo_all_files:
     analyzed_id = ACF_res_df['id'].unique()
     listTifFiles = [f for f in listTifFiles if file2id(f) not in analyzed_id]
 
-listTifPaths = [os.path.join(dirPath, f) for f in listTifFiles]
+listTifPaths = [os.path.join(dirPath, f) for f in listTifFiles[:]]
 
 new_ACF_res_df, new_ACF_dict = analyse_cells_ACF(listTifPaths[:], df_Pa, 
                                                  SCALE, FPS, PLOT = False)

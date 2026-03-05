@@ -63,9 +63,11 @@ def getListOfSourceFolders(Dir, forbiddenWords = [], compulsaryWords = []): # 'd
     
     res = []
     exclude = False
+    # print(Dir)
     for w in forbiddenWords:
         if w.lower() in Dir.lower(): # compare the lower case strings
             exclude = True # If a forbidden word is in the dir name, don't consider it
+            # print('exclude')
             
     if exclude or not os.path.isdir(Dir):
         return(res) # Empty list
@@ -76,9 +78,11 @@ def getListOfSourceFolders(Dir, forbiddenWords = [], compulsaryWords = []): # 'd
         for w in compulsaryWords:
             if w.lower() not in Dir.lower(): # compare the lower case strings
                 valid = False # If a compulsary word is NOT in the dir name, don't consider it
+                # print('exclude')
             
         if valid:
             res = [Dir] # List with 1 element - the name of this dir
+            
         else:
             return(res)
         
@@ -237,7 +241,7 @@ def analyze_cropped_stack(imgPath, tasks = ['Magnet_frames', 'Magnet_pos']):
                         
         stack_Zproj = Z_projection(stack, kind = 'min', scaleFactor = 1)
         mag_center, mag_R = get_magnet_loc(stack_Zproj, magnet_gray_lv)
-        results['mag_y'], results['mag_x']  = mag_center[1], mag_center[0] + offset_x
+        results['mag_y'], results['mag_x']  = mag_center[0], mag_center[1] + offset_x
         results['mag_r'] = mag_R
     
     if 'Magnet_frames' in tasks:
@@ -310,7 +314,7 @@ def get_magnet_loc(img, magnet_gray_lv):
     cmX, cmY = contour_magnet[:,1], contour_magnet[:,0]
     
     #### Define circle arc and fit
-    selected_points = (np.abs(cmY-(nY/2)) < (nY/5))
+    selected_points = (np.abs(cmY-(np.median(cmY))) < ((np.max(cmY)-np.min(cmY))/5))
     arc_magnet = contour_magnet[selected_points, :]
     mag_center, mag_R = ufun.fitCircle(arc_magnet, loss = 'huber')
     # mag_center in YX format
@@ -537,15 +541,15 @@ def crop_and_copy(DirSrc, DirDst, allRefPoints, allStackPaths,
 #%% Define parameters
 
 
-DirSrc = 'C:/Users/Joseph/Desktop/Test_Preprocessing/SourceDir' #'/M4_patterns_ctrl' // \\M1_depthos
-DirDst = 'C:/Users/Joseph/Desktop/Test_Preprocessing/DestinDir'
+# DirSrc = 'C:/Users/Joseph/Desktop/WorkingData/LeicaData/26-03-04/PhotoActivation' #'/M4_patterns_ctrl' // \\M1_depthos
+# DirDst = 'C:/Users/Joseph/Desktop/AnalysisPulls/26-03-04_UVonCytoplasmAndBeads/Pulls'
 # DirDst_bins = ''
 
 DirSrc = 'C:/Users/Joseph/Desktop/WorkingData/LeicaData/26-01-27/Pulls'
 DirDst = 'C:/Users/Joseph/Desktop/AnalysisPulls/26-01-27_BeadTracking'
 
-DirSrc = up.Path_LeicaData + "/26-02-11_UVonCytoplasm_withPI"
-DirDst = up.Path_AnalysisPulls + "/26-02-11_UVonCytoplasmAndBeads/output"
+DirSrc = up.Path_LeicaData + "/26-03-04/Pulls"
+DirDst = up.Path_AnalysisPulls + "/26-03-04_UVonCytoplasmAndBeads/Pulls"
 
 microscope = 'Leica'
 source_format = 'single file' # 'image collection'
@@ -556,7 +560,7 @@ GetOMEdata = True
 scaleFactor = 1/8
 
 forbiddenWords = ['capture', 'captures', 'crop', 'crops', 'croped']
-compulsaryWords = ['M1']
+compulsaryWords = [] # 'M1'
 
 # Disable the Warnings from TiffFile
 logging.getLogger('tifffile').setLevel(logging.ERROR)
