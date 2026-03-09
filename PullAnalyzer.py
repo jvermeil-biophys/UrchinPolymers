@@ -663,8 +663,7 @@ def pullAnalyzer_multiFiles(mainDir, date, prefix_id,
     listManips = [m for m in df_manips['id'] if m.startswith(prefix_id_manip)]
     
     id_cols = ['track_id']
-    co_cols = ['type', 'system', 'solution', 'bead type', 'bead radius', 'treatment', 'magnet']
-    # co_cols = ['type', 'solution', 'bead type', 'bead radius', 'treatment', 'magnet']
+    co_cols = ['experiment type', 'system', 'injection solution', 'bead type', 'bead radius', 'light treatment', 'magnet']
     
     results_cols = []
     M_results_cols = ['globalError', 
@@ -705,10 +704,10 @@ def pullAnalyzer_multiFiles(mainDir, date, prefix_id,
             bead_radius = df_pulls.loc[df_pulls['id']==P_id, 'b_r'].values[0]
             
             results_dict['track_id'].append(T_id)
-            results_dict['type'].append(co_dict['type'][0])
+            results_dict['experiment type'].append(co_dict['experiment type'][0])
             results_dict['system'].append(co_dict['system'][0])
-            results_dict['solution'].append(co_dict['solution'][0])
-            results_dict['treatment'].append(co_dict['treatment'][0])
+            results_dict['injection solution'].append(co_dict['injection solution'][0])
+            results_dict['light treatment'].append(co_dict['light treatment'][0])
             results_dict['bead type'].append(bead_type)
             results_dict['bead radius'].append(bead_radius)
             results_dict['magnet'].append(magnet_id)
@@ -1078,6 +1077,7 @@ def pullAnalyzer(track, track_id, dict_pull, mag_d2f,
         ax.set_ylabel("Normalized displacement")
         ax.set_ylim([0, 1.2])
         plt.tight_layout()
+        fig2.suptitle(pull_id, fontsize=12)
         fig2.savefig(os.path.join(plotsDir, track_id + "_JeffreyFits.png"))
         
         
@@ -1423,9 +1423,9 @@ def pullAnalyzer_compareTracks(list_tracks, list_track_ids, list_dict_pull, list
 
 # %%% ... on many files
 
-# mainDir = os.path.join("C:/Users/Utilisateur/Desktop/") # Ordi IJM
+mainDir = os.path.join("C:/Users/Utilisateur/Desktop/") # Ordi IJM
 # mainDir = os.path.join("C:/Users/josep/Desktop/Seafile") # Ordi perso
-mainDir = os.path.join("C:/Users/Joseph/Desktop/") # Ordi LJP
+# mainDir = os.path.join("C:/Users/Joseph/Desktop/") # Ordi LJP
 date = '26-03-04'
 subfolder = date + '_UVonCytoplasmAndBeads'
 
@@ -1438,14 +1438,14 @@ plotsDir = os.path.join(analysisDir, subfolder, 'Plots')
 # cell = '_M1_C1_Pa0_P3'
 
 # prefix_id = '26-02-11_M1_C1_Pa0_P1' # + cell # used to select a subset of the track files if needed
-prefix_id = '26-03-04_M1' # + cell # used to select a subset of the track files if needed
+prefix_id = '26-03-04_M2' # + cell # used to select a subset of the track files if needed
 
 
 Results = pullAnalyzer_multiFiles(mainDir, date, prefix_id,
                                     analysisDir, tracksDir, resultsDir, plotsDir,
                                     fits = ['newton', 'jeffrey'], calibFuncType='PowerLaw',
                                     resultsFileName = date + '_BeadsPulling',
-                                    Redo = True, PLOT = True, SHOW = True)
+                                    Redo = False, PLOT = True, SHOW = True)
 
 # plt.close('all')
 
@@ -2362,7 +2362,7 @@ def pullAnalyzer_multiFiles(mainDir, date, prefix_id,
     listManips = [m for m in df_manips['id'] if m.startswith(prefix_id_manip)]
     
     id_cols = ['pull_id']
-    co_cols = ['type', 'solution', 'bead type', 'bead radius', 'treatment', 'magnet']
+    co_cols = ['experiment type', 'injection solution', 'bead type', 'bead radius', 'light treatment', 'magnet']
     if mode == 'newton':
         result_cols = ['fit_mode', 'viscosity', 'R2', 
                        'median speed', 'median force', 
@@ -2398,11 +2398,11 @@ def pullAnalyzer_multiFiles(mainDir, date, prefix_id,
                 pixel_size = df_pulls.loc[df_pulls['id']==P_id, 'pixel_size'].values[0]
                 bead_radius = pixel_size * df_pulls.loc[df_pulls['id']==P_id, 'bead_diameter'].values[0]/2
                 results_dict['pull_id'].append(P_id)
-                results_dict['type'].append(co_dict['type'][0])
-                results_dict['solution'].append(co_dict['solution'][0])
+                results_dict['experiment type'].append(co_dict['experiment type'][0])
+                results_dict['injection solution'].append(co_dict['injection solution'][0])
                 results_dict['bead type'].append(co_dict['bead type'][0])
                 results_dict['bead radius'].append(bead_radius)
-                results_dict['treatment'].append(co_dict['treatment'][0])
+                results_dict['light treatment'].append(co_dict['light treatment'][0])
                 results_dict['magnet'].append(co_dict['magnet'][0])
                 
                 if mode == 'newton':

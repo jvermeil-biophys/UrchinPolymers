@@ -896,17 +896,25 @@ FPS = 1
 
 # dirPath = up.Path_AnalysisPulls + "/26-02-09_UVonCytoplasm"
 # dirPath = up.Path_AnalysisPulls + "/26-02-11_UVonCytoplasmAndBeads"
-dirPath = up.Path_AnalysisPulls + "/26-03-02_UVonCytoplasm"
-dirPath = up.Path_AnalysisPulls + "/26-03-04_UVonCytoplasmAndBeads"
+# dirPath = up.Path_AnalysisPulls + "/26-03-02_UVonCytoplasm"
+# dirPath = up.Path_AnalysisPulls + "/26-03-04_UVonCytoplasmAndBeads"
+dirPath = up.Path_AnalysisPulls
 
 listAllFiles = os.listdir(dirPath)
 
-df_ACF = pd.read_csv(os.path.join(dirPath, 'Results', '26-03-04_results_ACF.csv'))
+# df_ACF = pd.read_csv(os.path.join(dirPath, 'Results', '26-03-04_results_ACF.csv'))
+df_ACF = pd.read_csv(os.path.join(dirPath, 'AllResults_ACF.csv'))
+df_ExpCond = pd.read_csv(os.path.join(dirPath, 'MainExperimentalConditions.csv'))
+
 df_ACF['N_Pa'] = df_ACF['Pa_dt'].apply(lambda x : len(str(x).split('_')))
+df_ACF['manip_id'] = df_ACF['id'].apply(lambda x : '_'.join(str(x).split('_')[:2]))
+
+
 # if 'long_cell_id' not in df_ACF.columns:
 #     get_long_cell_id = lambda x : '_'.join(x.split('_')[:4])# + [x.split('_')[-1]])
 #     df_ACF['long_cell_id'] = df_ACF['id'].apply(get_long_cell_id)
 #     # df_ACF.to_csv(os.path.join(dirPath, 'Results', 'results_ACF.csv'), index=False)
+
 
 metrics_cols = [col for col in df_ACF.columns if col.startswith('t_')]
 for mc in metrics_cols:
@@ -919,6 +927,15 @@ for k, cid in enumerate(df_ACF['long_cell_id'].unique()):
         mcn = mc + '_norm'
         val_ctrl = df_ACF.loc[index_cell_control, mc].values[0]
         df_ACF.loc[index_cell, mcn] /= val_ctrl
+        
+
+df_ACF = pd.merge(left = df_ACF, right = df_ExpCond, 
+                  left_on = 'manip_id', right_on = 'id', how = 'inner',
+                  suffixes=(None, '_copy'))
+
+for col in df_ACF.columns:
+    if ('Unnamed' in col) or ('_copy' in col):
+        df_ACF = df_ACF.drop(labels = col, axis = 1)
     
 #### Filters
 # df = df_ACF
@@ -994,7 +1011,7 @@ sns.scatterplot(data=df_g, ax=ax, x=Xplot, y=Yplot, marker = 'o',
                 color='None', edgecolor='k', s=75, zorder=6)
 ax.set_ylim([0, ax.get_ylim()[1]*1.2])
 ax.set_xlabel(r'Total energy (J/cm2)')
-ax.set_ylabel(r'$T_{33\%}$ (s)')
+ax.set_ylabel(r'$T_{50\%}$ (s)')
 ax.legend().set_visible(False)
 
 ax = axes[1]
@@ -1003,10 +1020,10 @@ sns.scatterplot(data=df, ax=ax, x=Xplot, y=Yplot + '_norm',
                 hue=Hplot, hue_order = hue_order,
                 alpha = 0.75, zorder=6)
 sns.scatterplot(data=df_g, ax=ax, x=Xplot, y=Yplot + '_norm', marker = 'o',
-                color='None', edgecolor='k', s=75, zorder=6, label='Mean values')
+                color='None', edgecolor='k', s=75, zorder=6, label='Mean\nvalues')
 ax.set_ylim([0, ax.get_ylim()[1]*1.2])
 ax.set_xlabel(r'Total energy (J/cm2)')
-ax.set_ylabel(r'$T_{33\%}$ - normalized')
+ax.set_ylabel(r'$T_{50\%}$ - normalized')
 ax.legend(title='Photo-activation\nsequence [mW/cm2]', 
           loc="upper left", bbox_to_anchor=(1, 0, 0.5, 1), ncols = 2)
 
@@ -1082,7 +1099,7 @@ sns.scatterplot(data=df_g3, ax=ax, x=Xplot, y=Yplot, marker = 'o',
                 color='None', edgecolor='r', s=75, zorder=6)
 ax.set_ylim([0, ax.get_ylim()[1]*1.2])
 ax.set_xlabel(r'Total energy (J/cm2)')
-ax.set_ylabel(r'$T_{33\%}$ (s)')
+ax.set_ylabel(r'$T_{50\%}$ (s)')
 ax.legend().set_visible(False)
 
 ax = axes[1]
@@ -1091,14 +1108,14 @@ sns.scatterplot(data=df, ax=ax, x=Xplot, y=Yplot + '_norm',
                 hue=Hplot, hue_order = hue_order,
                 alpha = 0.75, zorder=6)
 sns.scatterplot(data=df_g1, ax=ax, x=Xplot, y=Yplot + '_norm', marker = 'o',
-                color='None', edgecolor='b', s=75, zorder=6, label='Mean values - NPa=1')
+                color='None', edgecolor='b', s=75, zorder=6, label='Mean values\nNPa=1')
 sns.scatterplot(data=df_g2, ax=ax, x=Xplot, y=Yplot + '_norm', marker = 'o',
-                color='None', edgecolor='g', s=75, zorder=6, label='Mean values - NPa=2')
+                color='None', edgecolor='g', s=75, zorder=6, label='Mean values\nNPa=2')
 sns.scatterplot(data=df_g3, ax=ax, x=Xplot, y=Yplot + '_norm', marker = 'o',
-                color='None', edgecolor='r', s=75, zorder=6, label='Mean values - NPa>2')
+                color='None', edgecolor='r', s=75, zorder=6, label='Mean values\nNPa>2')
 ax.set_ylim([0, ax.get_ylim()[1]*1.2])
 ax.set_xlabel(r'Total energy (J/cm2)')
-ax.set_ylabel(r'$T_{33\%}$ - normalized')
+ax.set_ylabel(r'$T_{50\%}$ - normalized')
 ax.legend(title='Photo-activation\nsequence [mW/cm2]', 
           loc="upper left", bbox_to_anchor=(1, 0, 0.5, 1), ncols = 2)
 
