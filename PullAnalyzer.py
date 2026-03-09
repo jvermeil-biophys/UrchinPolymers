@@ -646,7 +646,7 @@ def pullAnalyzer_multiFiles(mainDir, date, prefix_id,
     df_manips = pd.read_csv(os.path.join(analysisDir, 'MainExperimentalConditions.csv'))
     df_pulls = pd.read_csv(os.path.join(analysisDir, date + '_ExperimentalConditions.csv'))
     listTrackFiles = [f for f in os.listdir(tracksDir) if ('Track' in f) and (f.endswith('.xml'))]
-
+    
     listTrackIds = ['_'.join(string.split('_')[:6]) for string in listTrackFiles]
     listPullIds = ['_'.join(string.split('_')[:5]) for string in listTrackFiles]
     dict_TrackIds2File = {tid : tf for (tid, tf) in zip(listTrackIds, listTrackFiles)}
@@ -688,7 +688,6 @@ def pullAnalyzer_multiFiles(mainDir, date, prefix_id,
 
     for M_id in listManips:
         co_dict = df_manips[df_manips['id'] == M_id].to_dict('list')
-        print(co_dict)
         listTracks = [t for t in listTrackIds if \
                       t.startswith(prefix_id) and (Redo or (t not in already_analyzed))]
 
@@ -725,17 +724,26 @@ def pullAnalyzer_multiFiles(mainDir, date, prefix_id,
                 mag_d2f = (lambda x : doubleExpo(x, *parms))
             
             Track_Rd = {}
-            if 'newton' in fits:
-                N_Rd, N_error = pullAnalyzer(track, T_id, dict_pull, mag_d2f,
-                                             mode = 'newton', 
-                                             PLOT = PLOT, SHOW = SHOW, plotsDir = plotsDir)
-                Track_Rd.update(N_Rd)
-                
-            if 'jeffrey' in fits:
-                J_Rd, J_error = pullAnalyzer(track, T_id, dict_pull, mag_d2f,
-                                             mode = 'jeffrey', 
-                                             PLOT = PLOT, SHOW = SHOW, plotsDir = plotsDir)
-                Track_Rd.update(J_Rd)
+            try:
+                if 'newton' in fits:
+                    # try:
+                    N_Rd, N_error = pullAnalyzer(track, T_id, dict_pull, mag_d2f,
+                                                 mode = 'newton', 
+                                                 PLOT = PLOT, SHOW = SHOW, plotsDir = plotsDir)
+                    Track_Rd.update(N_Rd)
+                    # except:
+                    #     print(track)
+                    #     break
+                    
+                if 'jeffrey' in fits:
+                    J_Rd, J_error = pullAnalyzer(track, T_id, dict_pull, mag_d2f,
+                                                 mode = 'jeffrey', 
+                                                 PLOT = PLOT, SHOW = SHOW, plotsDir = plotsDir)
+                    Track_Rd.update(J_Rd)
+            except:
+                print(T_id)
+                print(track)
+                print(dict_pull)
             
             for col in results_cols:
                 try:
@@ -824,7 +832,7 @@ def pullAnalyzer(track, track_id, dict_pull, mag_d2f,
     if mode == 'newton':
         Filter1 = (5 < tpulling) # ((5 < tpulling) & (tpulling < 25))
     elif mode == 'jeffrey':
-        Filter1 = (tpulling < 20)
+        Filter1 = (tpulling < 40)
     # Filter2 = (np.abs(dx_pulling[0] - dx_pulling[:]) <= 100) # keep only first 100 µm of movement
     
     filterPull = Filter1
@@ -1045,6 +1053,7 @@ def pullAnalyzer(track, track_id, dict_pull, mag_d2f,
             dx_n_fit = jeffrey_model([k, gamma1, gamma2], tp_fit)
             ax.plot(tp_fit, dx_n_fit, "r-",
                      label=label1, zorder=6)
+            
         ax.legend()
         ax.grid()
         ax.set_xlabel("t [s]")
@@ -1410,12 +1419,14 @@ def pullAnalyzer_compareTracks(list_tracks, list_track_ids, list_dict_pull, list
 
 # %% 12. Run the functions
 
+
+
 # %%% ... on many files
 
 # mainDir = os.path.join("C:/Users/Utilisateur/Desktop/") # Ordi IJM
-mainDir = os.path.join("C:/Users/josep/Desktop/Seafile") # Ordi perso
-# mainDir = os.path.join("C:/Users/Joseph/Desktop/") # Ordi LJP
-date = '26-02-11'
+# mainDir = os.path.join("C:/Users/josep/Desktop/Seafile") # Ordi perso
+mainDir = os.path.join("C:/Users/Joseph/Desktop/") # Ordi LJP
+date = '26-03-04'
 subfolder = date + '_UVonCytoplasmAndBeads'
 
 
@@ -1426,12 +1437,14 @@ plotsDir = os.path.join(analysisDir, subfolder, 'Plots')
 
 # cell = '_M1_C1_Pa0_P3'
 
-prefix_id = '26-02-11_M1_C1_Pa0_P1' # + cell # used to select a subset of the track files if needed
+# prefix_id = '26-02-11_M1_C1_Pa0_P1' # + cell # used to select a subset of the track files if needed
+prefix_id = '26-03-04_M1' # + cell # used to select a subset of the track files if needed
+
 
 Results = pullAnalyzer_multiFiles(mainDir, date, prefix_id,
                                     analysisDir, tracksDir, resultsDir, plotsDir,
                                     fits = ['newton', 'jeffrey'], calibFuncType='PowerLaw',
-                                    resultsFileName = date + '_BeadsPulling_onebead',
+                                    resultsFileName = date + '_BeadsPulling',
                                     Redo = True, PLOT = True, SHOW = True)
 
 # plt.close('all')

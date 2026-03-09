@@ -897,11 +897,12 @@ FPS = 1
 # dirPath = up.Path_AnalysisPulls + "/26-02-09_UVonCytoplasm"
 # dirPath = up.Path_AnalysisPulls + "/26-02-11_UVonCytoplasmAndBeads"
 dirPath = up.Path_AnalysisPulls + "/26-03-02_UVonCytoplasm"
+dirPath = up.Path_AnalysisPulls + "/26-03-04_UVonCytoplasmAndBeads"
 
 listAllFiles = os.listdir(dirPath)
 
-df_ACF = pd.read_csv(os.path.join(dirPath, 'Results', '26-03-02_results_ACF.csv'))
-df_ACF['N_Pa'] = df_ACF['Pa_dt'].apply(lambda x : len(x.split('_')))
+df_ACF = pd.read_csv(os.path.join(dirPath, 'Results', '26-03-04_results_ACF.csv'))
+df_ACF['N_Pa'] = df_ACF['Pa_dt'].apply(lambda x : len(str(x).split('_')))
 # if 'long_cell_id' not in df_ACF.columns:
 #     get_long_cell_id = lambda x : '_'.join(x.split('_')[:4])# + [x.split('_')[-1]])
 #     df_ACF['long_cell_id'] = df_ACF['id'].apply(get_long_cell_id)
@@ -957,7 +958,7 @@ plt.show()
 
 df = df_ACF
 Filters = [
-           (df['N_Pa'] == 2),
+           (df['N_Pa'] == 1),
            ]
 GlobalFilter = np.ones_like(Filters[0]).astype(bool)
 for F in Filters:
