@@ -224,6 +224,101 @@ def PlotPullMetrics_oneBead(df, Cell_textId, BeadNo=1, iUV=2):
 
 # %% 3. Run plots
 
+# %%% 26-03-04
+
+mainDir = up.Path_AnalysisPulls + '/26-03-04_UVonCytoplasmAndBeads/Results'
+fileName = '26-03-04_BeadsPulling.csv'
+filePath = os.path.join(mainDir, fileName)
+
+specif = '_26-03-04'
+excluded_cells = ['26-01-14_M1_C1']
+
+df = pd.read_csv(filePath)
+
+df['date'] = df['track_id'].apply(lambda x : x.split('_')[0])
+df['Cell_textId'] = df['track_id'].apply(lambda x : '_'.join(x.split('_')[:3]))
+df['Pa_id'] = df['track_id'].apply(lambda x : x.split('_')[3])
+df['Lc'] = 6*np.pi*df['bead radius']
+  
+df['J_modulus'] = df['J_k'] / df['Lc']
+df['J_visco1'] = df['J_gamma1'] / df['Lc']
+df['J_visco2'] = df['J_gamma2'] / df['Lc']
+
+Filters = [
+           (df['J_gamma2'] < 500),
+           (df['J_fit_error'] == False),
+           (df['J_R2'] >= 0.7),
+           (df['date'] == '26-03-04'),
+           (df['Cell_textId'].apply(lambda x : x not in excluded_cells)),
+           ]
+GlobalFilter = np.ones_like(Filters[0]).astype(bool)
+for F in Filters:
+    GlobalFilter = GlobalFilter & F
+
+df = df[GlobalFilter]
+savePath = mainDir
+
+
+
+metrics = ['N_viscosity']
+metric_names = ['$\eta_N$ (Pa.s)']
+metric_dict = {m:mn for (m,mn) in zip(metrics, metric_names)}
+
+Pa_ids = df['Pa_id'].unique()
+
+# print(df)
+
+# if group_by_cell:
+#     group = df.groupby(['Cell_textId', 'Pa_id'])
+#     agg_dict = {m:agg_func for m in metrics}
+#     dfg = group.agg(agg_dict)
+#     df = dfg.reset_index()
+    
+# print(df)
+
+fig, axes = plt.subplots(1, 1, figsize=(8,5))
+axes_f = [axes]
+
+for k in range(len(axes_f)):
+    ax = axes_f[k]
+    metric = metrics[k]
+    
+    medians = [np.median(df.loc[df['Pa_id']==i, metric]) for i in Pa_ids]
+    
+    for i in range(len(Pa_ids)):
+        HW = 0.35
+        ax.plot([i-HW, i+HW], [medians[i], medians[i]], ls='--', lw=2, c='dimgrey')
+    
+    sns.swarmplot(data = df, ax=ax, 
+                  x = 'Pa_id', y = metric, hue = 'Cell_textId',
+                  size = 6)
+
+    ax.set_xlim([-0.5, len(Pa_ids)-0.5])
+    xticks_labels = ['Ctrl'] + [f'+UV (Pa{str(k)})' for k in Pa_ids[1:]]
+    ax.set_xticks([k for k in range(len(Pa_ids))], xticks_labels, rotation=15)
+    ax.set_xlabel('')
+    ax.set_ylabel(metric_dict[metric])
+    yM = ax.get_ylim()[1]
+    ax.set_ylim([0, 1.25*yM])
+    ax.grid(axis='y')
+    
+    for i in range(len(Pa_ids)):
+        ax.text(i, 1.1*yM, f'{medians[i]:.2f}', ha='center', size = 10, style='italic', c='dimgrey')
+    
+    if k == 1:
+        ax.legend(title='Cell IDs',
+                  loc="upper left",
+                  bbox_to_anchor=(1, 0, 0.5, 1))
+    else:
+        ax.legend().set_visible(False)
+
+fig.suptitle('All pulls & beads' + specif, fontsize=16)
+fig.tight_layout()
+plt.show()
+
+
+
+
 # %%% 26-02-11
 
 mainDir = up.Path_AnalysisPulls

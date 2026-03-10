@@ -1423,9 +1423,9 @@ def pullAnalyzer_compareTracks(list_tracks, list_track_ids, list_dict_pull, list
 
 # %%% ... on many files
 
-mainDir = os.path.join("C:/Users/Utilisateur/Desktop/") # Ordi IJM
+# mainDir = os.path.join("C:/Users/Utilisateur/Desktop/") # Ordi IJM
 # mainDir = os.path.join("C:/Users/josep/Desktop/Seafile") # Ordi perso
-# mainDir = os.path.join("C:/Users/Joseph/Desktop/") # Ordi LJP
+mainDir = os.path.join("C:/Users/Joseph/Desktop/") # Ordi LJP
 date = '26-03-04'
 subfolder = date + '_UVonCytoplasmAndBeads'
 
@@ -1438,14 +1438,14 @@ plotsDir = os.path.join(analysisDir, subfolder, 'Plots')
 # cell = '_M1_C1_Pa0_P3'
 
 # prefix_id = '26-02-11_M1_C1_Pa0_P1' # + cell # used to select a subset of the track files if needed
-prefix_id = '26-03-04_M2' # + cell # used to select a subset of the track files if needed
+prefix_id = '26-03-04' # + cell # used to select a subset of the track files if needed
 
 
 Results = pullAnalyzer_multiFiles(mainDir, date, prefix_id,
                                     analysisDir, tracksDir, resultsDir, plotsDir,
                                     fits = ['newton', 'jeffrey'], calibFuncType='PowerLaw',
                                     resultsFileName = date + '_BeadsPulling',
-                                    Redo = False, PLOT = True, SHOW = True)
+                                    Redo = True, PLOT = True, SHOW = True)
 
 # plt.close('all')
 

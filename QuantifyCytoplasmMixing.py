@@ -974,6 +974,7 @@ plt.show()
 # %%% ACF - 2
 
 df = df_ACF
+
 Filters = [
            (df['N_Pa'] == 1),
            ]
@@ -1037,6 +1038,15 @@ plt.show()
 df = df_ACF
 
 Filters = [
+           (df['injection solution'].apply(lambda x : ('I2959' not in x)))
+           ]
+GlobalFilter = np.ones_like(Filters[0]).astype(bool)
+for F in Filters:
+    GlobalFilter = GlobalFilter & F
+df = df[GlobalFilter]
+
+
+Filters = [
            (df['N_Pa'] == 1),
            ]
 GlobalFilter = np.ones_like(Filters[0]).astype(bool)
@@ -1085,7 +1095,7 @@ df_g3 = group.agg(agg_dict).reset_index()
 
 
 
-fig, axes = plt.subplots(1, 2, figsize=(14, 4))
+fig, axes = plt.subplots(1, 2, figsize=(14, 6))
 ax = axes[0]
 ax.grid(zorder=0)
 sns.scatterplot(data=df, ax=ax, x=Xplot, y=Yplot, 
@@ -1122,6 +1132,209 @@ ax.legend(title='Photo-activation\nsequence [mW/cm2]',
 
 plt.tight_layout()
 plt.show()
+
+
+# %%% ACF - 4
+
+df = df_ACF
+dates = df_ACF['date'].unique()
+N_r = len(dates)
+
+Filters = [
+           (df['N_Pa'] == 1),
+           ]
+GlobalFilter = np.ones_like(Filters[0]).astype(bool)
+for F in Filters:
+    GlobalFilter = GlobalFilter & F
+df = df[GlobalFilter]
+
+Id_cols = ['pos_id']
+Group_cols = ('Pa')
+Xplot = 'Pa_total_power'
+Yplot = 't_50p'
+Hplot = 'Pa_irradiance'
+# hue_order=['0', '200', '200_200', '400', '400_400', '800', '800_800', 
+#            '1600', '1600_1600', '2400', '2400_2400', '2400_2400_2400']
+hue_order = []
+for k in range(0, 3100, 100):
+    hue_order += [f'{k:.0f}', f'{k:.0f}_{k:.0f}', f'{k:.0f}_{k:.0f}_{k:.0f}', f'{k:.0f}_{k:.0f}_{k:.0f}_{k:.0f}']
+    
+
+
+
+
+
+fig, axes = plt.subplots(N_r, 2, figsize=(9, 2.5*N_r), sharex=True)
+
+for k, date in enumerate(dates):
+    df_d = df[df['date']==date]
+    hue_order_date = [h for h in hue_order if h in df_d[Hplot].unique()]
+    
+    group = df_d.groupby(Xplot)
+    agg_dict = {k:'first' for k in Id_cols}
+    agg_dict.update({Yplot:'mean', Yplot + '_norm':'mean'})
+    df_g = group.agg(agg_dict).reset_index()
+    
+    ax = axes[k, 0]
+    ax.grid(zorder=0)
+    sns.scatterplot(data=df_d, ax=ax, x=Xplot, y=Yplot, 
+                    hue=Hplot, hue_order = hue_order_date,
+                    alpha = 0.75, zorder=6)
+    sns.scatterplot(data=df_g, ax=ax, x=Xplot, y=Yplot, marker = 'o',
+                    color='None', edgecolor='k', s=75, zorder=6)
+    ax.set_ylim([0, ax.get_ylim()[1]*1.2])
+    ax.set_xlabel(r'Total energy (J/cm2)')
+    ax.set_ylabel(f'{date}\n' + r'$T_{50\%}$ (s)')
+    ax.legend().set_visible(False)
+    
+    ax = axes[k, 1]
+    ax.grid(zorder=0)
+    
+    sns.scatterplot(data=df_d, ax=ax, x=Xplot, y=Yplot + '_norm', 
+                    hue=Hplot, hue_order = hue_order_date,
+                    alpha = 0.75, zorder=6)
+    sns.scatterplot(data=df_g, ax=ax, x=Xplot, y=Yplot + '_norm', marker = 'o',
+                    color='None', edgecolor='k', s=75, zorder=6, label='Mean\nvalues')
+    ax.set_ylim([0, ax.get_ylim()[1]*1.2])
+    ax.set_xlabel(r'Total energy (J/cm2)')
+    ax.set_ylabel(r'$T_{50\%}$ - normalized')
+    ax.legend(title='Photo-activation\nsequence [mW/cm2]', 
+              loc="upper left", bbox_to_anchor=(1, 0, 0.5, 1), ncols = 2)
+
+
+plt.tight_layout()
+plt.show()
+
+
+# %%% ACF - 5
+
+df = df_ACF
+
+Filters = [
+           (df['N_Pa'] == 1),
+           (df['injection solution'].apply(lambda x : ('I2959' not in x)))
+           ]
+GlobalFilter = np.ones_like(Filters[0]).astype(bool)
+for F in Filters:
+    GlobalFilter = GlobalFilter & F
+df = df[GlobalFilter]
+
+
+Id_cols = ['pos_id']
+Group_cols = ('Pa')
+Xplot = 'Pa_total_power'
+Yplot = 't_50p'
+Hplot = 'Pa_irradiance'
+# hue_order=['0', '200', '200_200', '400', '400_400', '800', '800_800', 
+#            '1600', '1600_1600', '2400', '2400_2400', '2400_2400_2400']
+hue_order = []
+for k in range(0, 3100, 100):
+    hue_order += [f'{k:.0f}', f'{k:.0f}_{k:.0f}', f'{k:.0f}_{k:.0f}_{k:.0f}', f'{k:.0f}_{k:.0f}_{k:.0f}_{k:.0f}']
+    
+hue_order = [h for h in hue_order if h in df[Hplot].unique()]
+
+group = df.groupby(Xplot)
+agg_dict = {k:'first' for k in Id_cols}
+agg_dict.update({Yplot:'mean', Yplot + '_norm':'mean'})
+df_g = group.agg(agg_dict).reset_index()
+
+
+fig, axes = plt.subplots(1, 2, figsize=(10, 4))
+ax = axes[0]
+ax.grid(zorder=0)
+sns.scatterplot(data=df, ax=ax, x=Xplot, y=Yplot, 
+                hue=Hplot, hue_order = hue_order,
+                alpha = 0.75, zorder=6)
+sns.scatterplot(data=df_g, ax=ax, x=Xplot, y=Yplot, marker = 'o',
+                color='None', edgecolor='k', s=75, zorder=6)
+ax.set_ylim([0, ax.get_ylim()[1]*1.2])
+ax.set_xlabel(r'Total energy (J/cm2)')
+ax.set_ylabel(r'$T_{50\%}$ (s)')
+ax.legend().set_visible(False)
+
+ax = axes[1]
+ax.grid(zorder=0)
+sns.scatterplot(data=df, ax=ax, x=Xplot, y=Yplot + '_norm', 
+                hue=Hplot, hue_order = hue_order,
+                alpha = 0.75, zorder=6)
+sns.scatterplot(data=df_g, ax=ax, x=Xplot, y=Yplot + '_norm', marker = 'o',
+                color='None', edgecolor='k', s=75, zorder=6, label='Mean\nvalues')
+ax.set_ylim([0, ax.get_ylim()[1]*1.2])
+ax.set_xlabel(r'Total energy (J/cm2)')
+ax.set_ylabel(r'$T_{50\%}$ - normalized')
+ax.legend(title='Photo-activation\nsequence [mW/cm2]', 
+          loc="upper left", bbox_to_anchor=(1, 0, 0.5, 1), ncols = 2)
+
+
+plt.tight_layout()
+plt.show()
+
+
+# %%% ACF - 6
+
+df = df_ACF
+
+Filters = [
+           (df['N_Pa'] == 1),
+           (df['injection solution'].apply(lambda x : ('I2959' not in x))),
+           (df['date'].apply(lambda x : ('26-02-11' not in x)))
+           ]
+GlobalFilter = np.ones_like(Filters[0]).astype(bool)
+for F in Filters:
+    GlobalFilter = GlobalFilter & F
+df = df[GlobalFilter]
+
+
+Id_cols = ['pos_id']
+Group_cols = ('Pa')
+Xplot = 'Pa_total_power'
+Yplot = 't_50p'
+Hplot = 'Pa_irradiance'
+# hue_order=['0', '200', '200_200', '400', '400_400', '800', '800_800', 
+#            '1600', '1600_1600', '2400', '2400_2400', '2400_2400_2400']
+hue_order = []
+for k in range(0, 3100, 100):
+    hue_order += [f'{k:.0f}', f'{k:.0f}_{k:.0f}', f'{k:.0f}_{k:.0f}_{k:.0f}', f'{k:.0f}_{k:.0f}_{k:.0f}_{k:.0f}']
+    
+hue_order = [h for h in hue_order if h in df[Hplot].unique()]
+
+group = df.groupby(Xplot)
+agg_dict = {k:'first' for k in Id_cols}
+agg_dict.update({Yplot:'mean', Yplot + '_norm':'mean'})
+df_g = group.agg(agg_dict).reset_index()
+
+
+fig, axes = plt.subplots(1, 2, figsize=(10, 4))
+ax = axes[0]
+ax.grid(zorder=0)
+sns.scatterplot(data=df, ax=ax, x=Xplot, y=Yplot, 
+                hue=Hplot, hue_order = hue_order,
+                alpha = 0.75, zorder=6)
+sns.scatterplot(data=df_g, ax=ax, x=Xplot, y=Yplot, marker = 'o',
+                color='None', edgecolor='k', s=75, zorder=6)
+ax.set_ylim([0, ax.get_ylim()[1]*1.2])
+ax.set_xlabel(r'Total energy (J/cm2)')
+ax.set_ylabel(r'$T_{50\%}$ (s)')
+ax.legend().set_visible(False)
+
+ax = axes[1]
+ax.grid(zorder=0)
+sns.scatterplot(data=df, ax=ax, x=Xplot, y=Yplot + '_norm', 
+                hue=Hplot, hue_order = hue_order,
+                alpha = 0.75, zorder=6)
+sns.scatterplot(data=df_g, ax=ax, x=Xplot, y=Yplot + '_norm', marker = 'o',
+                color='None', edgecolor='k', s=75, zorder=6, label='Mean\nvalues')
+ax.set_ylim([0, ax.get_ylim()[1]*1.2])
+ax.set_xlabel(r'Total energy (J/cm2)')
+ax.set_ylabel(r'$T_{50\%}$ - normalized')
+ax.legend(title='Photo-activation\nsequence [mW/cm2]', 
+          loc="upper left", bbox_to_anchor=(1, 0, 0.5, 1), ncols = 2)
+
+
+plt.tight_layout()
+plt.show()
+
+
 
 
 # %%% MSD
