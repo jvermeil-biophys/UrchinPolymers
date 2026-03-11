@@ -666,9 +666,8 @@ def pullAnalyzer_multiFiles(mainDir, date, prefix_id,
     co_cols = ['experiment type', 'system', 'injection solution', 'bead type', 'bead radius', 'light treatment', 'magnet']
     
     results_cols = []
-    M_results_cols = ['globalError', 
-                   'median instant speed', 'mean speed', 'median force', 
-                   'R min', 'R max', 'theta']
+    M_results_cols = ['globalError', 'median instant speed', 'mean speed', 'median force', 
+                      'R min', 'R max', 'theta']
     results_cols += M_results_cols
     
     if 'newton' in fits:
@@ -723,22 +722,26 @@ def pullAnalyzer_multiFiles(mainDir, date, prefix_id,
                 mag_d2f = (lambda x : doubleExpo(x, *parms))
             
             Track_Rd = {}
+            
             try:
+                if PLOT:
+                    T_PLOT = PLOT
+                
                 if 'newton' in fits:
-                    # try:
                     N_Rd, N_error = pullAnalyzer(track, T_id, dict_pull, mag_d2f,
                                                  mode = 'newton', 
-                                                 PLOT = PLOT, SHOW = SHOW, plotsDir = plotsDir)
+                                                 PLOT = T_PLOT, SHOW = SHOW, plotsDir = plotsDir)
                     Track_Rd.update(N_Rd)
-                    # except:
-                    #     print(track)
-                    #     break
+                    T_PLOT = 1
+                    
                     
                 if 'jeffrey' in fits:
                     J_Rd, J_error = pullAnalyzer(track, T_id, dict_pull, mag_d2f,
                                                  mode = 'jeffrey', 
-                                                 PLOT = PLOT, SHOW = SHOW, plotsDir = plotsDir)
+                                                 PLOT = T_PLOT, SHOW = SHOW, plotsDir = plotsDir)
                     Track_Rd.update(J_Rd)
+                    T_PLOT = 1
+                    
             except:
                 print(T_id)
                 print(track)
@@ -765,7 +768,7 @@ def pullAnalyzer_multiFiles(mainDir, date, prefix_id,
 
 def pullAnalyzer(track, track_id, dict_pull, mag_d2f,
                  mode = 'newton', 
-                 PLOT = True, SHOW = False, plotsDir = ''):
+                 PLOT = 1, SHOW = False, plotsDir = ''):
     if SHOW:
         plt.ion()
     else:
@@ -993,7 +996,7 @@ def pullAnalyzer(track, track_id, dict_pull, mag_d2f,
     
     
     #### 6. Figures
-    if PLOT:
+    if PLOT >= 2:
         fig1, axes1 = plt.subplots(1, 2, figsize = (10,5))
         ax = axes1[0]
         ax.plot(X, Y, ".-")
@@ -1012,7 +1015,7 @@ def pullAnalyzer(track, track_id, dict_pull, mag_d2f,
         fig1.savefig(os.path.join(plotsDir, track_id + "_Trajectories.png"))
             
     
-    if mode == 'newton' and PLOT:
+    if mode == 'newton' and PLOT >= 1:
         fig2, axes2 = plt.subplots(1, 1, figsize = (5,5))
         ax = axes2
         axbis = axes2.twinx()
@@ -1036,7 +1039,7 @@ def pullAnalyzer(track, track_id, dict_pull, mag_d2f,
         fig2.savefig(os.path.join(plotsDir, track_id + "_NewtonFits.png"))
             
     
-    if mode == 'jeffrey' and PLOT:   
+    if mode == 'jeffrey' and PLOT >= 1:   
         fig2, axes2 = plt.subplots(1, 2, figsize=(8,5))
         ax = axes2[0]
         ax.plot(tpulling[filterPull], dx_pulling_n[filterPull], 
