@@ -345,8 +345,8 @@ pull_id = '25-09-04_M2-D4-P1'
 #     os.makedirs(os.path.join(directory, output_folder))
 
 
-# frame_initPull = md_table.loc[md_table['id'] == pull_id, 'frame_initPull'].values[0]
-# frame_endPull = md_table.loc[md_table['id'] == pull_id, 'frame_endPull'].values[0]
+# frame_initMag = md_table.loc[md_table['id'] == pull_id, 'frame_initMag'].values[0]
+# frame_endMag = md_table.loc[md_table['id'] == pull_id, 'frame_endMag'].values[0]
 # magnet_x = md_table.loc[md_table['id'] == pull_id, 'magnet_x'].values[0]
 # magnet_y = md_table.loc[md_table['id'] == pull_id, 'magnet_y'].values[0]
 
@@ -365,8 +365,8 @@ if not os.path.exists(os.path.join(directory, output_folder)):
     os.makedirs(os.path.join(directory, output_folder))
 pixel_size = 0.909  # µm
 time_stp = 0.25      # s
-frame_initPull = 24 # 25
-frame_endPull = 41
+frame_initMag = 24 # 25
+frame_endMag = 41
 magnet_x = 694.032
 magnet_y = 915.625
 magnet_radius = pixel_size * 112 / 2
@@ -403,24 +403,24 @@ track = trackSelection(tracks, mode = 'longest')
 
 X, Y, t = track[:,1], track[:,2], track[:,0]
 
-initPullTime = np.where(t == (frame_initPull - 1))[0][0]
-finPullTime = np.where(t == (frame_endPull - 1))[0][0]
+idx_initPull = np.where(t == (frame_initMag - 1))[0][0]
+idx_endPull = np.where(t == (frame_endMag - 1))[0][0]
 
 
 # %%% 5. Pretreatment
 
 # %%%% --- Rotate track ---
-theta = np.arctan2(Y[initPullTime] - Y[finPullTime],
-                   X[initPullTime] - X[finPullTime])
+theta = np.arctan2(Y[idx_initPull] - Y[idx_endPull],
+                   X[idx_initPull] - X[idx_endPull])
 rotation_mat = np.array([[np.cos(-theta), -np.sin(-theta)],
                          [np.sin(-theta),  np.cos(-theta)]])
 coords = np.vstack((X, Y)).T @ rotation_mat.T
 x_rot, y_rot = coords[:,0], coords[:,1]
 
-x_shift = (-x_rot[initPullTime:] + np.max(x_rot[initPullTime:])) * pixel_size
+x_shift = (-x_rot[idx_initPull:] + np.max(x_rot[idx_initPull:])) * pixel_size
 
 # %%%% --- Pulling phase ---
-pull_index = np.arange(initPullTime, finPullTime+1)
+pull_index = np.arange(idx_initPull, idx_endPull+1)
 pull_length = len(pull_index)
 xp, yp = x_rot[pull_index], y_rot[pull_index] # for plots
 
@@ -429,25 +429,25 @@ d = np.stack([(magnet_x - X[pull_index]) * pixel_size,
 dist = np.linalg.norm(d, axis=1) - magnet_radius
 pull_force = mag_d2f(dist)
 
-tpulling = (t[pull_index] - t[initPullTime]) * time_stp
-dx_pulling = x_shift[pull_index - initPullTime]
+t_pulling = (t[pull_index] - t[idx_initPull]) * time_stp
+dx_pulling = x_shift[pull_index - idx_initPull]
 dx_pulling_n = dx_pulling / pull_force
 
 # %%%% Release phase
 
-release_index = np.arange(finPullTime, len(track))
+release_index = np.arange(idx_endPull, len(track))
 release_length = len(release_index)
 
-trelease = (t[release_index] - t[finPullTime+1]) * time_stp
-dx_release = x_shift[release_index - initPullTime]
+t_release = (t[release_index] - t[idx_endPull+1]) * time_stp
+dx_release = x_shift[release_index - idx_initPull]
 dx_release_n = dx_release / x_shift[pull_length]
 
 # %%% 6. Fit model
 
 # %%%% Option 1. --- Viscous model ---
 
-# params, results = fitLine(tpulling[:], dx_pulling_n[:])
-# # params, results = fitLineHuber(tpulling, dx_pulling_n)
+# params, results = fitLine(t_pulling[:], dx_pulling_n[:])
+# # params, results = fitLineHuber(t_pulling, dx_pulling_n)
 
 # gamma = params[1]
 # visco = 1/(6*np.pi*bead_radius*gamma)
@@ -476,8 +476,8 @@ dx_release_n = dx_release / x_shift[pull_length]
 
 # fig2, axes2 = plt.subplots(1, 1, figsize = (5,5))
 # ax = axes2
-# ax.plot(tpulling, dx_pulling_n, "s")
-# xfit = np.linspace(0, tpulling[-1], 100)
+# ax.plot(t_pulling, dx_pulling_n, "s")
+# xfit = np.linspace(0, t_pulling[-1], 100)
 # yfit = params[0] + params[1]*xfit
 # ax.plot(xfit, yfit, "r-", label=r'$\eta$ = ' + f'{visco*1000:.2f} mPa.s')
 # ax.set_xlabel("t [s]")
@@ -498,7 +498,7 @@ def jeffrey_model(params, x):
     k, gamma1, gamma2 = params
     return (1 - np.exp(-k*x/gamma1))/k + x/gamma2
 
-obj1 = lambda params: np.linalg.norm(jeffrey_model(params, tpulling) - dx_pulling_n)
+obj1 = lambda params: np.linalg.norm(jeffrey_model(params, t_pulling) - dx_pulling_n)
 res1 = minimize(obj1, start1, method="Nelder-Mead", tol=1e-10,
                 options={"maxfev": 500})
 k, gamma1, gamma2 = res1.x
@@ -510,7 +510,7 @@ def exp_fit(params, x):
     a, tau = params
     return (1-a)*np.exp(-x/tau) + a
 
-obj2 = lambda params: np.linalg.norm(exp_fit(params, trelease) - dx_release_n)
+obj2 = lambda params: np.linalg.norm(exp_fit(params, t_release) - dx_release_n)
 res2 = minimize(obj2, start2, method="Nelder-Mead", tol=1e-7,
                 options={"maxfev": 1000})
 a, tau = res2.x
@@ -539,9 +539,9 @@ label1 = "Fitting Jeffrey's model\n" + r"$\frac{1}{k}(1 - exp(-k.x/\gamma_1)) + 
 label1+= r"$k$ = " + f"{k:.2f}\n"
 label1+= r"$\gamma_1$ = " + f"{gamma1:.2f}\n"
 label1+= r"$\gamma_2$ = " + f"{gamma2:.2f}"
-ax.plot(tpulling, dx_pulling_n, "s")
-ax.plot(np.linspace(0, tpulling[-1], 1000),
-         jeffrey_model([k,gamma1,gamma2], np.linspace(0, tpulling[-1], 1000)), "r-",
+ax.plot(t_pulling, dx_pulling_n, "s")
+ax.plot(np.linspace(0, t_pulling[-1], 1000),
+         jeffrey_model([k,gamma1,gamma2], np.linspace(0, t_pulling[-1], 1000)), "r-",
          label=label1)
 ax.legend()
 ax.grid()
@@ -551,9 +551,9 @@ ax = axes2[1]
 label2 = "Fitting Viscoel Relax\n" + r"$(1-a). exp(-x/\tau ) + a$" + "\n"
 label2+= r"$a$ = " + f"{a:.2f}\n"
 label2+= r"$\tau$ = " + f"{tau:.2f}"
-ax.plot(trelease, dx_release_n, "s")
-ax.plot(np.linspace(0, trelease[-1], 1000),
-         exp_fit([a,tau], np.linspace(0, trelease[-1], 1000)), ls="-", c='darkorange',
+ax.plot(t_release, dx_release_n, "s")
+ax.plot(np.linspace(0, t_release[-1], 1000),
+         exp_fit([a,tau], np.linspace(0, t_release[-1], 1000)), ls="-", c='darkorange',
          label=label2)
 ax.legend()
 ax.grid()
@@ -570,18 +570,18 @@ os.chdir(os.path.join(directory, output_folder))
 
 # Excel saving
 with pd.ExcelWriter(f"Table.xlsx", engine="openpyxl") as writer:
-    pulling_force_df = pd.DataFrame(np.column_stack([tpulling, dx_pulling, pull_force]),
+    pulling_force_df = pd.DataFrame(np.column_stack([t_pulling, dx_pulling, pull_force]),
                                     columns=["t[s]", "dx.pulling", "Pulling Force [pN]"])
     pulling_force_df.to_excel(writer, sheet_name="PullingPhase1", startrow=1, startcol=1, index=False)
 
-    pulling_curves_df = pd.DataFrame(np.column_stack([tpulling, dx_pulling_n]),
+    pulling_curves_df = pd.DataFrame(np.column_stack([t_pulling, dx_pulling_n]),
                                       columns=["t[s]", "dx/f[µm/pN]"])
     pulling_curves_df.to_excel(writer, sheet_name="PullingPhase2", startrow=1, startcol=1, index=False)
     pd.DataFrame([[k, gamma1, gamma2, tempo1, tempo2]],
                   columns=["k", "gamma1", "gamma2", "tempo1", "tempo2"]).to_excel(
                       writer, sheet_name="PullingPhase2", startrow=1, startcol=3, index=False)
 
-    release_curves_df = pd.DataFrame(np.column_stack([trelease, dx_release_n]),
+    release_curves_df = pd.DataFrame(np.column_stack([t_release, dx_release_n]),
                                       columns=["t[s]", "dx/dx(0)"])
     release_curves_df.to_excel(writer, sheet_name="ReleasePhase", startrow=1, startcol=1, index=False)
     pd.DataFrame([[a, tau]], columns=["a", "tau"]).to_excel(
@@ -608,15 +608,15 @@ plt.savefig("trajectories.jpg")
 
 plt.figure()
 plt.subplot(1,2,1)
-plt.plot(tpulling, dx_pulling_n, "s")
-plt.plot(np.linspace(0, tpulling[-1], 1000),
-          jeffrey_model([k,gamma1,gamma2], np.linspace(0, tpulling[-1], 1000)), "r-")
+plt.plot(t_pulling, dx_pulling_n, "s")
+plt.plot(np.linspace(0, t_pulling[-1], 1000),
+          jeffrey_model([k,gamma1,gamma2], np.linspace(0, t_pulling[-1], 1000)), "r-")
 plt.xlabel("t [s]"); plt.ylabel("dx/f [µm/pN]")
 
 plt.subplot(1,2,2)
-plt.plot(trelease, dx_release_n, "s")
-plt.plot(np.linspace(0, trelease[-1], 1000),
-          exp_fit([a,tau], np.linspace(0, trelease[-1], 1000)), "r-")
+plt.plot(t_release, dx_release_n, "s")
+plt.plot(np.linspace(0, t_release[-1], 1000),
+          exp_fit([a,tau], np.linspace(0, t_release[-1], 1000)), "r-")
 plt.xlabel("t [s]"); plt.ylabel("Normalized displacement")
 plt.ylim([0, 1.5])
 plt.savefig("fits.jpg")
@@ -637,7 +637,7 @@ def pullAnalyzer_multiFiles(mainDir, date, prefix_id,
                             analysisDir, tracksDir, resultsDir, plotsDir,
                             fits = ['newton'], calibFuncType='PowerLaw',
                             resultsFileName = 'results',
-                            Redo = False, PLOT = True, SHOW = False):
+                            Redo = False, PLOT = 2, SHOW = False):
     
     if not os.path.exists(resultsDir):
         os.makedirs(resultsDir)
@@ -690,6 +690,7 @@ def pullAnalyzer_multiFiles(mainDir, date, prefix_id,
                       t.startswith(prefix_id) and (Redo or (t not in already_analyzed))]
 
         for T_id in listTracks:
+            print(pm.GREEN + T_id + pm.NORMAL)
             trackFileName = dict_TrackIds2File[T_id]
             tracks = importTrackMateTracks(os.path.join(tracksDir, trackFileName))
             track = trackSelection(tracks, mode = 'longest')
@@ -723,29 +724,29 @@ def pullAnalyzer_multiFiles(mainDir, date, prefix_id,
             
             Track_Rd = {}
             
-            try:
-                if PLOT:
-                    T_PLOT = PLOT
+            # try:
+            if PLOT:
+                T_PLOT = PLOT
+
+            if 'jeffrey' in fits:
+                J_Rd, J_error = pullAnalyzer(track, T_id, dict_pull, mag_d2f,
+                                             mode = 'jeffrey', 
+                                             PLOT = T_PLOT, SHOW = SHOW, plotsDir = plotsDir)
+                Track_Rd.update(J_Rd)
+                T_PLOT = 1
                 
-                if 'newton' in fits:
-                    N_Rd, N_error = pullAnalyzer(track, T_id, dict_pull, mag_d2f,
-                                                 mode = 'newton', 
-                                                 PLOT = T_PLOT, SHOW = SHOW, plotsDir = plotsDir)
-                    Track_Rd.update(N_Rd)
-                    T_PLOT = 1
+            if 'newton' in fits:
+                N_Rd, N_error = pullAnalyzer(track, T_id, dict_pull, mag_d2f,
+                                             mode = 'newton', 
+                                             PLOT = T_PLOT, SHOW = SHOW, plotsDir = plotsDir)
+                Track_Rd.update(N_Rd)
+                T_PLOT = 1
+                 
                     
-                    
-                if 'jeffrey' in fits:
-                    J_Rd, J_error = pullAnalyzer(track, T_id, dict_pull, mag_d2f,
-                                                 mode = 'jeffrey', 
-                                                 PLOT = T_PLOT, SHOW = SHOW, plotsDir = plotsDir)
-                    Track_Rd.update(J_Rd)
-                    T_PLOT = 1
-                    
-            except:
-                print(T_id)
-                print(track)
-                print(dict_pull)
+            # except:
+            #     print(T_id)
+            #     print(track)
+            #     print(dict_pull)
             
             for col in results_cols:
                 try:
@@ -779,62 +780,79 @@ def pullAnalyzer(track, track_id, dict_pull, mag_d2f,
     #### 1. Parameters
     # track_id = track_id
     pull_id = dict_pull['id']
-    frame_initPull = dict_pull['mag_fi']
-    frame_endPull = dict_pull['mag_ff']
+    frame_initMag = dict_pull['mag_fi']
+    frame_endMag = dict_pull['mag_ff']
     pixel_size = dict_pull['film_pixel_size']  # µm
     mag_x = dict_pull['mag_x']*pixel_size
     mag_y = dict_pull['mag_y']*pixel_size
     film_dt = dict_pull['film_dt']/1000      # s
     mag_r = dict_pull['mag_r']*pixel_size # µm
     b_r = dict_pull['b_r'] # µm
+    bounds_newton = [int(k) for k in dict_pull['bounds_newton'].split('_')]
+    bounds_jeffrey = [int(k) for k in dict_pull['bounds_jeffrey'].split('_')]
+    COMMENTS = ''
 
-    
+    #### 2. Initialize results
+    resultsDict = {}
+
+    #### 3. Pretreatment of the track
+    # --- Get X, Y, T ---
     X, Y = track[:,1] * pixel_size, track[:,2] * pixel_size
     t_idx, t = track[:,0], track[:,0]*film_dt
     
+    # idx_initPull = np.where(t_idx == (frame_initMag - 1))[0][0]
+    # idx_endPull = np.where(t_idx == (frame_endMag - 1))[0][0]
+    idx_initPull = frame_initMag - 1
+    idx_endPull = frame_endMag - 1
+    
     # In case the bead is lost before the magnet is removed
-    if np.max(t_idx) <= (frame_endPull - 1):
-        frame_endPull = np.max(t_idx) + 1
+    if idx_endPull > np.max(t_idx):
+        idx_endPull = np.max(t_idx)
+        print(pm.ORANGE + 'corrected index end pull' + pm.NORMAL)
     
-    initPullTime = np.where(t_idx == (frame_initPull - 1))[0][0]
-    finPullTime = np.where(t_idx == (frame_endPull - 1))[0][0]
+    X2 = np.array(X - mag_x)
+    Y2 = np.array(Y - mag_y)
+    d_proj = (X2**2 + Y2**2)**0.5 - mag_r
     
-    #### 2. Initialize results
-    resultsDict = {}
+    # Compute angle
+    (_, a_fit), res = ufun.fitLineHuber(X2, Y2)
+    theta = np.atan(a_fit)
+        
+    # In case the bead is moving in the wrong direction in the beginning
+    if np.argmax(d_proj[idx_initPull:idx_endPull]) > 0:
+        idx_initPull += (np.argmax(d_proj[idx_initPull:idx_endPull]))
+        print(pm.ORANGE + 'corrected index init pull' + pm.NORMAL)
     
-    #### 4. Pretreatment
-    # --- Rotate track ---
-    theta = np.arctan2(Y[initPullTime] - Y[finPullTime],
-                       X[initPullTime] - X[finPullTime])
-    rotation_mat = np.array([[np.cos(-theta), -np.sin(-theta)],
-                             [np.sin(-theta),  np.cos(-theta)]])
-    coords = np.vstack((X, Y)).T @ rotation_mat.T
-    x_rot, y_rot = coords[:,0], coords[:,1]
+    d_shift = (-d_proj + np.max(d_proj[idx_initPull:idx_endPull]))
 
-    x_shift = (-x_rot[initPullTime:] + np.max(x_rot[initPullTime:]))
-
-    # --- Pulling phase ---
-    pull_index = np.arange(initPullTime, finPullTime+1)
-    pull_length = len(pull_index)
-    xp, yp = x_rot[pull_index], y_rot[pull_index] # for plots
-    d = np.stack([(mag_x - X[pull_index]),
-                  (mag_y - Y[pull_index])], axis=1)
-    XY = np.copy(d)
-    XY[:,0] -= mag_x
-    XY[:,1] -= mag_y
-    
-    #### Definition of the distance and the force
-    dist = np.linalg.norm(d, axis=1) - (mag_r) # Original behaviour
-    pull_force = mag_d2f(dist)
-    tpulling = (t[pull_index] - t[initPullTime])
-    dx_pulling = x_shift[pull_index - initPullTime]
+    #### 4. Define the two phases
+    # --- Define Pulling phase ---
+    pull_index   = np.arange(idx_initPull, idx_endPull)
+    pull_length  = len(pull_index)
+    pull_force   = mag_d2f(d_proj[pull_index])
+    t_pulling    = t[pull_index] - t[idx_initPull]
+    dx_pulling   = d_shift[pull_index]
     dx_pulling_n = dx_pulling / pull_force
+
+    # --- Define Release phase ---
+    # try:
+    release_index  = np.arange(idx_endPull, len(track))
+    release_length = len(release_index)
+    t_release      = (t[release_index] - t[idx_endPull])
+    dx_release     = d_shift[release_index]
+    dx_release_n   = dx_release / d_shift[idx_endPull]
+    error_release  = False
+    # except:
+    #     print(track_id)
+    #     print('Could not analyze the release phase !')
+    #     error_release  = True
     
-    #### Filters
+    
+    #### 5. Filters
     if mode == 'newton':
-        Filter1 = (5 < tpulling) # ((5 < tpulling) & (tpulling < 25))
+        Filter1 = ((bounds_newton[0] <= t_pulling) & (t_pulling < bounds_newton[1]))
     elif mode == 'jeffrey':
-        Filter1 = (tpulling < 40)
+        Filter1 = ((bounds_jeffrey[0] <= t_pulling) & (t_pulling < bounds_jeffrey[1]))
     # Filter2 = (np.abs(dx_pulling[0] - dx_pulling[:]) <= 100) # keep only first 100 µm of movement
     
     filterPull = Filter1
@@ -842,28 +860,16 @@ def pullAnalyzer(track, track_id, dict_pull, mag_d2f,
         error = True
     #     output = ()
     # filterPull = np.ones_like(dx_pulling).astype(bool)
-    
-    # --- Release phase ---
-    try:
-        release_index = np.arange(finPullTime, len(track))
-        release_length = len(release_index)
-        trelease = (t[release_index] - t[finPullTime+1])
-        dx_release = x_shift[release_index - initPullTime]
-        dx_release_n = dx_release / x_shift[pull_length]
-        error_release = False
-    except:
-        print(track_id)
-        print('Could not analyze the release phase !')
-        error_release = True
 
-    # --- Measures ---
+
+    #### 6. Simple Measures
     if not error:
         # M_results_cols = ['globalError', 'median instant speed', 'mean speed', 'median force', 
         #                'R min', 'R max', 'theta']
         med_instant_speed = np.median((dx_pulling[filterPull][1:]-dx_pulling[filterPull][:-1])/film_dt) # µm/s
-        mean_speed = (dx_pulling[filterPull][0] - dx_pulling[filterPull][-1]) / (tpulling[filterPull][0] - tpulling[filterPull][-1]) # µm/s
+        mean_speed = (dx_pulling[filterPull][0] - dx_pulling[filterPull][-1]) / (t_pulling[filterPull][0] - t_pulling[filterPull][-1]) # µm/s
         med_force = np.median(pull_force[filterPull]) # pN
-        r_min, r_max = min(dist), max(dist)
+        r_min, r_max = min(d_proj[pull_index]), max(d_proj[pull_index])
         resultsDict['median instant speed'] = med_instant_speed
         resultsDict['mean speed'] = mean_speed
         resultsDict['median force'] = med_force
@@ -881,11 +887,11 @@ def pullAnalyzer(track, track_id, dict_pull, mag_d2f,
         
     
     
-    #### 5. Fit Model
+    #### 7. Fit Model
     if mode == 'newton':
         # N_results_cols = ['N_fit_error', 'N_viscosity', 'N_R2']
         try:
-            params, results = fitLine(tpulling[filterPull], dx_pulling_n[filterPull])
+            params, results = fitLine(t_pulling[filterPull], dx_pulling_n[filterPull])
             slope = params[1]
             gamma = 1/slope
             visco = gamma/(6*np.pi*b_r)
@@ -906,7 +912,7 @@ def pullAnalyzer(track, track_id, dict_pull, mag_d2f,
         
         # Pulling phase
         try:
-            J_start = list(guess_init_parms_jeffrey(tpulling[filterPull], dx_pulling_n[filterPull]))
+            J_start = list(guess_init_parms_jeffrey(t_pulling[filterPull], dx_pulling_n[filterPull]))
         
             
             def jeffrey_model(params, x):
@@ -919,13 +925,13 @@ def pullAnalyzer(track, track_id, dict_pull, mag_d2f,
                 return (1 - np.exp(-k*x/gamma1))/k + x/gamma2
             
             #### Fit pulling phase --- V1
-            # obj1 = lambda params: np.linalg.norm(jeffrey_model(params, tpulling) - dx_pulling_n)
+            # obj1 = lambda params: np.linalg.norm(jeffrey_model(params, t_pulling) - dx_pulling_n)
             # res1 = minimize(obj1, start1, method="Nelder-Mead", tol=1e-10,
             #                 options={"maxfev": 1000})
             # k, gamma1, gamma2 = res1.x
             # # tempo1, tempo2 = gamma1/k, gamma2/k
             # Ymeas = dx_pulling_n
-            # Yfit = jeffrey_model((k, gamma1, gamma2), tpulling)
+            # Yfit = jeffrey_model((k, gamma1, gamma2), t_pulling)
             # R2_p = get_R2(Ymeas, Yfit) 
             
             #### Fit pulling phase --- V2
@@ -933,14 +939,13 @@ def pullAnalyzer(track, track_id, dict_pull, mag_d2f,
             g2_i = J_start[2]
             r_i = max(1e-6, (g2_i - 3*g1_i))**0.5
             J_start[2] = r_i
-            
-            obj1 = lambda params: np.linalg.norm(jeffrey_model_constraint(params, tpulling[filterPull]) - dx_pulling_n[filterPull])
+            obj1 = lambda params: np.linalg.norm(jeffrey_model_constraint(params, t_pulling[filterPull]) - dx_pulling_n[filterPull])
             res1 = minimize(obj1, J_start, method="Nelder-Mead", tol=1e-10,
                             options={"maxfev": 1000})
             k, gamma1, r = res1.x
             gamma2 = 3*gamma1 + r**2
             Ymeas = dx_pulling_n[filterPull]
-            Yfit = jeffrey_model((k, gamma1, gamma2), tpulling[filterPull])
+            Yfit = jeffrey_model((k, gamma1, gamma2), t_pulling[filterPull])
             J_R2 = get_R2(Ymeas, Yfit) 
             
             if min(k, gamma1, gamma2) <= 0:
@@ -968,18 +973,18 @@ def pullAnalyzer(track, track_id, dict_pull, mag_d2f,
 
         #### Fit release phase
         try:
-            R_start = list(guess_init_parms_relax(trelease, dx_release_n))
+            R_start = list(guess_init_parms_relax(t_release, dx_release_n))
             
             def exp_fit(params, x):
                 a, tau = params
                 return (1-a)*np.exp(-x/tau) + a
     
-            obj2 = lambda params: np.linalg.norm(exp_fit(params, trelease) - dx_release_n)
+            obj2 = lambda params: np.linalg.norm(exp_fit(params, t_release) - dx_release_n)
             res2 = minimize(obj2, R_start, method="Nelder-Mead", tol=1e-7,
                             options = {"maxfev": 1000})
             a, tau = res2.x
             Ymeas = dx_release_n
-            Yfit = exp_fit((a, tau), trelease)
+            Yfit = exp_fit((a, tau), t_release)
             R_R2 = get_R2(Ymeas, Yfit) 
             
             # R_results_cols = ['R_fit_error', 'R_a', 'R_tau', 'R_R2']
@@ -995,7 +1000,7 @@ def pullAnalyzer(track, track_id, dict_pull, mag_d2f,
             resultsDict['R_R2'] = np.nan
     
     
-    #### 6. Figures
+    #### 8. Figures
     if PLOT >= 2:
         fig1, axes1 = plt.subplots(1, 2, figsize = (10,5))
         ax = axes1[0]
@@ -1005,11 +1010,17 @@ def pullAnalyzer(track, track_id, dict_pull, mag_d2f,
         ax.set_title("Original track")
         
         ax = axes1[1]
-        ax.plot(x_rot, y_rot, ".-")
-        ax.plot(xp, yp, "k.-", linewidth=2)
-        ax.axis("equal")
+        axbis = ax.twinx()
+        # print(t, t[pull_index])
+        ax.axvline(t[frame_initMag-1], color='cyan', linestyle='--', linewidth=1)
+        ax.axvline(t[frame_endMag-1], color='cyan', linestyle='--', linewidth=1)
+        ax.plot(t, d_shift, ".-", linewidth=1.5)
+        ax.plot(t[pull_index], dx_pulling, ".-", linewidth=1.75)
+        ax.plot(t[pull_index][filterPull], dx_pulling[filterPull], ".-", linewidth=2)
+        axbis.plot(t[pull_index], pull_force, c='darkred', ls="-", linewidth=1.5)
+        # ax.axis("equal")
         ax.grid(axis='both')
-        ax.set_title("Rotated track")
+        ax.set_title("Time-Distance")
         fig1.tight_layout()
         
         fig1.savefig(os.path.join(plotsDir, track_id + "_Trajectories.png"))
@@ -1019,14 +1030,14 @@ def pullAnalyzer(track, track_id, dict_pull, mag_d2f,
         fig2, axes2 = plt.subplots(1, 1, figsize = (5,5))
         ax = axes2
         axbis = axes2.twinx()
-        axbis.plot(tpulling, dist, 'g--', zorder=4)
+        axbis.plot(t_pulling, d_proj[pull_index], 'g--', zorder=4)
         axbis.set_ylabel('Distance from magnet tip [µm]')
-        ax.plot(tpulling[filterPull], dx_pulling_n[filterPull], 
+        ax.plot(t_pulling[filterPull], dx_pulling_n[filterPull], 
                 ls='', marker='o', color='darkturquoise', markersize=5, zorder=5)
-        ax.plot(tpulling[~filterPull], dx_pulling_n[~filterPull], 
+        ax.plot(t_pulling[~filterPull], dx_pulling_n[~filterPull], 
                 ls='', marker='o', color='lightblue', markersize=5, zorder=4)
         if not resultsDict['N_fit_error']:
-            xfit = np.linspace(0, tpulling[-1], 100)
+            xfit = np.linspace(0, t_pulling[-1], 100)
             yfit = params[0] + params[1]*xfit
             ax.plot(xfit, yfit, "r-", label=r'$\eta$ = ' + f'{visco:.2f} Pa.s', zorder=6)
         ax.set_xlabel("t [s]")
@@ -1042,16 +1053,16 @@ def pullAnalyzer(track, track_id, dict_pull, mag_d2f,
     if mode == 'jeffrey' and PLOT >= 1:   
         fig2, axes2 = plt.subplots(1, 2, figsize=(8,5))
         ax = axes2[0]
-        ax.plot(tpulling[filterPull], dx_pulling_n[filterPull], 
+        ax.plot(t_pulling[filterPull], dx_pulling_n[filterPull], 
                 ls='', marker='o', color='darkturquoise', markersize=5, zorder=5)
-        ax.plot(tpulling[~filterPull], dx_pulling_n[~filterPull], 
+        ax.plot(t_pulling[~filterPull], dx_pulling_n[~filterPull], 
                 ls='', marker='o', color='lightblue', markersize=5, zorder=4)
         if not resultsDict['J_fit_error']:
             label1 = "Fitting Jeffrey's model\n" + r"$\frac{1}{k}(1 - exp(-k.t/\gamma_1)) + t/\gamma_2$" + "\n"
             label1+= r"$k$ = " + f"{k:.2f}\n"
             label1+= r"$\gamma_1$ = " + f"{gamma1:.2f}\n"
             label1+= r"$\gamma_2$ = " + f"{gamma2:.2f}"
-            tp_fit = np.linspace(0, tpulling[-1], 200)
+            tp_fit = np.linspace(0, t_pulling[-1], 200)
             dx_n_fit = jeffrey_model([k, gamma1, gamma2], tp_fit)
             ax.plot(tp_fit, dx_n_fit, "r-",
                      label=label1, zorder=6)
@@ -1061,16 +1072,15 @@ def pullAnalyzer(track, track_id, dict_pull, mag_d2f,
         ax.set_xlabel("t [s]")
         ax.set_ylabel("dx/f [µm/pN]")
     
-    
         ax = axes2[1]
         if not error_release:
-            ax.plot(trelease, dx_release_n, 
+            ax.plot(t_release, dx_release_n, 
                     ls='', marker='o', color='limegreen')
             if not resultsDict['R_fit_error']:
                 label2 = "Fitting Viscoel Relax\n" + r"$(1-a). exp(-t/\tau ) + a$" + "\n"
                 label2+= r"$a$ = " + f"{a:.2f}\n"
                 label2+= r"$\tau$ = " + f"{tau:.2f}"
-                tr_fit = np.linspace(0, trelease[-1], 200)
+                tr_fit = np.linspace(0, t_release[-1], 200)
                 dx_release_fit = exp_fit([a,tau], tr_fit)
                 ax.plot(tr_fit, dx_release_fit, 
                         ls="-", c='darkorange', label=label2)
@@ -1093,8 +1103,9 @@ def pullAnalyzer(track, track_id, dict_pull, mag_d2f,
     
     resultsDict['globalError'] = error
     
-    #### 7. Output
+    #### 9. Output
     return(resultsDict, error)
+
 
 
 
@@ -1126,8 +1137,8 @@ def pullAnalyzer_compareTracks(list_tracks, list_track_ids, list_dict_pull, list
         #### 1. Parameters
         # track_id = track_id
         pull_id = dict_pull['id']
-        frame_initPull = dict_pull['mag_fi']
-        frame_endPull = dict_pull['mag_ff']
+        frame_initMag = dict_pull['mag_fi']
+        frame_endMag = dict_pull['mag_ff']
         pixel_size = dict_pull['film_pixel_size']  # µm
         mag_x = dict_pull['mag_x']*pixel_size
         mag_y = dict_pull['mag_y']*pixel_size
@@ -1138,25 +1149,25 @@ def pullAnalyzer_compareTracks(list_tracks, list_track_ids, list_dict_pull, list
         X, Y = track[:,1] * pixel_size, track[:,2] * pixel_size
         t_idx, t = track[:,0], track[:,0]*film_dt
         
-        initPullTime = np.where(t_idx == (frame_initPull - 1))[0][0]
-        finPullTime = np.where(t_idx == (frame_endPull - 1))[0][0]
+        idx_initPull = np.where(t_idx == (frame_initMag - 1))[0][0]
+        idx_endPull = np.where(t_idx == (frame_endMag - 1))[0][0]
         
         #### 2. Initialize results
         resultsDict = {}
         
         #### 4. Pretreatment
         # --- Rotate track ---
-        theta = np.arctan2(Y[initPullTime] - Y[finPullTime],
-                           X[initPullTime] - X[finPullTime])
+        theta = np.arctan2(Y[idx_initPull] - Y[idx_endPull],
+                           X[idx_initPull] - X[idx_endPull])
         rotation_mat = np.array([[np.cos(-theta), -np.sin(-theta)],
                                  [np.sin(-theta),  np.cos(-theta)]])
         coords = np.vstack((X, Y)).T @ rotation_mat.T
         x_rot, y_rot = coords[:,0], coords[:,1]
     
-        x_shift = (-x_rot[initPullTime:] + np.max(x_rot[initPullTime:]))
+        x_shift = (-x_rot[idx_initPull:] + np.max(x_rot[idx_initPull:]))
     
         # --- Pulling phase ---
-        pull_index = np.arange(initPullTime, finPullTime+1)
+        pull_index = np.arange(idx_initPull, idx_endPull+1)
         pull_length = len(pull_index)
         xp, yp = x_rot[pull_index], y_rot[pull_index] # for plots
         d = np.stack([(mag_x - X[pull_index]),
@@ -1168,15 +1179,15 @@ def pullAnalyzer_compareTracks(list_tracks, list_track_ids, list_dict_pull, list
         #### Definition of the distance and the force
         dist = np.linalg.norm(d, axis=1) - (mag_r) # Original behaviour
         pull_force = mag_d2f(dist)
-        tpulling = (t[pull_index] - t[initPullTime])
-        dx_pulling = x_shift[pull_index - initPullTime]
+        t_pulling = (t[pull_index] - t[idx_initPull])
+        dx_pulling = x_shift[pull_index - idx_initPull]
         dx_pulling_n = dx_pulling / pull_force
         
         #### Filters
         if mode == 'newton':
-            Filter1 = ((10 < tpulling) & (tpulling < 200))
+            Filter1 = ((10 < t_pulling) & (t_pulling < 200))
         elif mode == 'jeffrey':
-            Filter1 = (tpulling < 200)
+            Filter1 = (t_pulling < 200)
         # Filter2 = (np.abs(dx_pulling[0] - dx_pulling[:]) <= 100) # keep only first 100 µm of movement
         
         filterPull = Filter1
@@ -1187,10 +1198,10 @@ def pullAnalyzer_compareTracks(list_tracks, list_track_ids, list_dict_pull, list
         
         # --- Release phase ---
         try:
-            release_index = np.arange(finPullTime, len(track))
+            release_index = np.arange(idx_endPull, len(track))
             release_length = len(release_index)
-            trelease = (t[release_index] - t[finPullTime+1])
-            dx_release = x_shift[release_index - initPullTime]
+            t_release = (t[release_index] - t[idx_endPull+1])
+            dx_release = x_shift[release_index - idx_initPull]
             dx_release_n = dx_release / x_shift[pull_length]
             error_release = False
         except:
@@ -1203,7 +1214,7 @@ def pullAnalyzer_compareTracks(list_tracks, list_track_ids, list_dict_pull, list
             # M_results_cols = ['globalError', 'median instant speed', 'mean speed', 'median force', 
             #                'R min', 'R max', 'theta']
             med_instant_speed = np.median((dx_pulling[filterPull][1:]-dx_pulling[filterPull][:-1])/film_dt) # µm/s
-            mean_speed = (dx_pulling[filterPull][0] - dx_pulling[filterPull][-1]) / (tpulling[filterPull][0] - tpulling[filterPull][-1]) # µm/s
+            mean_speed = (dx_pulling[filterPull][0] - dx_pulling[filterPull][-1]) / (t_pulling[filterPull][0] - t_pulling[filterPull][-1]) # µm/s
             med_force = np.median(pull_force[filterPull]) # pN
             r_min, r_max = min(dist), max(dist)
             resultsDict['median instant speed'] = med_instant_speed
@@ -1227,7 +1238,7 @@ def pullAnalyzer_compareTracks(list_tracks, list_track_ids, list_dict_pull, list
         if mode == 'newton':
             # N_results_cols = ['N_fit_error', 'N_viscosity', 'N_R2']
             try:
-                params, results = fitLine(tpulling[filterPull], dx_pulling_n[filterPull])
+                params, results = fitLine(t_pulling[filterPull], dx_pulling_n[filterPull])
                 slope = params[1]
                 gamma = 1/slope
                 visco = gamma/(6*np.pi*b_r)
@@ -1248,7 +1259,7 @@ def pullAnalyzer_compareTracks(list_tracks, list_track_ids, list_dict_pull, list
             
             # Pulling phase
             try:
-                J_start = list(guess_init_parms_jeffrey(tpulling[filterPull], dx_pulling_n[filterPull]))
+                J_start = list(guess_init_parms_jeffrey(t_pulling[filterPull], dx_pulling_n[filterPull]))
             
                 
                 def jeffrey_model(params, x):
@@ -1261,13 +1272,13 @@ def pullAnalyzer_compareTracks(list_tracks, list_track_ids, list_dict_pull, list
                     return (1 - np.exp(-k*x/gamma1))/k + x/gamma2
                 
                 #### Fit pulling phase --- V1
-                # obj1 = lambda params: np.linalg.norm(jeffrey_model(params, tpulling) - dx_pulling_n)
+                # obj1 = lambda params: np.linalg.norm(jeffrey_model(params, t_pulling) - dx_pulling_n)
                 # res1 = minimize(obj1, start1, method="Nelder-Mead", tol=1e-10,
                 #                 options={"maxfev": 1000})
                 # k, gamma1, gamma2 = res1.x
                 # # tempo1, tempo2 = gamma1/k, gamma2/k
                 # Ymeas = dx_pulling_n
-                # Yfit = jeffrey_model((k, gamma1, gamma2), tpulling)
+                # Yfit = jeffrey_model((k, gamma1, gamma2), t_pulling)
                 # R2_p = get_R2(Ymeas, Yfit) 
                 
                 #### Fit pulling phase --- V2
@@ -1276,13 +1287,13 @@ def pullAnalyzer_compareTracks(list_tracks, list_track_ids, list_dict_pull, list
                 r_i = max(1e-6, (g2_i - 3*g1_i))**0.5
                 J_start[2] = r_i
                 
-                obj1 = lambda params: np.linalg.norm(jeffrey_model_constraint(params, tpulling[filterPull]) - dx_pulling_n[filterPull])
+                obj1 = lambda params: np.linalg.norm(jeffrey_model_constraint(params, t_pulling[filterPull]) - dx_pulling_n[filterPull])
                 res1 = minimize(obj1, J_start, method="Nelder-Mead", tol=1e-10,
                                 options={"maxfev": 1000})
                 k, gamma1, r = res1.x
                 gamma2 = 3*gamma1 + r**2
                 Ymeas = dx_pulling_n[filterPull]
-                Yfit = jeffrey_model((k, gamma1, gamma2), tpulling[filterPull])
+                Yfit = jeffrey_model((k, gamma1, gamma2), t_pulling[filterPull])
                 J_R2 = get_R2(Ymeas, Yfit) 
                 
                 if min(k, gamma1, gamma2) <= 0:
@@ -1310,18 +1321,18 @@ def pullAnalyzer_compareTracks(list_tracks, list_track_ids, list_dict_pull, list
     
             #### Fit release phase
             try:
-                R_start = list(guess_init_parms_relax(trelease, dx_release_n))
+                R_start = list(guess_init_parms_relax(t_release, dx_release_n))
                 
                 def exp_fit(params, x):
                     a, tau = params
                     return (1-a)*np.exp(-x/tau) + a
         
-                obj2 = lambda params: np.linalg.norm(exp_fit(params, trelease) - dx_release_n)
+                obj2 = lambda params: np.linalg.norm(exp_fit(params, t_release) - dx_release_n)
                 res2 = minimize(obj2, R_start, method="Nelder-Mead", tol=1e-7,
                                 options = {"maxfev": 1000})
                 a, tau = res2.x
                 Ymeas = dx_release_n
-                Yfit = exp_fit((a, tau), trelease)
+                Yfit = exp_fit((a, tau), t_release)
                 R_R2 = get_R2(Ymeas, Yfit) 
                 
                 # R_results_cols = ['R_fit_error', 'R_a', 'R_tau', 'R_R2']
@@ -1341,14 +1352,14 @@ def pullAnalyzer_compareTracks(list_tracks, list_track_ids, list_dict_pull, list
         if mode == 'newton' and PLOT:
             ax = axes[it]
             axbis = ax.twinx()
-            axbis.plot(tpulling, dist, 'g--', zorder=4)
+            axbis.plot(t_pulling, dist, 'g--', zorder=4)
             axbis.set_ylabel('Distance from magnet tip [µm]')
-            ax.plot(tpulling[filterPull], dx_pulling_n[filterPull], 
+            ax.plot(t_pulling[filterPull], dx_pulling_n[filterPull], 
                     ls='', marker='o', color='darkturquoise', markersize=5, zorder=5)
-            ax.plot(tpulling[~filterPull], dx_pulling_n[~filterPull], 
+            ax.plot(t_pulling[~filterPull], dx_pulling_n[~filterPull], 
                     ls='', marker='o', color='lightblue', markersize=5, zorder=4)
             if not resultsDict['N_fit_error']:
-                xfit = np.linspace(0, tpulling[-1], 100)
+                xfit = np.linspace(0, t_pulling[-1], 100)
                 yfit = params[0] + params[1]*xfit
                 ax.plot(xfit, yfit, "r-", 
                         label=r'$\eta$ = ' + f'{visco:.2f} Pa.s', zorder=6)
@@ -1362,16 +1373,16 @@ def pullAnalyzer_compareTracks(list_tracks, list_track_ids, list_dict_pull, list
         
         if mode == 'jeffrey' and PLOT:   
             ax = axes[0, it]
-            ax.plot(tpulling[filterPull], dx_pulling_n[filterPull], 
+            ax.plot(t_pulling[filterPull], dx_pulling_n[filterPull], 
                     ls='', marker='o', color='darkturquoise', markersize=5, zorder=5)
-            ax.plot(tpulling[~filterPull], dx_pulling_n[~filterPull], 
+            ax.plot(t_pulling[~filterPull], dx_pulling_n[~filterPull], 
                     ls='', marker='o', color='lightblue', markersize=5, zorder=4)
             if not resultsDict['J_fit_error']:
                 label1 = "Fitting Jeffrey's model\n" + r"$\frac{1}{k}(1 - exp(-k.t/\gamma_1)) + t/\gamma_2$" + "\n"
                 label1+= r"$k$ = " + f"{k:.2f}\n"
                 label1+= r"$\gamma_1$ = " + f"{gamma1:.2f}\n"
                 label1+= r"$\gamma_2$ = " + f"{gamma2:.2f}"
-                tp_fit = np.linspace(0, tpulling[-1], 200)
+                tp_fit = np.linspace(0, t_pulling[-1], 200)
                 dx_n_fit = jeffrey_model([k, gamma1, gamma2], tp_fit)
                 ax.plot(tp_fit, dx_n_fit, "r-",
                          label=label1, zorder=6)
@@ -1384,13 +1395,13 @@ def pullAnalyzer_compareTracks(list_tracks, list_track_ids, list_dict_pull, list
         
             ax = axes[1, it]
             if not error_release:
-                ax.plot(trelease, dx_release_n, 
+                ax.plot(t_release, dx_release_n, 
                         ls='', marker='o', color='limegreen')
                 if not resultsDict['R_fit_error']:
                     label2 = "Fitting Viscoel Relax\n" + r"$(1-a). exp(-t/\tau ) + a$" + "\n"
                     label2+= r"$a$ = " + f"{a:.2f}\n"
                     label2+= r"$\tau$ = " + f"{tau:.2f}"
-                    tr_fit = np.linspace(0, trelease[-1], 200)
+                    tr_fit = np.linspace(0, t_release[-1], 200)
                     dx_release_fit = exp_fit([a,tau], tr_fit)
                     ax.plot(tr_fit, dx_release_fit, 
                             ls="-", c='darkorange', label=label2)
@@ -1423,12 +1434,11 @@ def pullAnalyzer_compareTracks(list_tracks, list_track_ids, list_dict_pull, list
 # %% 12. Run the functions
 
 
-
 # %%% ... on many files
 
 # mainDir = os.path.join("C:/Users/Utilisateur/Desktop/") # Ordi IJM
-# mainDir = os.path.join("C:/Users/josep/Desktop/Seafile") # Ordi perso
-mainDir = os.path.join("C:/Users/Joseph/Desktop/") # Ordi LJP
+mainDir = os.path.join("C:/Users/josep/Desktop/Seafile") # Ordi perso
+# mainDir = os.path.join("C:/Users/Joseph/Desktop/") # Ordi LJP
 date = '26-03-04'
 subfolder = date + '_UVonCytoplasmAndBeads'
 
@@ -1441,14 +1451,14 @@ plotsDir = os.path.join(analysisDir, subfolder, 'Plots')
 # cell = '_M1_C1_Pa0_P3'
 
 # prefix_id = '26-02-11_M1_C1_Pa0_P1' # + cell # used to select a subset of the track files if needed
-prefix_id = '26-03-04' # + cell # used to select a subset of the track files if needed
+prefix_id = '26-03-04_M1_C3_Pa0_P2' # + cell # used to select a subset of the track files if needed
 
 
 Results = pullAnalyzer_multiFiles(mainDir, date, prefix_id,
                                     analysisDir, tracksDir, resultsDir, plotsDir,
                                     fits = ['newton', 'jeffrey'], calibFuncType='PowerLaw',
-                                    resultsFileName = date + '_BeadsPulling',
-                                    Redo = True, PLOT = True, SHOW = True)
+                                    resultsFileName = date + '_BeadsPulling_test',
+                                    Redo = True, PLOT = 2, SHOW = True)
 
 # plt.close('all')
 
@@ -1891,7 +1901,7 @@ ax.grid()
 plt.show()
 
 # Ymeas = dx_pulling_n
-# Yfit = jeffrey_model((k, gamma1, gamma2), tpulling)
+# Yfit = jeffrey_model((k, gamma1, gamma2), t_pulling)
 # R2_p = get_R2(Ymeas, Yfit) 
 
 
@@ -2084,8 +2094,8 @@ print(guess)
 #     #     os.makedirs(os.path.join(analysisDir, output_folder))
 
 #     #### 2. Parameters
-#     frame_initPull = df_pulls.loc[df_pulls['id'] == pull_id, 'frame_initPull'].values[0]
-#     frame_endPull = df_pulls.loc[df_pulls['id'] == pull_id, 'frame_endPull'].values[0]
+#     frame_initMag = df_pulls.loc[df_pulls['id'] == pull_id, 'frame_initMag'].values[0]
+#     frame_endMag = df_pulls.loc[df_pulls['id'] == pull_id, 'frame_endMag'].values[0]
 #     magnet_x = df_pulls.loc[df_pulls['id'] == pull_id, 'magnet_x'].values[0]
 #     magnet_y = df_pulls.loc[df_pulls['id'] == pull_id, 'magnet_y'].values[0]
 #     pixel_size = df_pulls.loc[df_pulls['id'] == pull_id, 'pixel_size'].values[0]  # µm
@@ -2120,32 +2130,32 @@ print(guess)
 #     # Tackle the case where a bead comes in the field / disapear within the magnet frames
 #     # NB : this can be relevant only in the purely newtonian viscous case 
 #     # (constant viscosity as single parm)
-#         if min(t) > (frame_initPull - 1):
-#             initPullTime = 0
+#         if min(t) > (frame_initMag - 1):
+#             idx_initPull = 0
 #         else:
-#             initPullTime = np.where(t == (frame_initPull - 1))[0][0]
-#         if max(t) <= (frame_endPull - 1):
-#             finPullTime = len(t)-1
+#             idx_initPull = np.where(t == (frame_initMag - 1))[0][0]
+#         if max(t) <= (frame_endMag - 1):
+#             idx_endPull = len(t)-1
 #         else:
-#             finPullTime = np.where(t == (frame_endPull - 1))[0][0]
+#             idx_endPull = np.where(t == (frame_endMag - 1))[0][0]
             
 #     else:
-#         initPullTime = np.where(t == (frame_initPull - 1))[0][0]
-#         finPullTime = np.where(t == (frame_endPull - 1))[0][0]
+#         idx_initPull = np.where(t == (frame_initMag - 1))[0][0]
+#         idx_endPull = np.where(t == (frame_endMag - 1))[0][0]
     
 #     #### 4. Pretreatment
 #     # --- Rotate track ---
-#     theta = np.arctan2(Y[initPullTime] - Y[finPullTime],
-#                        X[initPullTime] - X[finPullTime])
+#     theta = np.arctan2(Y[idx_initPull] - Y[idx_endPull],
+#                        X[idx_initPull] - X[idx_endPull])
 #     rotation_mat = np.array([[np.cos(-theta), -np.sin(-theta)],
 #                              [np.sin(-theta),  np.cos(-theta)]])
 #     coords = np.vstack((X, Y)).T @ rotation_mat.T
 #     x_rot, y_rot = coords[:,0], coords[:,1]
 
-#     x_shift = (-x_rot[initPullTime:] + np.max(x_rot[initPullTime:])) * pixel_size
+#     x_shift = (-x_rot[idx_initPull:] + np.max(x_rot[idx_initPull:])) * pixel_size
 
 #     # --- Pulling phase ---
-#     pull_index = np.arange(initPullTime, finPullTime+1)
+#     pull_index = np.arange(idx_initPull, idx_endPull+1)
 #     pull_length = len(pull_index)
 #     xp, yp = x_rot[pull_index], y_rot[pull_index] # for plots
 
@@ -2157,13 +2167,13 @@ print(guess)
 #     dist = np.linalg.norm(d, axis=1) + (magnet_radius*pixel_size) 
 #     pull_force = mag_d2f(dist)
     
-#     tpulling = (t[pull_index] - t[initPullTime]) * time_stp
-#     dx_pulling = x_shift[pull_index - initPullTime]
+#     t_pulling = (t[pull_index] - t[idx_initPull]) * time_stp
+#     dx_pulling = x_shift[pull_index - idx_initPull]
 #     dx_pulling_n = dx_pulling / pull_force
     
 #     #### Filters
 #     Filter1 = (dist > 500) # bead further than 550 µm from magnet center
-#     Filter2 = (tpulling >= 2) # remove the first 2 seconds of filming
+#     Filter2 = (t_pulling >= 2) # remove the first 2 seconds of filming
 #     GlobalFilter = Filter1 & Filter2
 #     # if np.sum(GlobalFilter) == 0:
 #     #     error = True
@@ -2171,11 +2181,11 @@ print(guess)
 
 #     # --- Release phase ---
 #     try:
-#         release_index = np.arange(finPullTime, len(track))
+#         release_index = np.arange(idx_endPull, len(track))
 #         release_length = len(release_index)
     
-#         trelease = (t[release_index] - t[finPullTime+1]) * time_stp
-#         dx_release = x_shift[release_index - initPullTime]
+#         t_release = (t[release_index] - t[idx_endPull+1]) * time_stp
+#         dx_release = x_shift[release_index - idx_initPull]
 #         dx_release_n = dx_release / x_shift[pull_length]
 #     except:
 #         pass
@@ -2187,8 +2197,8 @@ print(guess)
 #     #### 5. Fit Model
 #     if mode == 'newton':
 #         try:
-#             params, results = fitLine(tpulling[GlobalFilter], dx_pulling_n[GlobalFilter])
-#             # params, results = fitLineHuber(tpulling, dx_pulling_n)
+#             params, results = fitLine(t_pulling[GlobalFilter], dx_pulling_n[GlobalFilter])
+#             # params, results = fitLineHuber(t_pulling, dx_pulling_n)
 #             gamma = params[1]
 #             visco = 1/(6*np.pi*bead_radius*gamma)
 #             R2 = results.rsquared
@@ -2210,14 +2220,14 @@ print(guess)
 #                 k, gamma1, gamma2 = params
 #                 return (1 - np.exp(-k*x/gamma1))/k + x/gamma2
     
-#             obj1 = lambda params: np.linalg.norm(jeffrey_model(params, tpulling) - dx_pulling_n)
+#             obj1 = lambda params: np.linalg.norm(jeffrey_model(params, t_pulling) - dx_pulling_n)
 #             res1 = minimize(obj1, start1, method="Nelder-Mead", tol=1e-10,
 #                             options={"maxfev": 500})
 #             k, gamma1, gamma2 = res1.x
 #             # tempo1, tempo2 = gamma1/k, gamma2/k
             
 #             Ymeas = dx_pulling_n
-#             Yfit = jeffrey_model((k, gamma1, gamma2), tpulling)
+#             Yfit = jeffrey_model((k, gamma1, gamma2), t_pulling)
 #             R2_p = get_R2(Ymeas, Yfit) 
     
 #             #### Fit release phase
@@ -2225,13 +2235,13 @@ print(guess)
 #                 a, tau = params
 #                 return (1-a)*np.exp(-x/tau) + a
     
-#             obj2 = lambda params: np.linalg.norm(exp_fit(params, trelease) - dx_release_n)
+#             obj2 = lambda params: np.linalg.norm(exp_fit(params, t_release) - dx_release_n)
 #             res2 = minimize(obj2, start2, method="Nelder-Mead", tol=1e-7,
 #                             options = {"maxfev": 1000})
 #             a, tau = res2.x
             
 #             Ymeas = dx_release_n
-#             Yfit = exp_fit((a, tau), trelease)
+#             Yfit = exp_fit((a, tau), t_release)
 #             R2_r = get_R2(Ymeas, Yfit) 
             
 #             output = (k, gamma1, gamma2, R2_p, speed_med, force_med, a, tau, R2_r)
@@ -2262,11 +2272,11 @@ print(guess)
 #         fig2, axes2 = plt.subplots(1, 1, figsize = (5,5))
 #         ax = axes2
 #         axbis = axes2.twinx()
-#         axbis.plot(tpulling, dist, 'g--', zorder=4)
+#         axbis.plot(t_pulling, dist, 'g--', zorder=4)
 #         axbis.set_ylabel('Distance from magnet center [µm]')
-#         ax.plot(tpulling[GlobalFilter], dx_pulling_n[GlobalFilter], 'o', color='darkturquoise', markersize=5, zorder=5)
-#         ax.plot(tpulling[~GlobalFilter], dx_pulling_n[~GlobalFilter], 'o', color='lightblue', markersize=5, zorder=4)
-#         xfit = np.linspace(0, tpulling[-1], 100)
+#         ax.plot(t_pulling[GlobalFilter], dx_pulling_n[GlobalFilter], 'o', color='darkturquoise', markersize=5, zorder=5)
+#         ax.plot(t_pulling[~GlobalFilter], dx_pulling_n[~GlobalFilter], 'o', color='lightblue', markersize=5, zorder=4)
+#         xfit = np.linspace(0, t_pulling[-1], 100)
 #         yfit = params[0] + params[1]*xfit
 #         ax.plot(xfit, yfit, "r-", label=r'$\eta$ = ' + f'{visco*1000:.2f} mPa.s', zorder=6)
 #         ax.set_xlabel("t [s]")
@@ -2307,9 +2317,9 @@ print(guess)
 #         label1+= r"$k$ = " + f"{k:.2f}\n"
 #         label1+= r"$\gamma_1$ = " + f"{gamma1:.2f}\n"
 #         label1+= r"$\gamma_2$ = " + f"{gamma2:.2f}"
-#         ax.plot(tpulling, dx_pulling_n, "s")
-#         ax.plot(np.linspace(0, tpulling[-1], 1000),
-#                  jeffrey_model([k,gamma1,gamma2], np.linspace(0, tpulling[-1], 1000)), "r-",
+#         ax.plot(t_pulling, dx_pulling_n, "s")
+#         ax.plot(np.linspace(0, t_pulling[-1], 1000),
+#                  jeffrey_model([k,gamma1,gamma2], np.linspace(0, t_pulling[-1], 1000)), "r-",
 #                  label=label1)
 #         ax.legend()
 #         ax.grid()
@@ -2319,8 +2329,8 @@ print(guess)
 #         label2 = "Fitting Viscoel Relax\n" + r"$(1-a). exp(-x/\tau ) + a$" + "\n"
 #         label2+= r"$a$ = " + f"{a:.2f}\n"
 #         label2+= r"$\tau$ = " + f"{tau:.2f}"
-#         ax.plot(trelease, dx_release_n, "s")
-#         ax.plot(np.linspace(0, trelease[-1], 1000), exp_fit([a,tau], np.linspace(0, trelease[-1], 1000)), 
+#         ax.plot(t_release, dx_release_n, "s")
+#         ax.plot(np.linspace(0, t_release[-1], 1000), exp_fit([a,tau], np.linspace(0, t_release[-1], 1000)), 
 #                 ls="-", c='darkorange', label=label2)
 #         ax.legend()
 #         ax.grid()
@@ -2496,8 +2506,8 @@ def pullAnalyzer(track, dict_pull,
 
     #### 2. Parameters
     pull_id = dict_pull['id']
-    frame_initPull = dict_pull['frame_initPull']
-    frame_endPull = dict_pull['frame_endPull']
+    frame_initMag = dict_pull['frame_initMag']
+    frame_endMag = dict_pull['frame_endMag']
     pixel_size = dict_pull['pixel_size']  # µm
     magnet_x = dict_pull['magnet_x']*pixel_size
     magnet_y = dict_pull['magnet_y']*pixel_size
@@ -2554,32 +2564,32 @@ def pullAnalyzer(track, dict_pull,
     # Tackle the case where a bead comes in the field / disapear within the magnet frames
     # NB : this can be relevant only in the purely newtonian viscous case 
     # (constant viscosity as single parm)
-        if min(t) > (frame_initPull - 1):
-            initPullTime = 0
+        if min(t) > (frame_initMag - 1):
+            idx_initPull = 0
         else:
-            initPullTime = np.where(t == (frame_initPull - 1))[0][0]
-        if max(t) <= (frame_endPull - 1):
-            finPullTime = len(t)-1
+            idx_initPull = np.where(t == (frame_initMag - 1))[0][0]
+        if max(t) <= (frame_endMag - 1):
+            idx_endPull = len(t)-1
         else:
-            finPullTime = np.where(t == (frame_endPull - 1))[0][0]
+            idx_endPull = np.where(t == (frame_endMag - 1))[0][0]
             
     else:
-        initPullTime = np.where(t == (frame_initPull - 1))[0][0]
-        finPullTime = np.where(t == (frame_endPull - 1))[0][0]
+        idx_initPull = np.where(t == (frame_initMag - 1))[0][0]
+        idx_endPull = np.where(t == (frame_endMag - 1))[0][0]
     
     #### 4. Pretreatment
     # --- Rotate track ---
-    theta = np.arctan2(Y[initPullTime] - Y[finPullTime],
-                       X[initPullTime] - X[finPullTime])
+    theta = np.arctan2(Y[idx_initPull] - Y[idx_endPull],
+                       X[idx_initPull] - X[idx_endPull])
     rotation_mat = np.array([[np.cos(-theta), -np.sin(-theta)],
                              [np.sin(-theta),  np.cos(-theta)]])
     coords = np.vstack((X, Y)).T @ rotation_mat.T
     x_rot, y_rot = coords[:,0], coords[:,1]
 
-    x_shift = (-x_rot[initPullTime:] + np.max(x_rot[initPullTime:]))
+    x_shift = (-x_rot[idx_initPull:] + np.max(x_rot[idx_initPull:]))
 
     # --- Pulling phase ---
-    pull_index = np.arange(initPullTime, finPullTime+1)
+    pull_index = np.arange(idx_initPull, idx_endPull+1)
     pull_length = len(pull_index)
     xp, yp = x_rot[pull_index], y_rot[pull_index] # for plots
 
@@ -2594,12 +2604,12 @@ def pullAnalyzer(track, dict_pull,
     # dist = np.linalg.norm(d, axis=1) + (magnet_radius) # Test
     pull_force = mag_d2f(dist)
     
-    tpulling = (t[pull_index] - t[initPullTime]) * time_stp
-    dx_pulling = x_shift[pull_index - initPullTime]
+    t_pulling = (t[pull_index] - t[idx_initPull]) * time_stp
+    dx_pulling = x_shift[pull_index - idx_initPull]
     dx_pulling_n = dx_pulling / pull_force
     
     #### Filters
-    Filter1 = tpulling > 0.5
+    Filter1 = t_pulling > 0.5
     Filter2 = (np.abs(dx_pulling[0] - dx_pulling[:]) <= 60) # keep only first 60 µm of movement
     GlobalFilter = Filter1 & Filter2
     if np.sum(GlobalFilter) == 0:
@@ -2609,11 +2619,11 @@ def pullAnalyzer(track, dict_pull,
     
     # --- Release phase ---
     try:
-        release_index = np.arange(finPullTime, len(track))
+        release_index = np.arange(idx_endPull, len(track))
         release_length = len(release_index)
     
-        trelease = (t[release_index] - t[finPullTime+1]) * time_stp
-        dx_release = x_shift[release_index - initPullTime]
+        t_release = (t[release_index] - t[idx_endPull+1]) * time_stp
+        dx_release = x_shift[release_index - idx_initPull]
         dx_release_n = dx_release / x_shift[pull_length]
     except:
         pass
@@ -2626,8 +2636,8 @@ def pullAnalyzer(track, dict_pull,
     #### 5. Fit Model
     if mode == 'newton' and np.sum(GlobalFilter) > 0:
         # try:
-        params, results = fitLine(tpulling[GlobalFilter], dx_pulling_n[GlobalFilter])
-        # params, results = fitLineHuber(tpulling, dx_pulling_n)
+        params, results = fitLine(t_pulling[GlobalFilter], dx_pulling_n[GlobalFilter])
+        # params, results = fitLineHuber(t_pulling, dx_pulling_n)
         gamma = params[1]
         visco = 1/(6*np.pi*bead_radius*gamma)
         R2 = results.rsquared
@@ -2650,14 +2660,14 @@ def pullAnalyzer(track, dict_pull,
                 k, gamma1, gamma2 = params
                 return (1 - np.exp(-k*x/gamma1))/k + x/gamma2
     
-            obj1 = lambda params: np.linalg.norm(jeffrey_model(params, tpulling) - dx_pulling_n)
+            obj1 = lambda params: np.linalg.norm(jeffrey_model(params, t_pulling) - dx_pulling_n)
             res1 = minimize(obj1, start1, method="Nelder-Mead", tol=1e-10,
                             options={"maxfev": 500})
             k, gamma1, gamma2 = res1.x
             # tempo1, tempo2 = gamma1/k, gamma2/k
             
             Ymeas = dx_pulling_n
-            Yfit = jeffrey_model((k, gamma1, gamma2), tpulling)
+            Yfit = jeffrey_model((k, gamma1, gamma2), t_pulling)
             R2_p = get_R2(Ymeas, Yfit) 
     
             #### Fit release phase
@@ -2665,13 +2675,13 @@ def pullAnalyzer(track, dict_pull,
                 a, tau = params
                 return (1-a)*np.exp(-x/tau) + a
     
-            obj2 = lambda params: np.linalg.norm(exp_fit(params, trelease) - dx_release_n)
+            obj2 = lambda params: np.linalg.norm(exp_fit(params, t_release) - dx_release_n)
             res2 = minimize(obj2, start2, method="Nelder-Mead", tol=1e-7,
                             options = {"maxfev": 1000})
             a, tau = res2.x
             
             Ymeas = dx_release_n
-            Yfit = exp_fit((a, tau), trelease)
+            Yfit = exp_fit((a, tau), t_release)
             R2_r = get_R2(Ymeas, Yfit) 
             
             output = (k, gamma1, gamma2, R2_p, speed_med, force_med, a, tau, R2_r, theta, r_min, r_max, XY)
@@ -2704,11 +2714,11 @@ def pullAnalyzer(track, dict_pull,
         fig2, axes2 = plt.subplots(1, 1, figsize = (5,5))
         ax = axes2
         axbis = axes2.twinx()
-        axbis.plot(tpulling, dist, 'g--', zorder=4)
+        axbis.plot(t_pulling, dist, 'g--', zorder=4)
         axbis.set_ylabel('Distance from magnet center [µm]')
-        ax.plot(tpulling[GlobalFilter], dx_pulling_n[GlobalFilter], 'o', color='darkturquoise', markersize=5, zorder=5)
-        ax.plot(tpulling[~GlobalFilter], dx_pulling_n[~GlobalFilter], 'o', color='lightblue', markersize=5, zorder=4)
-        xfit = np.linspace(0, tpulling[-1], 100)
+        ax.plot(t_pulling[GlobalFilter], dx_pulling_n[GlobalFilter], 'o', color='darkturquoise', markersize=5, zorder=5)
+        ax.plot(t_pulling[~GlobalFilter], dx_pulling_n[~GlobalFilter], 'o', color='lightblue', markersize=5, zorder=4)
+        xfit = np.linspace(0, t_pulling[-1], 100)
         yfit = params[0] + params[1]*xfit
         ax.plot(xfit, yfit, "r-", label=r'$\eta$ = ' + f'{visco*1000:.2f} mPa.s', zorder=6)
         ax.set_xlabel("t [s]")
@@ -2725,12 +2735,12 @@ def pullAnalyzer(track, dict_pull,
         # fig3, axes3 = plt.subplots(1, 1, figsize = (5,5))
         # ax = axes3
         # axbis = axes3.twinx()
-        # dist_spline = make_splrep(tpulling, dist, s=len(t)/2)
-        # ax.plot(tpulling, dist, 'go', ms = 3, zorder=4)
-        # ax.plot(tpulling, dist_spline(tpulling), 'k-', zorder=5)
+        # dist_spline = make_splrep(t_pulling, dist, s=len(t)/2)
+        # ax.plot(t_pulling, dist, 'go', ms = 3, zorder=4)
+        # ax.plot(t_pulling, dist_spline(t_pulling), 'k-', zorder=5)
         # ax.set_xlabel("t [s]")
         # ax.set_ylabel("X [µm]")
-        # axbis.plot(tpulling, pull_force, 'r--', zorder=5)
+        # axbis.plot(t_pulling, pull_force, 'r--', zorder=5)
         # axbis.set_ylabel('Pulling force [pN]')
         # ax.grid(axis='both')
         # ax.legend(fontsize = 11).set_zorder(6)
@@ -2742,9 +2752,9 @@ def pullAnalyzer(track, dict_pull,
         # fig4, axes4 = plt.subplots(1, 1, figsize = (5,5))
         # ax = axes4
         
-        # dist_spline = make_splrep(tpulling, dist, s=len(t)/2)
+        # dist_spline = make_splrep(t_pulling, dist, s=len(t)/2)
         # speed_spline = dist_spline.derivative(nu=1)
-        # speed = np.abs(speed_spline(tpulling))
+        # speed = np.abs(speed_spline(t_pulling))
         # parms, results = fitLine(speed[i_select], pull_force[i_select])
         # a, b = parms[1], parms[0]
         # eta2 = a/(6*np.pi*bead_radius)
@@ -2767,10 +2777,10 @@ def pullAnalyzer(track, dict_pull,
         # ax.set_xscale('log')
         # ax.set_yscale('log')
         # axbis.set_yscale('log')
-        # dist_spline = make_splrep(tpulling, dist, s=len(t)/2)
+        # dist_spline = make_splrep(t_pulling, dist, s=len(t)/2)
         # speed_spline = dist_spline.derivative(nu=1)
-        # speed = np.abs(speed_spline(tpulling))
-        # # ax.plot(tpulling, dist, 'go', ms = 3, zorder=4)
+        # speed = np.abs(speed_spline(t_pulling))
+        # # ax.plot(t_pulling, dist, 'go', ms = 3, zorder=4)
         # ax.plot(dist, speed, 'k-', zorder=5)
         # ax.set_xlabel("X [µm]")
         # ax.set_ylabel("V [µm/s]")
@@ -2788,9 +2798,9 @@ def pullAnalyzer(track, dict_pull,
         fig, ax = fig6, axes6
         ax.set_xscale('log')
         ax.set_yscale('log')
-        dist_spline = make_splrep(tpulling, dist, s=len(t)/2)
+        dist_spline = make_splrep(t_pulling, dist, s=len(t)/2)
         speed_spline = dist_spline.derivative(nu=1)
-        speed = np.abs(speed_spline(tpulling))
+        speed = np.abs(speed_spline(t_pulling))
         parms, raw_parms, results = fitPower(dist, speed)
         A, k = parms
         d_plot = np.linspace(min(dist), max(dist), 100)
@@ -2835,9 +2845,9 @@ def pullAnalyzer(track, dict_pull,
         label1+= r"$k$ = " + f"{k:.2f}\n"
         label1+= r"$\gamma_1$ = " + f"{gamma1:.2f}\n"
         label1+= r"$\gamma_2$ = " + f"{gamma2:.2f}"
-        ax.plot(tpulling, dx_pulling_n, "s")
-        ax.plot(np.linspace(0, tpulling[-1], 1000),
-                 jeffrey_model([k,gamma1,gamma2], np.linspace(0, tpulling[-1], 1000)), "r-",
+        ax.plot(t_pulling, dx_pulling_n, "s")
+        ax.plot(np.linspace(0, t_pulling[-1], 1000),
+                 jeffrey_model([k,gamma1,gamma2], np.linspace(0, t_pulling[-1], 1000)), "r-",
                  label=label1)
         ax.legend()
         ax.grid()
@@ -2847,8 +2857,8 @@ def pullAnalyzer(track, dict_pull,
         label2 = "Fitting Viscoel Relax\n" + r"$(1-a). exp(-x/\tau ) + a$" + "\n"
         label2+= r"$a$ = " + f"{a:.2f}\n"
         label2+= r"$\tau$ = " + f"{tau:.2f}"
-        ax.plot(trelease, dx_release_n, "s")
-        ax.plot(np.linspace(0, trelease[-1], 1000), exp_fit([a,tau], np.linspace(0, trelease[-1], 1000)), 
+        ax.plot(t_release, dx_release_n, "s")
+        ax.plot(np.linspace(0, t_release[-1], 1000), exp_fit([a,tau], np.linspace(0, t_release[-1], 1000)), 
                 ls="-", c='darkorange', label=label2)
         ax.legend()
         ax.grid()
@@ -2867,4 +2877,475 @@ def pullAnalyzer(track, dict_pull,
         
     #### 7. Output
     return(output, error)
+
+
+# %%% 101.c - V3 of function to analyze multiple files
+
+
+
+def pullAnalyzer_multiFiles(mainDir, date, prefix_id,
+                            analysisDir, tracksDir, resultsDir, plotsDir,
+                            fits = ['newton'], calibFuncType='PowerLaw',
+                            resultsFileName = 'results',
+                            Redo = False, PLOT = True, SHOW = False):
+    
+    if not os.path.exists(resultsDir):
+        os.makedirs(resultsDir)
+    if not os.path.exists(plotsDir):
+        os.makedirs(plotsDir)
+    df_manips = pd.read_csv(os.path.join(analysisDir, 'MainExperimentalConditions.csv'))
+    df_pulls = pd.read_csv(os.path.join(analysisDir, date + '_ExperimentalConditions.csv'))
+    listTrackFiles = [f for f in os.listdir(tracksDir) if ('Track' in f) and (f.endswith('.xml'))]
+    
+    listTrackIds = ['_'.join(string.split('_')[:6]) for string in listTrackFiles]
+    listPullIds = ['_'.join(string.split('_')[:5]) for string in listTrackFiles]
+    dict_TrackIds2File = {tid : tf for (tid, tf) in zip(listTrackIds, listTrackFiles)}
+    dict_TrackIds2PullId = {tid : pid for (tid, pid) in zip(listTrackIds, listPullIds)}
+    try:
+        df_res = pd.read_csv(os.path.join(resultsDir, resultsFileName + '.csv'))
+        already_analyzed = df_res['pulltrack_id'].values
+    except:
+        df_res = pd.DataFrame({})
+        already_analyzed = []
+    
+    prefix_id_manip = ('_').join(prefix_id.split('_')[:1 + ('_' in prefix_id)])
+    
+    listManips = [m for m in df_manips['id'] if m.startswith(prefix_id_manip)]
+    
+    id_cols = ['track_id']
+    co_cols = ['experiment type', 'system', 'injection solution', 'bead type', 'bead radius', 'light treatment', 'magnet']
+    
+    results_cols = []
+    M_results_cols = ['globalError', 'median instant speed', 'mean speed', 'median force', 
+                      'R min', 'R max', 'theta']
+    results_cols += M_results_cols
+    
+    if 'newton' in fits:
+        N_results_cols = ['N_fit_error', 'N_viscosity', 'N_R2']
+        results_cols += N_results_cols
+
+    if 'jeffrey' in fits:
+        J_results_cols = ['J_fit_error', 'J_k', 'J_gamma1', 'J_gamma2', 'J_tempo1', 'J_tempo2', 'J_R2']
+        R_results_cols = ['R_fit_error', 'R_a', 'R_tau', 'R_R2']
+        results_cols += J_results_cols 
+        results_cols += R_results_cols
+
+    results_dict = {c:[] for c in id_cols}
+    results_dict.update({c:[] for c in results_cols})
+    results_dict.update({c:[] for c in co_cols})
+
+    for M_id in listManips:
+        co_dict = df_manips[df_manips['id'] == M_id].to_dict('list')
+        listTracks = [t for t in listTrackIds if \
+                      t.startswith(prefix_id) and (Redo or (t not in already_analyzed))]
+
+        for T_id in listTracks:
+            trackFileName = dict_TrackIds2File[T_id]
+            tracks = importTrackMateTracks(os.path.join(tracksDir, trackFileName))
+            track = trackSelection(tracks, mode = 'longest')
+            
+            P_id = dict_TrackIds2PullId[T_id]
+            dict_pull = Df2Dict(df_pulls[df_pulls['id'] == P_id])
+            
+            magnet_id = co_dict['magnet'][0]
+            bead_type = co_dict['bead type'][0]
+            pixel_size = df_pulls.loc[df_pulls['id']==P_id, 'film_pixel_size'].values[0]
+            bead_radius = df_pulls.loc[df_pulls['id']==P_id, 'b_r'].values[0]
+            
+            results_dict['track_id'].append(T_id)
+            results_dict['experiment type'].append(co_dict['experiment type'][0])
+            results_dict['system'].append(co_dict['system'][0])
+            results_dict['injection solution'].append(co_dict['injection solution'][0])
+            results_dict['light treatment'].append(co_dict['light treatment'][0])
+            results_dict['bead type'].append(bead_type)
+            results_dict['bead radius'].append(bead_radius)
+            results_dict['magnet'].append(magnet_id)
+            
+            case_mag = magnet_id + '_' + bead_type
+            if calibFuncType == 'PowerLaw':
+                parms_type = 'F_popt_pL'
+                parms = MagnetDict[case_mag][parms_type]
+                mag_d2f = (lambda x : powerLaw(x, *parms))
+            elif calibFuncType == 'DoubleExpo':
+                parms_type = 'F_popt_2exp'
+                parms = MagnetDict[case_mag][parms_type]
+                mag_d2f = (lambda x : doubleExpo(x, *parms))
+            
+            Track_Rd = {}
+            
+            try:
+                if PLOT:
+                    T_PLOT = PLOT
+                
+                if 'newton' in fits:
+                    N_Rd, N_error = pullAnalyzer(track, T_id, dict_pull, mag_d2f,
+                                                 mode = 'newton', 
+                                                 PLOT = T_PLOT, SHOW = SHOW, plotsDir = plotsDir)
+                    Track_Rd.update(N_Rd)
+                    T_PLOT = 1
+                    
+                    
+                if 'jeffrey' in fits:
+                    J_Rd, J_error = pullAnalyzer(track, T_id, dict_pull, mag_d2f,
+                                                 mode = 'jeffrey', 
+                                                 PLOT = T_PLOT, SHOW = SHOW, plotsDir = plotsDir)
+                    Track_Rd.update(J_Rd)
+                    T_PLOT = 1
+                    
+            except:
+                print(T_id)
+                print(track)
+                print(dict_pull)
+            
+            for col in results_cols:
+                try:
+                    results_dict[col].append(Track_Rd[col])
+                except:
+                    results_dict[col].append(np.nan)
+            
+                
+    # for k in results_dict.keys():
+    #     print(k, len(results_dict[k]))
+    
+    new_df_res = pd.DataFrame(results_dict)
+    df_res = pd.concat([df_res,new_df_res]).drop_duplicates(subset='track_id', keep='last').reset_index(drop=True)
+            
+    df_res.to_csv(os.path.join(resultsDir, resultsFileName + '.csv'), index=False)
+    return(df_res)
+
+
+
+
+def pullAnalyzer(track, track_id, dict_pull, mag_d2f,
+                 mode = 'newton', 
+                 PLOT = 1, SHOW = False, plotsDir = ''):
+    if SHOW:
+        plt.ion()
+    else:
+        plt.ioff()
+        
+    error = False 
+
+    #### 1. Parameters
+    # track_id = track_id
+    pull_id = dict_pull['id']
+    frame_initMag = dict_pull['mag_fi']
+    frame_endMag = dict_pull['mag_ff']
+    pixel_size = dict_pull['film_pixel_size']  # µm
+    mag_x = dict_pull['mag_x']*pixel_size
+    mag_y = dict_pull['mag_y']*pixel_size
+    film_dt = dict_pull['film_dt']/1000      # s
+    mag_r = dict_pull['mag_r']*pixel_size # µm
+    b_r = dict_pull['b_r'] # µm
+    bounds_newton = [int(k) for k in dict_pull['bounds_newton'].split('_')]
+    bounds_jeffrey = [int(k) for k in dict_pull['bounds_jeffrey'].split('_')]
+
+    #### 2. Initialize results
+    resultsDict = {}
+
+    #### 3. Pretreatment of the track
+    # --- Get X, Y, T ---
+    X, Y = track[:,1] * pixel_size, track[:,2] * pixel_size
+    t_idx, t = track[:,0], track[:,0]*film_dt
+    
+    idx_initPull = np.where(t_idx == (frame_initMag - 1))[0][0]
+    idx_endPull = np.where(t_idx == (frame_endMag - 1))[0][0]
+    
+    # In case the bead is lost before the magnet is removed
+    if idx_endPull > np.max(t_idx):
+        idx_endPull = np.max(t_idx)
+        
+    # --- Rotate track ---
+    theta = np.arctan2(Y[idx_initPull] - Y[idx_endPull],
+                       X[idx_initPull] - X[idx_endPull])
+    rotation_mat = np.array([[np.cos(-theta), -np.sin(-theta)],
+                             [np.sin(-theta),  np.cos(-theta)]])
+    coords = np.vstack((X, Y)).T @ rotation_mat.T
+    x_rot, y_rot = coords[:,0], coords[:,1]
+    
+    x_shift = (-x_rot[idx_initPull:] + np.max(x_rot[idx_initPull:]))
+
+    # --- Define Pulling phase ---
+    pull_index = np.arange(idx_initPull, idx_endPull+1)
+    pull_length = len(pull_index)
+    xp, yp = x_rot[pull_index], y_rot[pull_index] # for plots
+    d = np.stack([(mag_x - X[pull_index]),
+                  (mag_y - Y[pull_index])], axis=1)
+    XY = np.copy(d)
+    XY[:,0] -= mag_x
+    XY[:,1] -= mag_y
+    
+    # --- Define Release phase ---
+    try:
+        release_index = np.arange(idx_endPull, len(track))
+        release_length = len(release_index)
+        t_release = (t[release_index] - t[idx_endPull+1])
+        dx_release = x_shift[release_index - idx_initPull]
+        dx_release_n = dx_release / x_shift[pull_length]
+        error_release = False
+    except:
+        print(track_id)
+        print('Could not analyze the release phase !')
+        error_release = True
+    
+    #### 4. Definition of the distance and the force
+    dist = np.linalg.norm(d, axis=1) - (mag_r)
+    pull_force = mag_d2f(dist)
+    t_pulling = (t[pull_index] - t[idx_initPull])
+    dx_pulling = x_shift[pull_index - idx_initPull]
+    dx_pulling_n = dx_pulling / pull_force
+    
+    #### 5. Filters
+    if mode == 'newton':
+        Filter1 = ((bounds_newton[0] < t_pulling) & (t_pulling < bounds_newton[1]))
+    elif mode == 'jeffrey':
+        Filter1 = ((bounds_jeffrey[0] < t_pulling) & (t_pulling < bounds_jeffrey[1]))
+    # Filter2 = (np.abs(dx_pulling[0] - dx_pulling[:]) <= 100) # keep only first 100 µm of movement
+    
+    filterPull = Filter1
+    if np.sum(filterPull) == 0:
+        error = True
+    #     output = ()
+    # filterPull = np.ones_like(dx_pulling).astype(bool)
+
+
+    #### 6. Simple Measures
+    if not error:
+        # M_results_cols = ['globalError', 'median instant speed', 'mean speed', 'median force', 
+        #                'R min', 'R max', 'theta']
+        med_instant_speed = np.median((dx_pulling[filterPull][1:]-dx_pulling[filterPull][:-1])/film_dt) # µm/s
+        mean_speed = (dx_pulling[filterPull][0] - dx_pulling[filterPull][-1]) / (t_pulling[filterPull][0] - t_pulling[filterPull][-1]) # µm/s
+        med_force = np.median(pull_force[filterPull]) # pN
+        r_min, r_max = min(dist), max(dist)
+        resultsDict['median instant speed'] = med_instant_speed
+        resultsDict['mean speed'] = mean_speed
+        resultsDict['median force'] = med_force
+        resultsDict['R min'] = r_min
+        resultsDict['R max'] = r_max
+        resultsDict['theta'] = theta
+    else:
+        resultsDict['globalError'] = True
+        resultsDict['median instant speed'] = np.nan
+        resultsDict['mean speed'] = np.nan
+        resultsDict['median force'] = np.nan
+        resultsDict['R min'] = np.nan
+        resultsDict['R max'] = np.nan
+        resultsDict['theta'] = np.nan
+        
+    
+    
+    #### 7. Fit Model
+    if mode == 'newton':
+        # N_results_cols = ['N_fit_error', 'N_viscosity', 'N_R2']
+        try:
+            params, results = fitLine(t_pulling[filterPull], dx_pulling_n[filterPull])
+            slope = params[1]
+            gamma = 1/slope
+            visco = gamma/(6*np.pi*b_r)
+            R2 = results.rsquared
+            
+            resultsDict['N_fit_error'] = False
+            resultsDict['N_viscosity'] = visco
+            resultsDict['N_R2'] = R2
+            
+        except:
+            resultsDict['N_fit_error'] = True
+            resultsDict['N_viscosity'] = np.nan
+            resultsDict['N_R2'] = np.nan
+        
+    elif mode == 'jeffrey':
+        # J_results_cols = ['J_fit_error', 'J_k', 'J_gamma1', 'J_gamma2', 'J_tempo1', 'J_tempo2', 'J_R2']
+        # R_results_cols = ['R_fit_error', 'R_a', 'R_tau', 'R_R2']
+        
+        # Pulling phase
+        try:
+            J_start = list(guess_init_parms_jeffrey(t_pulling[filterPull], dx_pulling_n[filterPull]))
+        
+            
+            def jeffrey_model(params, x):
+                k, gamma1, gamma2 = params
+                return (1 - np.exp(-k*x/gamma1))/k + x/gamma2
+            
+            def jeffrey_model_constraint(params, x):
+                k, gamma1, r = params
+                gamma2 = 3*gamma1 + r**2
+                return (1 - np.exp(-k*x/gamma1))/k + x/gamma2
+            
+            #### Fit pulling phase --- V1
+            # obj1 = lambda params: np.linalg.norm(jeffrey_model(params, t_pulling) - dx_pulling_n)
+            # res1 = minimize(obj1, start1, method="Nelder-Mead", tol=1e-10,
+            #                 options={"maxfev": 1000})
+            # k, gamma1, gamma2 = res1.x
+            # # tempo1, tempo2 = gamma1/k, gamma2/k
+            # Ymeas = dx_pulling_n
+            # Yfit = jeffrey_model((k, gamma1, gamma2), t_pulling)
+            # R2_p = get_R2(Ymeas, Yfit) 
+            
+            #### Fit pulling phase --- V2
+            g1_i = J_start[1]
+            g2_i = J_start[2]
+            r_i = max(1e-6, (g2_i - 3*g1_i))**0.5
+            J_start[2] = r_i
+            obj1 = lambda params: np.linalg.norm(jeffrey_model_constraint(params, t_pulling[filterPull]) - dx_pulling_n[filterPull])
+            res1 = minimize(obj1, J_start, method="Nelder-Mead", tol=1e-10,
+                            options={"maxfev": 1000})
+            k, gamma1, r = res1.x
+            gamma2 = 3*gamma1 + r**2
+            Ymeas = dx_pulling_n[filterPull]
+            Yfit = jeffrey_model((k, gamma1, gamma2), t_pulling[filterPull])
+            J_R2 = get_R2(Ymeas, Yfit) 
+            
+            if min(k, gamma1, gamma2) <= 0:
+                raise Exception("Jeffrey fit error: null or negative parameter")
+            
+            # J_results_cols = ['J_fit_error', 'J_k', 'J_gamma1', 'J_gamma2', 'J_tempo1', 'J_tempo2', 'J_R2']
+            resultsDict['J_fit_error'] = False
+            resultsDict['J_k'] = k
+            resultsDict['J_gamma1'] = gamma1
+            resultsDict['J_gamma2'] = gamma2
+            resultsDict['J_tempo1'] = gamma1/k
+            resultsDict['J_tempo2'] = gamma2/k
+            resultsDict['J_R2'] = J_R2
+        
+        except:
+            resultsDict['J_fit_error'] = True
+            resultsDict['J_k'] = np.nan
+            resultsDict['J_gamma1'] = np.nan
+            resultsDict['J_gamma2'] = np.nan
+            resultsDict['J_tempo1'] = np.nan
+            resultsDict['J_tempo2'] = np.nan
+            resultsDict['J_R2'] = np.nan
+
+
+
+        #### Fit release phase
+        try:
+            R_start = list(guess_init_parms_relax(t_release, dx_release_n))
+            
+            def exp_fit(params, x):
+                a, tau = params
+                return (1-a)*np.exp(-x/tau) + a
+    
+            obj2 = lambda params: np.linalg.norm(exp_fit(params, t_release) - dx_release_n)
+            res2 = minimize(obj2, R_start, method="Nelder-Mead", tol=1e-7,
+                            options = {"maxfev": 1000})
+            a, tau = res2.x
+            Ymeas = dx_release_n
+            Yfit = exp_fit((a, tau), t_release)
+            R_R2 = get_R2(Ymeas, Yfit) 
+            
+            # R_results_cols = ['R_fit_error', 'R_a', 'R_tau', 'R_R2']
+            resultsDict['R_fit_error'] = False
+            resultsDict['R_a'] = a
+            resultsDict['R_tau'] = tau
+            resultsDict['R_R2'] = R_R2
+        
+        except:
+            resultsDict['R_fit_error'] = True
+            resultsDict['R_a'] = np.nan
+            resultsDict['R_tau'] = np.nan
+            resultsDict['R_R2'] = np.nan
+    
+    
+    #### 8. Figures
+    if PLOT >= 2:
+        fig1, axes1 = plt.subplots(1, 2, figsize = (10,5))
+        ax = axes1[0]
+        ax.plot(X, Y, ".-")
+        ax.axis("equal")
+        ax.grid(axis='both')
+        ax.set_title("Original track")
+        
+        ax = axes1[1]
+        ax.plot(x_rot, y_rot, ".-")
+        ax.plot(xp, yp, "k.-", linewidth=2)
+        ax.axis("equal")
+        ax.grid(axis='both')
+        ax.set_title("Rotated track")
+        fig1.tight_layout()
+        
+        fig1.savefig(os.path.join(plotsDir, track_id + "_Trajectories.png"))
+            
+    
+    if mode == 'newton' and PLOT >= 1:
+        fig2, axes2 = plt.subplots(1, 1, figsize = (5,5))
+        ax = axes2
+        axbis = axes2.twinx()
+        axbis.plot(t_pulling, dist, 'g--', zorder=4)
+        axbis.set_ylabel('Distance from magnet tip [µm]')
+        ax.plot(t_pulling[filterPull], dx_pulling_n[filterPull], 
+                ls='', marker='o', color='darkturquoise', markersize=5, zorder=5)
+        ax.plot(t_pulling[~filterPull], dx_pulling_n[~filterPull], 
+                ls='', marker='o', color='lightblue', markersize=5, zorder=4)
+        if not resultsDict['N_fit_error']:
+            xfit = np.linspace(0, t_pulling[-1], 100)
+            yfit = params[0] + params[1]*xfit
+            ax.plot(xfit, yfit, "r-", label=r'$\eta$ = ' + f'{visco:.2f} Pa.s', zorder=6)
+        ax.set_xlabel("t [s]")
+        ax.set_ylabel("dx/f [µm/pN]")
+        ax.grid(axis='both')
+        ax.legend(fontsize = 11).set_zorder(6)
+        fig2.suptitle(pull_id, fontsize=12)
+        fig2.tight_layout()
+        
+        fig2.savefig(os.path.join(plotsDir, track_id + "_NewtonFits.png"))
+            
+    
+    if mode == 'jeffrey' and PLOT >= 1:   
+        fig2, axes2 = plt.subplots(1, 2, figsize=(8,5))
+        ax = axes2[0]
+        ax.plot(t_pulling[filterPull], dx_pulling_n[filterPull], 
+                ls='', marker='o', color='darkturquoise', markersize=5, zorder=5)
+        ax.plot(t_pulling[~filterPull], dx_pulling_n[~filterPull], 
+                ls='', marker='o', color='lightblue', markersize=5, zorder=4)
+        if not resultsDict['J_fit_error']:
+            label1 = "Fitting Jeffrey's model\n" + r"$\frac{1}{k}(1 - exp(-k.t/\gamma_1)) + t/\gamma_2$" + "\n"
+            label1+= r"$k$ = " + f"{k:.2f}\n"
+            label1+= r"$\gamma_1$ = " + f"{gamma1:.2f}\n"
+            label1+= r"$\gamma_2$ = " + f"{gamma2:.2f}"
+            tp_fit = np.linspace(0, t_pulling[-1], 200)
+            dx_n_fit = jeffrey_model([k, gamma1, gamma2], tp_fit)
+            ax.plot(tp_fit, dx_n_fit, "r-",
+                     label=label1, zorder=6)
+            
+        ax.legend()
+        ax.grid()
+        ax.set_xlabel("t [s]")
+        ax.set_ylabel("dx/f [µm/pN]")
+    
+    
+        ax = axes2[1]
+        if not error_release:
+            ax.plot(t_release, dx_release_n, 
+                    ls='', marker='o', color='limegreen')
+            if not resultsDict['R_fit_error']:
+                label2 = "Fitting Viscoel Relax\n" + r"$(1-a). exp(-t/\tau ) + a$" + "\n"
+                label2+= r"$a$ = " + f"{a:.2f}\n"
+                label2+= r"$\tau$ = " + f"{tau:.2f}"
+                tr_fit = np.linspace(0, t_release[-1], 200)
+                dx_release_fit = exp_fit([a,tau], tr_fit)
+                ax.plot(tr_fit, dx_release_fit, 
+                        ls="-", c='darkorange', label=label2)
+        ax.legend()
+        ax.grid()
+        ax.set_xlabel("t [s]")
+        ax.set_ylabel("Normalized displacement")
+        ax.set_ylim([0, 1.2])
+        plt.tight_layout()
+        fig2.suptitle(pull_id, fontsize=12)
+        fig2.savefig(os.path.join(plotsDir, track_id + "_JeffreyFits.png"))
+        
+        
+    if SHOW:
+        plt.show()
+    else:
+        plt.close('all')
+            
+    plt.ion()
+    
+    resultsDict['globalError'] = error
+    
+    #### 9. Output
+    return(resultsDict, error)
+
 

@@ -785,6 +785,9 @@ ExpData = {'id' : [],
            'film_pixel_size' : [],
            'film_dt' : [],
            'film_dt_std' : [],
+           'bounds_newton' : [],
+           'bounds_jeffrey' : [],
+           'comments' : [],
            }
 
 # Get the file list based on output .tif files then matching input .tif files
