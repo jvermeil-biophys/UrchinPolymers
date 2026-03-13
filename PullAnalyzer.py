@@ -1089,8 +1089,8 @@ def pullAnalyzer(track, track_id, dict_pull, mag_d2f,
         ax.set_xlabel("t [s]")
         ax.set_ylabel("Normalized displacement")
         ax.set_ylim([0, 1.2])
-        plt.tight_layout()
         fig2.suptitle(pull_id, fontsize=12)
+        fig2.tight_layout()
         fig2.savefig(os.path.join(plotsDir, track_id + "_JeffreyFits.png"))
         
         
@@ -1437,8 +1437,8 @@ def pullAnalyzer_compareTracks(list_tracks, list_track_ids, list_dict_pull, list
 # %%% ... on many files
 
 # mainDir = os.path.join("C:/Users/Utilisateur/Desktop/") # Ordi IJM
-mainDir = os.path.join("C:/Users/josep/Desktop/Seafile") # Ordi perso
-# mainDir = os.path.join("C:/Users/Joseph/Desktop/") # Ordi LJP
+# mainDir = os.path.join("C:/Users/josep/Desktop/Seafile") # Ordi perso
+mainDir = os.path.join("C:/Users/Joseph/Desktop/") # Ordi LJP
 date = '26-03-04'
 subfolder = date + '_UVonCytoplasmAndBeads'
 
@@ -1451,14 +1451,14 @@ plotsDir = os.path.join(analysisDir, subfolder, 'Plots')
 # cell = '_M1_C1_Pa0_P3'
 
 # prefix_id = '26-02-11_M1_C1_Pa0_P1' # + cell # used to select a subset of the track files if needed
-prefix_id = '26-03-04_M1_C3_Pa0_P2' # + cell # used to select a subset of the track files if needed
+prefix_id = '26-03-04' # + cell # used to select a subset of the track files if needed
 
 
 Results = pullAnalyzer_multiFiles(mainDir, date, prefix_id,
                                     analysisDir, tracksDir, resultsDir, plotsDir,
                                     fits = ['newton', 'jeffrey'], calibFuncType='PowerLaw',
-                                    resultsFileName = date + '_BeadsPulling_test',
-                                    Redo = True, PLOT = 2, SHOW = True)
+                                    resultsFileName = date + '_BeadsPulling',
+                                    Redo = True, PLOT = 2, SHOW = False)
 
 # plt.close('all')
 

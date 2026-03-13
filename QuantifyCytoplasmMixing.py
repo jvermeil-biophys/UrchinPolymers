@@ -1394,6 +1394,125 @@ plt.show()
 
 # %% Small scripts
 
+# %%% MSD for one film
+
+mainDir = 'C:/Users/Joseph/Desktop/Exemple_NileBlue_Tracks'
+trackFilesList = ['26-03-04_M2_Pos5_Pa5_C1_Film5min_Dt1sec_Tracks.xml']
+trackPathList  = [os.path.join(mainDir, f) for f in trackFilesList]
+# SCALE = 0.09
+SCALE = SCALE_40X
+# FPS = 1.12
+FPS = 1.0
+PLOT = True
+
+res_dict = {
+            # 'id':[],
+            # 'pos_id':[],
+            # 'cell_id':[],
+            # 'Pa':[],
+            # 'Pa_total_power':[],
+            # 'Pa_irradiance':[],
+            # 'Pa_dt':[],
+            'D':[],
+            'k_nl':[],
+            'D_nl':[],
+            }
+
+tables_dict = {}
+MSD_dict = {}
+
+print(pm.BLUE + 'Starting MSD analysis' + pm.NORMAL)    
+
+if PLOT:
+    fig, ax = plt.subplots(1, 1)
+    Nt = len(trackPathList)
+    Nc = len(pm.cL_Set21)
+    if Nt <= Nc:
+        listColors = pm.cL_Set21[:Nt]
+    else:
+        listColors = pm.cL_Set21
+
+for k, p in enumerate(trackPathList):
+    T0 = time.time()
+    
+    # Ids
+    _, fN = os.path.split(p)
+    print(pm.GREEN + f'Analysing {fN}' + pm.NORMAL)
+    
+    full_id = '_'.join(fN.split('_')[:5])
+    # manip_id = '_'.join(fN.split('_')[:2])
+    # pos_id = get_numbers_following_text(fN, '_Pos')
+    # cell_id = get_numbers_following_text(fN, '_C')
+    # Pa = get_numbers_following_text(fN, '_Pa')
+    # Irr, DT, Pow = get_Pa_value(df_Pa, manip_id, Pa) # mW/cm2 ; mJ/cm2
+    # str_irr = '_'.join(Irr.astype(str))
+    # str_dt = '_'.join(DT.astype(str))
+    # total_power = np.sum(Pow)/1000 # J/cm2
+    
+    # MSD
+    Tracks = importTrackMateTracks(p)
+    column_names = ['frame', 'x', 'y', 'particle']
+    all_tracks = []
+    for i, track in enumerate(Tracks):
+        nT = len(track)
+        if nT >= 25:
+            track = np.concat((track, np.ones((len(track[:,0]), 1), dtype=int) * (i+1)), axis = 1)
+            track[:,0] = track[:,0].astype(int) + 1
+            all_tracks.append(track)
+    concat_tracks = np.concat(all_tracks, axis = 0)
+    df = pd.DataFrame({column_names[k] : concat_tracks[:,k] for k in range(len(column_names))})
+    tables_dict[full_id] = df
+    
+    #### Run imsd -> Might be useful for SEM computation
+    # res_imsd = imsd(df, SCALE, FPS).reset_index()
+
+    #### Run msd
+    res_emsd = emsd(df, SCALE, FPS, max_lagtime=50).reset_index()
+    T, MSD = res_emsd['lagt'], res_emsd['msd']
+    MSD_dict[full_id] = np.array([T, MSD]).T
+    
+    parms, results = ufun.fitLineHuber(T, MSD, with_intercept = False)
+    D = parms.values[0]/4
+    
+    if PLOT:
+        color = listColors[k%Nc]
+        dark_color = pm.lighten_color(color, 0.5)
+        ax.plot(res_emsd['lagt'], res_emsd['msd'], color=color, marker='.', lw=0.5, 
+                label=full_id)
+        ax.axline(xy1=(0,0), slope=D*4, color=dark_color, ls='-', lw=1, 
+                  label=f'D = {D:.2e} µm²/s')
+    
+    parms, results = ufun.fitLineHuber(np.log(T), np.log(MSD), with_intercept = True)
+    b, a = parms
+    k_nl = a
+    D_nl = np.exp(b)/4
+    
+    # res_dict['id'].append(full_id)
+    # res_dict['pos_id'].append(pos_id)
+    # res_dict['cell_id'].append(cell_id)
+    # res_dict['Pa'].append(Pa)
+    # res_dict['Pa_total_power'].append(total_power)
+    # res_dict['Pa_irradiance'].append(str_irr)
+    # res_dict['Pa_dt'].append(str_dt)
+    res_dict['D'].append(D)
+    res_dict['k_nl'].append(k_nl)
+    res_dict['D_nl'].append(D_nl)
+    
+    Dt = time.time() - T0
+    print(f'Done in Dt = {Dt:.4f}')
+    
+if PLOT:
+    ax.set_xlabel('Lag times (s)')
+    ax.set_ylabel('MSD (µm²)')
+    ax.grid()
+    ax.legend()
+    fig.tight_layout()
+    plt.show()
+    
+res_df = pd.DataFrame(res_dict)
+    
+
+
 # %%% ACF - Add numeric value for Power and Irradiance
 
 # dirPath = up.Path_AnalysisPulls + "/26-02-09_UVonCytoplasm"
