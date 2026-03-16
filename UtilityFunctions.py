@@ -1601,6 +1601,71 @@ def interDeciles(A):
     return(p90-p10)
 
 
+# %%% String manipulations
+
+def get_numbers_following_text(text, target, output = 'integer'):
+    if output == 'integer':
+        m = re.search(r''+target+r'\d', text)
+        text2 = text[m.end()-1:m.end()+10]
+        m_num = re.search(r'[\d\.]+', text2)
+        res = int(text2[m_num.start():m_num.end()])
+    elif output == 'string':
+        m = re.search(r''+target+r'\d', text)
+        text2 = text[m.end()-1:m.end()+10]
+        m_num = re.search(r'[\d\.-]+', text2)
+        res = str(text2[m_num.start():m_num.end()])
+    return(res)
+
+
+def findPatternAndRename(path, target_pattern, new_pattern, target='file', 
+                         test = True, recursiveAction = False, exceptStrings = []):
+    listAll = os.listdir(path)
+    listFiles = []
+    listDir = []
+    listTarget = []
+    for f in listAll:
+        if os.path.isfile(os.path.join(path,f)):
+            listFiles.append(f)
+        elif os.path.isdir(os.path.join(path,f)):
+            listDir.append(f)
+    if target == 'file':
+        listTarget = listFiles
+    elif target == 'dir':
+        listTarget = listDir
+    elif target == 'all':
+        listTarget = listAll
+    renamedListTarget = []
+    for f in listTarget:
+        searchPattern = re.search(target_pattern, f)
+        if searchPattern:
+            doExcept = False
+            for s in exceptStrings:
+                if s in f:
+                    doExcept = True
+                    print('Exception for ' + os.path.join(path,f))
+            if not doExcept:
+                foundString = f[searchPattern.start():searchPattern.end()]
+                newString = re.sub(target_pattern, new_pattern, foundString)
+                newFileName = f[:searchPattern.start()] + newString + f[searchPattern.end():]
+                renamedListTarget.append(newFileName)
+                if not test:
+                    os.rename(r''+os.path.join(path,f),r''+os.path.join(path,newFileName))
+    if recursiveAction:
+        # Update ListDir after potential renaming
+        listAll = os.listdir(path)
+        listDir = []
+        for f in listAll:
+            if os.path.isdir(os.path.join(path,f)):
+                listDir.append(f)
+        # Start going recursive
+        for d in listDir:
+            print("Let's go into " + os.path.join(path,d))
+            findPatternAndRename(os.path.join(path,d), target_pattern, new_pattern, target=target, 
+                         test = test, recursiveAction = True, exceptStrings = exceptStrings)
+    print(renamedListTarget)
+    
+    
+
 def strToMask(A, S):
     LS = S.split('_')
     kind = LS[1]
