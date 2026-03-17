@@ -319,7 +319,7 @@ for k in range(0, 3100, 100):
 # df_merged['Pa'] = df_merged['Pa'].apply(lambda x : str(x))
 
 
-# %%%% ACF - Only one activation - Non-injected
+# %%% ACF - Only one activation - Non-injected
 
 df = df_ACF
 
@@ -383,7 +383,7 @@ plt.tight_layout()
 plt.show()
 
 
-# %%%% ACF - Several activation - Non-injected
+# %%% ACF - Several activation - Non-injected
 
 df = df_ACF
 
@@ -484,7 +484,7 @@ plt.tight_layout()
 plt.show()
 
 
-# %%%% ACF - Date by date
+# %%% ACF - Date by date
 
 df = df_ACF
 
@@ -550,13 +550,13 @@ plt.show()
 
 
 
-# %%%% ACF - Only one activation - '26-02-11'
+# %%% ACF - Only one activation - '26-03-04'
 
 df = df_ACF
 
 Filters = [
            (df['N_Pa'] == 1),
-           (df['injection solution'].apply(lambda x : ('I2959' not in x))),
+           (df['injection solution'].apply(lambda x : ('I2959' in x))),
            (df['date'].apply(lambda x : ('26-02-11' not in x)))
            ]
 GlobalFilter = np.ones_like(Filters[0]).astype(bool)
@@ -584,27 +584,30 @@ agg_dict.update({Yplot:'mean', Yplot + '_norm':'mean'})
 df_g = group.agg(agg_dict).reset_index()
 
 
-fig, axes = plt.subplots(1, 2, figsize=(10, 4))
+fig, axes = plt.subplots(1, 2, figsize=(12, 6))
 ax = axes[0]
 ax.grid(zorder=0)
+ax.axhline(df_g.loc[df_g['Pa_total_power']==0, Yplot].values[0], 
+           color='k', linestyle='--', linewidth=1)
 sns.scatterplot(data=df, ax=ax, x=Xplot, y=Yplot, 
-                hue=Hplot, hue_order = hue_order,
+                hue=Hplot, hue_order = hue_order, s=70,
                 alpha = 0.75, zorder=6)
 sns.scatterplot(data=df_g, ax=ax, x=Xplot, y=Yplot, marker = 'o',
-                color='None', edgecolor='k', s=75, zorder=6)
-ax.set_ylim([0, ax.get_ylim()[1]*1.2])
+                color='None', edgecolor='k', s=100, zorder=6)
+ax.set_ylim([0, ax.get_ylim()[1]*1.05])
 ax.set_xlabel(r'Total energy (J/cm2)')
 ax.set_ylabel(r'$T_{50\%}$ (s)')
 ax.legend().set_visible(False)
 
 ax = axes[1]
 ax.grid(zorder=0)
+ax.axhline(1, color='k', linestyle='--', linewidth=1)
 sns.scatterplot(data=df, ax=ax, x=Xplot, y=Yplot + '_norm', 
-                hue=Hplot, hue_order = hue_order,
+                hue=Hplot, hue_order = hue_order, s=70,
                 alpha = 0.75, zorder=6)
 sns.scatterplot(data=df_g, ax=ax, x=Xplot, y=Yplot + '_norm', marker = 'o',
-                color='None', edgecolor='k', s=75, zorder=6, label='Mean\nvalues')
-ax.set_ylim([0, ax.get_ylim()[1]*1.2])
+                color='None', edgecolor='k', s=100, zorder=6, label='Mean\nvalues')
+ax.set_ylim([0.75, ax.get_ylim()[1]*1.05])
 ax.set_xlabel(r'Total energy (J/cm2)')
 ax.set_ylabel(r'$T_{50\%}$ - normalized')
 ax.legend(title='Photo-activation\nsequence [mW/cm2]', 
@@ -634,6 +637,8 @@ PaTableName = 'MainIrradianceConditions.csv'
 PaTablePath = os.path.join(mainDir, PaTableName)
 df_Pa = pd.read_csv(PaTablePath)
 df_Pa['Merge_id'] = df_Pa['date'] + '_' + df_Pa['manip'] + '_Pa' + df_Pa['Pa'].astype(str)
+df_Pa['total energy'] = df_Pa['irradiance'] * df_Pa['duration'] / 1000
+df_Pa.to_csv(PaTablePath, index=False)
 df_Pa = df_Pa.drop(columns = ['manip'])
 
 ExpCondTableName = 'MainExperimentalConditions.csv'
@@ -650,11 +655,242 @@ df_Pulls = df_Pulls.drop(columns=[col for col in df_Pulls.columns if ('_mergeCop
 
 df_Pulls['total energy'] = df_Pulls['irradiance'] * df_Pulls['duration'] / 1000
 
+#### Extra settings
+
+EXCLUDED_CELLS = ['26-01-14_M1_C1']
+
+
+# %%% 26-03-04 compared to previous
+
+
+# %%%% Filter pulling dataset
+
+df = df_Pulls
+dates = ['26-01-14', '26-01-27', '26-02-11', '26-03-04']
+
+df['Lc'] = 6*np.pi*df['bead radius']  
+df['J_modulus'] = df['J_k'] / df['Lc']
+df['J_visco1'] = df['J_gamma1'] / df['Lc']
+df['J_visco2'] = df['J_gamma2'] / df['Lc']
+
+Filters = [
+           (df['N_fit_error'] == False),
+           # (df['N_viscosity'] <= 40),
+           (df['date'].apply(lambda x: x in dates)),
+           (df['Cell_textid'].apply(lambda x : x not in EXCLUDED_CELLS)),
+           ]
+GlobalFilter = np.ones_like(Filters[0]).astype(bool)
+for F in Filters:
+    GlobalFilter = GlobalFilter & F
+
+df_Pullsf = df[GlobalFilter]
 
 
 
+# %%%% Show values of metrics - boxplot
 
-excluded_cells = ['26-01-14_M1_C1']
+df = df_Pullsf
+
+#### Absolute values
+
+metrics = ['N_viscosity']
+metric_names = ['$\eta_N$ (Pa.s)']
+metric_dict = {m:mn for (m,mn) in zip(metrics, metric_names)}
+
+cond_col = 'total energy'
+conditions = df['total energy'].unique()
+conditions = np.sort(conditions)
+
+hue_col = 'Cell_textid'
+
+# style_col = 'date'
+# style_list = ['o', 's', '^', 'X', 'P', '>']
+# style_dict = {df[style_col].unique()[i]:style_list[i] for i in range(len(df[style_col].unique()))}
+# df.loc[:,'marker_style'] = df[style_col].apply(lambda x : style_dict[x])
+
+fig, axes = plt.subplots(len(metrics), 1, figsize=(7,5*len(metrics)))
+axes_f = [axes]
+
+for k in range(len(axes_f)):
+    ax = axes_f[k]
+    ax.set_yscale('log')
+    metric = metrics[k]
+    medians = [np.median(df.loc[df[cond_col]==co, metric]) for co in conditions]
+    
+    for i in range(len(conditions)):
+        HW = 0.4
+        ax.plot([i-HW, i+HW], [medians[i], medians[i]], ls='--', lw=2, c='dimgrey', zorder=8)
+    
+    sns.swarmplot(data = df, ax=ax, 
+                  x = cond_col, y = metric, hue = hue_col, 
+                  size = 7, zorder=9)
+
+    ax.set_xlim([-0.5, len(conditions)-0.5])
+    # xticks_labels = ['Ctrl'] + [f'+UV (Pa{str(k)})' for k in Energies[1:]]
+    # ax.set_xticks([k for k in range(len(Energies))], xticks_labels, rotation=15)
+    ax.set_xlabel('Total energy [J/cm²]')
+    ax.set_ylabel(metric_dict[metric])
+    yM = ax.get_ylim()[1]
+    # ax.set_ylim([0, 1.25*yM])
+    ax.set_ylim([0, 2*yM])
+    ax.grid(axis='y')
+    
+    for i in range(len(conditions)):
+        # ax.text(i, 1.1*yM, f'{medians[i]:.2f}', ha='center', zorder=10,
+        #         size = 10, style='italic', c='dimgrey')
+        ax.text(i, 1.5*yM, f'{medians[i]:.2f}', ha='center', zorder=10,
+                size = 10, style='italic', c='dimgrey')
+    
+    if k == 1:
+        ax.legend(title='Cell IDs',
+                  loc="upper left",
+                  bbox_to_anchor=(1, 0, 0.5, 1))
+    else:
+        ax.legend().set_visible(False)
+
+fig.suptitle('All pulls', fontsize=16)
+fig.tight_layout()
+
+#### Normalized
+
+id_cols = ['track_id', 'Manip_textid', 'date', 'irradiance', 'total energy']
+group = df.groupby(['Cell_textid', 'Pa_id'])
+agg_dict = {k:'first' for k in id_cols}
+agg_dict.update({m:'median' for m in metrics})
+df_g = group.agg(agg_dict).reset_index()
+for m in metrics:
+    m_N = m + '_norm'
+    df.loc[:,m_N] = df[m]
+    df_g.loc[:,m_N] = df_g.loc[:,m]
+    for k, cid in enumerate(df['Cell_textid'].unique()):
+        index_cell_control = df_g[(df_g['Cell_textid'] == cid) & (df_g['Pa_id'] == 0)].index
+        val_ctrl = df_g.loc[index_cell_control, Yplot].values[0]
+        
+        index_cell = df[df['Cell_textid'] == cid].index
+        df.loc[index_cell, m_N] /= val_ctrl
+        index_cell = df_g[df_g['Cell_textid'] == cid].index
+        df_g.loc[index_cell, m_N] /= val_ctrl
+
+metrics = [m + '_norm' for m in metrics]
+metric_names = [mn.split(' ')[0] + ' - normalized' for mn in metric_names]
+metric_dict = {m:mn for (m,mn) in zip(metrics, metric_names)}
+
+fig, axes = plt.subplots(len(metrics), 1, figsize=(7,5*len(metrics)))
+axes_f = [axes]
+
+for k in range(len(axes_f)):
+    ax = axes_f[k]
+    ax.set_yscale('log')
+    metric = metrics[k]
+    medians = [np.median(df.loc[df[cond_col]==co, metric]) for co in conditions]
+    
+    for i in range(len(conditions)):
+        HW = 0.4
+        ax.plot([i-HW, i+HW], [medians[i], medians[i]], ls='--', lw=2, c='dimgrey', zorder=8)
+    
+    sns.swarmplot(data = df, ax=ax, 
+                  x = cond_col, y = metric, hue = hue_col,
+                  size = 7, zorder=9)
+
+    ax.set_xlim([-0.5, len(conditions)-0.5])
+    # xticks_labels = ['Ctrl'] + [f'+UV (Pa{str(k)})' for k in Energies[1:]]
+    # ax.set_xticks([k for k in range(len(Energies))], xticks_labels, rotation=15)
+    ax.set_xlabel('Total energy [J/cm²]')
+    ax.set_ylabel(metric_dict[metric])
+    yM = ax.get_ylim()[1]
+    # ax.set_ylim([0, 1.25*yM])
+    ax.set_ylim([0, 2*yM])
+    ax.grid(axis='y')
+    
+    for i in range(len(conditions)):
+        # ax.text(i, 1.1*yM, f'{medians[i]:.2f}', ha='center', zorder=10,
+        #         size = 10, style='italic', c='dimgrey')
+        ax.text(i, 1.5*yM, f'{medians[i]:.2f}', ha='center', zorder=10,
+                size = 10, style='italic', c='dimgrey')
+    
+    if k == 1:
+        ax.legend(title='Cell IDs',
+                  loc="upper left",
+                  bbox_to_anchor=(1, 0, 0.5, 1))
+    else:
+        ax.legend().set_visible(False)
+
+fig.suptitle('All pulls - normalized', fontsize=16)
+fig.tight_layout()
+
+
+plt.show()
+
+# %%%% Show values of one metric - Scatterplot version
+
+df = df_Pullsf
+
+Xplot = 'total energy'
+Yplot = 'N_viscosity'
+Hplot = 'Cell_textid'
+
+# hue_order = [h for h in HUE_ORDER if h in df[Hplot].unique()]
+
+style_col = 'date'
+style_list = ['o', 's', '^', 'X', 'P', '>']
+style_dict = {df[style_col].unique()[i]:style_list[i] for i in range(len(df[style_col].unique()))}
+df.loc[:,'marker_style'] = df[style_col].apply(lambda x : style_dict[x])
+
+id_cols = ['track_id', 'Manip_textid', 'date', 'irradiance', 'total energy']
+group = df.groupby(['Cell_textid', 'Pa_id'])
+agg_dict = {k:'first' for k in id_cols}
+agg_dict.update({Yplot:'median'})
+df_g = group.agg(agg_dict).reset_index()
+
+Yplot_N = Yplot + '_norm'
+df[Yplot_N] = df[Yplot]
+df_g[Yplot_N] = df_g[Yplot]
+for k, cid in enumerate(df['Cell_textid'].unique()):
+    index_cell_control = df_g[(df_g['Cell_textid'] == cid) & (df_g['Pa_id'] == 0)].index
+    val_ctrl = df_g.loc[index_cell_control, Yplot].values[0]
+    
+    index_cell = df[df['Cell_textid'] == cid].index
+    df.loc[index_cell, Yplot_N] /= val_ctrl
+    index_cell = df_g[df_g['Cell_textid'] == cid].index
+    df_g.loc[index_cell, Yplot_N] /= val_ctrl
+
+
+fig, axes = plt.subplots(1, 2, figsize=(10, 6))
+ax = axes[0]
+ax.set_yscale('log')
+ax.grid(zorder=0)
+# ax.axhline(df_g.loc[df_g['irradiance']==0, Yplot].values[0], 
+#            color='k', linestyle='--', linewidth=1)
+sns.scatterplot(data=df, ax=ax, x=Xplot, y=Yplot, s=50,
+                hue=Hplot, # markers = 'marker_style', #hue_order = hue_order,
+                alpha = 0.75, zorder=6)
+# sns.scatterplot(data=df_g, ax=ax, x=Xplot, y=Yplot, marker = 'o',
+#                 color='None', edgecolor='k', s=75, zorder=6)
+# ax.set_ylim([0, ax.get_ylim()[1]*1.05])
+ax.set_xlabel(r'Total energy (J/cm2)')
+ax.set_ylabel(r'$\eta_N$ (Pa.s)')
+ax.legend(fontsize=7, ncols = 2) #.set_visible(False)
+
+ax = axes[1]
+ax.set_yscale('log')
+ax.grid(zorder=0)
+# ax.axhline(1, color='k', linestyle='--', linewidth=1)
+# sns.scatterplot(data=df, ax=ax, x=Xplot, y=Yplot + '_norm', 
+#                 hue=Hplot, hue_order = hue_order,
+#                 alpha = 0.75, zorder=6)
+sns.scatterplot(data=df_g, ax=ax, x=Xplot, y=Yplot + '_norm', marker = 'o', hue='Manip_textid', 
+                alpha = 0.5, edgecolor='k', s=75, zorder=6)
+ax.set_ylim([0, ax.get_ylim()[1]*1.05])
+ax.set_xlabel(r'Total energy (J/cm2)')
+ax.set_ylabel(r'Median $\eta_N$ - normalized')
+ax.legend(fontsize=9)
+# ax.legend(title='Photo-activation\nsequence [mW/cm2]', title_fontsize=10,
+          # loc="upper left", bbox_to_anchor=(1, 0, 0.5, 1), ncols = 2, fontsize=9)
+          
+plt.tight_layout()
+plt.show()
+
+
 
 
 # %%% 26-03-04
@@ -662,24 +898,209 @@ excluded_cells = ['26-01-14_M1_C1']
 # %%%% Filter pulling dataset
 
 
-df_p = df_Pulls
+df = df_Pulls
 
-df_p['Lc'] = 6*np.pi*df_p['bead radius']  
-df_p['J_modulus'] = df_p['J_k'] / df_p['Lc']
-df_p['J_visco1'] = df_p['J_gamma1'] / df_p['Lc']
-df_p['J_visco2'] = df_p['J_gamma2'] / df_p['Lc']
+df['Lc'] = 6*np.pi*df['bead radius']  
+df['J_modulus'] = df['J_k'] / df['Lc']
+df['J_visco1'] = df['J_gamma1'] / df['Lc']
+df['J_visco2'] = df['J_gamma2'] / df['Lc']
 
 Filters = [
-           (df_p['N_fit_error'] == False),
-           (df_p['date'] == '26-03-04'),
-           (df_p['Cell_textid'].apply(lambda x : x not in excluded_cells)),
+           (df['N_fit_error'] == False),
+           (df['date'] == '26-03-04'),
+           (df['Cell_textid'].apply(lambda x : x not in EXCLUDED_CELLS)),
            ]
 GlobalFilter = np.ones_like(Filters[0]).astype(bool)
 for F in Filters:
     GlobalFilter = GlobalFilter & F
 
-df_pf = df_p[GlobalFilter]
+df_Pullsf = df[GlobalFilter]
 
+
+
+
+# %%%% Show values of metrics - boxplot
+
+df = df_Pullsf
+
+#### Absolute values
+
+metrics = ['N_viscosity']
+metric_names = ['$\eta_N$ (Pa.s)']
+metric_dict = {m:mn for (m,mn) in zip(metrics, metric_names)}
+
+cond_col = 'total energy'
+conditions = df['total energy'].unique()
+conditions = np.sort(conditions)
+
+hue_col = 'Cell_textid'
+
+fig, axes = plt.subplots(len(metrics), 1, figsize=(7,5*len(metrics)))
+axes_f = [axes]
+
+for k in range(len(axes_f)):
+    ax = axes_f[k]
+    metric = metrics[k]
+    medians = [np.median(df.loc[df[cond_col]==co, metric]) for co in conditions]
+    
+    for i in range(len(conditions)):
+        HW = 0.4
+        ax.plot([i-HW, i+HW], [medians[i], medians[i]], ls='--', lw=2, c='dimgrey', zorder=8)
+    
+    sns.swarmplot(data = df, ax=ax, 
+                  x = cond_col, y = metric, hue = hue_col,
+                  size = 9, zorder=9)
+
+    ax.set_xlim([-0.5, len(conditions)-0.5])
+    # xticks_labels = ['Ctrl'] + [f'+UV (Pa{str(k)})' for k in Energies[1:]]
+    # ax.set_xticks([k for k in range(len(Energies))], xticks_labels, rotation=15)
+    ax.set_xlabel('Total energy [J/cm²]')
+    ax.set_ylabel(metric_dict[metric])
+    yM = ax.get_ylim()[1]
+    ax.set_ylim([0, 1.25*yM])
+    ax.grid(axis='y')
+    
+    for i in range(len(conditions)):
+        ax.text(i, 1.1*yM, f'{medians[i]:.2f}', ha='center', zorder=10,
+                size = 10, style='italic', c='dimgrey')
+    
+    if k == 1:
+        ax.legend(title='Cell IDs',
+                  loc="upper left",
+                  bbox_to_anchor=(1, 0, 0.5, 1))
+    else:
+        ax.legend().set_visible(False)
+
+fig.suptitle('26-03-04 - all pulls', fontsize=16)
+fig.tight_layout()
+
+#### Normalized
+
+id_cols = ['track_id', 'Manip_textid', 'date', 'irradiance', 'total energy']
+group = df.groupby(['Cell_textid', 'Pa_id'])
+agg_dict = {k:'first' for k in id_cols}
+agg_dict.update({m:'median' for m in metrics})
+df_g = group.agg(agg_dict).reset_index()
+for m in metrics:
+    m_N = m + '_norm'
+    df.loc[:,m_N] = df.loc[:,m]
+    df_g.loc[:,m_N] = df_g.loc[:,m]
+    for k, cid in enumerate(df['Cell_textid'].unique()):
+        index_cell_control = df_g[(df_g['Cell_textid'] == cid) & (df_g['Pa_id'] == 0)].index
+        val_ctrl = df_g.loc[index_cell_control, Yplot].values[0]
+        
+        index_cell = df[df['Cell_textid'] == cid].index
+        df.loc[index_cell, m_N] /= val_ctrl
+        index_cell = df_g[df_g['Cell_textid'] == cid].index
+        df_g.loc[index_cell, m_N] /= val_ctrl
+
+metrics = [m + '_norm' for m in metrics]
+metric_names = [mn.split(' ')[0] + ' - normalized' for mn in metric_names]
+metric_dict = {m:mn for (m,mn) in zip(metrics, metric_names)}
+
+fig, axes = plt.subplots(len(metrics), 1, figsize=(7,5*len(metrics)))
+axes_f = [axes]
+
+for k in range(len(axes_f)):
+    ax = axes_f[k]
+    metric = metrics[k]
+    medians = [np.median(df.loc[df[cond_col]==co, metric]) for co in conditions]
+    
+    for i in range(len(conditions)):
+        HW = 0.4
+        ax.plot([i-HW, i+HW], [medians[i], medians[i]], ls='--', lw=2, c='dimgrey', zorder=8)
+    
+    sns.swarmplot(data = df, ax=ax, 
+                  x = cond_col, y = metric, hue = hue_col,
+                  size = 9, zorder=9)
+
+    ax.set_xlim([-0.5, len(conditions)-0.5])
+    # xticks_labels = ['Ctrl'] + [f'+UV (Pa{str(k)})' for k in Energies[1:]]
+    # ax.set_xticks([k for k in range(len(Energies))], xticks_labels, rotation=15)
+    ax.set_xlabel('Total energy [J/cm²]')
+    ax.set_ylabel(metric_dict[metric])
+    yM = ax.get_ylim()[1]
+    ax.set_ylim([0, 1.25*yM])
+    ax.grid(axis='y')
+    
+    for i in range(len(conditions)):
+        ax.text(i, 1.1*yM, f'{medians[i]:.2f}', ha='center', zorder=10,
+                size = 10, style='italic', c='dimgrey')
+    
+    if k == 1:
+        ax.legend(title='Cell IDs',
+                  loc="upper left",
+                  bbox_to_anchor=(1, 0, 0.5, 1))
+    else:
+        ax.legend().set_visible(False)
+
+fig.suptitle('26-03-04 - all pulls - normalized', fontsize=16)
+fig.tight_layout()
+
+
+plt.show()
+
+# %%%% Show values of one metric - Scatterplot version
+
+df = df_Pullsf
+
+Xplot = 'total energy'
+Yplot = 'N_viscosity'
+Hplot = 'Cell_textid'
+
+# hue_order = [h for h in HUE_ORDER if h in df[Hplot].unique()]
+
+id_cols = ['track_id', 'Manip_textid', 'date', 'irradiance', 'total energy']
+group = df.groupby(['Cell_textid', 'Pa_id'])
+agg_dict = {k:'first' for k in id_cols}
+agg_dict.update({Yplot:'median'})
+df_g = group.agg(agg_dict).reset_index()
+
+Yplot_N = Yplot + '_norm'
+df[Yplot_N] = df[Yplot]
+df_g[Yplot_N] = df_g[Yplot]
+for k, cid in enumerate(df['Cell_textid'].unique()):
+    index_cell_control = df_g[(df_g['Cell_textid'] == cid) & (df_g['Pa_id'] == 0)].index
+    val_ctrl = df_g.loc[index_cell_control, Yplot].values[0]
+    
+    index_cell = df[df['Cell_textid'] == cid].index
+    df.loc[index_cell, Yplot_N] /= val_ctrl
+    index_cell = df_g[df_g['Cell_textid'] == cid].index
+    df_g.loc[index_cell, Yplot_N] /= val_ctrl
+
+
+fig, axes = plt.subplots(1, 2, figsize=(10, 4))
+ax = axes[0]
+ax.grid(zorder=0)
+# ax.axhline(df_g.loc[df_g['irradiance']==0, Yplot].values[0], 
+#            color='k', linestyle='--', linewidth=1)
+sns.scatterplot(data=df, ax=ax, x=Xplot, y=Yplot, 
+                hue=Hplot, s=70, #hue_order = hue_order,
+                alpha = 0.75, zorder=8)
+# sns.scatterplot(data=df_g, ax=ax, x=Xplot, y=Yplot, marker = 'P',
+#                 hue=Hplot, edgecolor='k', s=100, zorder=6)
+# ax.set_ylim([0, ax.get_ylim()[1]*1.05])
+ax.set_xlabel(r'Total energy (J/cm2)')
+ax.set_ylabel(r'$\eta_N$ (Pa.s)')
+ax.legend(fontsize=6) #.set_visible(False)
+
+ax = axes[1]
+ax.grid(zorder=0)
+# ax.axhline(1, color='k', linestyle='--', linewidth=1)
+# sns.scatterplot(data=df, ax=ax, x=Xplot, y=Yplot + '_norm', 
+#                 hue=Hplot, hue_order = hue_order,
+#                 alpha = 0.75, zorder=6)
+sns.scatterplot(data=df_g, ax=ax, x=Xplot, y=Yplot + '_norm', marker = 'o', hue='Manip_textid', 
+                alpha = 0.5, edgecolor='k', s=100, zorder=6)
+ax.set_ylim([0, ax.get_ylim()[1]*1.05])
+ax.set_xlabel(r'Total energy (J/cm2)')
+ax.set_ylabel(r'Median $\eta_N$ - normalized')
+ax.legend(fontsize=9)
+# ax.legend(title='Photo-activation\nsequence [mW/cm2]', title_fontsize=10,
+          # loc="upper left", bbox_to_anchor=(1, 0, 0.5, 1), ncols = 2, fontsize=9)
+          
+plt.tight_layout()
+plt.show()
 
 # %%%% Add ACF dataset
 
@@ -735,123 +1156,68 @@ for F in Filters:
 
 df_ACFf = df_ACF[GlobalFilter]
 
-# %%%%
+# %%%% ACF - Only one activation - '26-03-04'
+
+df = df_ACFf
+
+Filters = [
+           (df['N_Pa'] == 1),
+           (df['injection solution'].apply(lambda x : ('I2959' in x))),
+           (df['date'].apply(lambda x : ('26-02-11' not in x)))
+           ]
+GlobalFilter = np.ones_like(Filters[0]).astype(bool)
+for F in Filters:
+    GlobalFilter = GlobalFilter & F
+df = df[GlobalFilter]
 
 
-metrics = ['N_viscosity']
-metric_names = ['$\eta_N$ (Pa.s)']
-metric_dict = {m:mn for (m,mn) in zip(metrics, metric_names)}
-
-Energies = df_pf['total energy'].unique()
-
-# print(df)
-
-# if group_by_cell:
-#     group = df.groupby(['Cell_textId', 'Pa_id'])
-#     agg_dict = {m:agg_func for m in metrics}
-#     dfg = group.agg(agg_dict)
-#     df = dfg.reset_index()
+Id_cols = ['pos_id']
+Group_cols = ('Pa')
+Xplot = 'Pa_total_power'
+Yplot = 't_50p'
+Hplot = 'Pa_irradiance'
+# hue_order=['0', '200', '200_200', '400', '400_400', '800', '800_800', 
+#            '1600', '1600_1600', '2400', '2400_2400', '2400_2400_2400']
+# hue_order = []
+# for k in range(0, 3100, 100):
+#     hue_order += [f'{k:.0f}', f'{k:.0f}_{k:.0f}', f'{k:.0f}_{k:.0f}_{k:.0f}', f'{k:.0f}_{k:.0f}_{k:.0f}_{k:.0f}']
     
-# print(df)
+hue_order = [h for h in HUE_ORDER if h in df[Hplot].unique()]
 
-fig, axes = plt.subplots(1, 1, figsize=(8,5))
-axes_f = [axes]
-
-for k in range(len(axes_f)):
-    ax = axes_f[k]
-    metric = metrics[k]
-    
-    medians = [np.median(df_pf.loc[df_pf['total energy']==i, metric]) for i in Energies]
-    
-    for i in range(len(Energies)):
-        HW = 0.35
-        ax.plot([i-HW, i+HW], [medians[i], medians[i]], ls='--', lw=2, c='dimgrey')
-    
-    sns.swarmplot(data = df_pf, ax=ax, 
-                  x = 'total energy', y = metric, hue = 'Cell_textid',
-                  size = 6)
-
-    ax.set_xlim([-0.5, len(Energies)-0.5])
-    # xticks_labels = ['Ctrl'] + [f'+UV (Pa{str(k)})' for k in Energies[1:]]
-    # ax.set_xticks([k for k in range(len(Energies))], xticks_labels, rotation=15)
-    ax.set_xlabel('')
-    ax.set_ylabel(metric_dict[metric])
-    yM = ax.get_ylim()[1]
-    ax.set_ylim([0, 1.25*yM])
-    ax.grid(axis='y')
-    
-    for i in range(len(Energies)):
-        ax.text(i, 1.1*yM, f'{medians[i]:.2f}', ha='center', size = 10, style='italic', c='dimgrey')
-    
-    if k == 1:
-        ax.legend(title='Cell IDs',
-                  loc="upper left",
-                  bbox_to_anchor=(1, 0, 0.5, 1))
-    else:
-        ax.legend().set_visible(False)
-
-fig.suptitle('All pulls & beads', fontsize=16)
-fig.tight_layout()
-plt.show()
-
-
-# %%%%
-
-df = df_pf
-
-Xplot = 'total energy'
-Yplot = 'N_viscosity'
-Hplot = 'Cell_textid'
-
-# hue_order = [h for h in HUE_ORDER if h in df[Hplot].unique()]
-
-Id_cols = ['track_id', 'irradiance', 'total energy']
-group = df.groupby(['Cell_textid', 'Pa_id'])
+group = df.groupby(Xplot)
 agg_dict = {k:'first' for k in Id_cols}
-agg_dict.update({Yplot:'median'})
+agg_dict.update({Yplot:'median', Yplot + '_norm':'median'})
 df_g = group.agg(agg_dict).reset_index()
 
-Yplot_N = Yplot + '_norm'
-df[Yplot_N] = df[Yplot]
-df_g[Yplot_N] = df_g[Yplot]
-for k, cid in enumerate(df['Cell_textid'].unique()):
-    index_cell_control = df_g[(df_g['Cell_textid'] == cid) & (df_g['Pa_id'] == 0)].index
-    val_ctrl = df_g.loc[index_cell_control, Yplot].values[0]
-    
-    index_cell = df[df['Cell_textid'] == cid].index
-    df.loc[index_cell, Yplot_N] /= val_ctrl
-    index_cell = df_g[df_g['Cell_textid'] == cid].index
-    df_g.loc[index_cell, Yplot_N] /= val_ctrl
 
-
-fig, axes = plt.subplots(1, 2, figsize=(10, 4))
+fig, axes = plt.subplots(1, 2, figsize=(12, 6))
 ax = axes[0]
 ax.grid(zorder=0)
-# ax.axhline(df_g.loc[df_g['irradiance']==0, Yplot].values[0], 
-#            color='k', linestyle='--', linewidth=1)
+ax.axhline(df_g.loc[df_g['Pa_total_power']==0, Yplot].values[0], 
+           color='k', linestyle='--', linewidth=1)
 sns.scatterplot(data=df, ax=ax, x=Xplot, y=Yplot, 
-                hue=Hplot, #hue_order = hue_order,
-                alpha = 0.75, zorder=6)
-# sns.scatterplot(data=df_g, ax=ax, x=Xplot, y=Yplot, marker = 'o',
-#                 color='None', edgecolor='k', s=75, zorder=6)
-# ax.set_ylim([0, ax.get_ylim()[1]*1.05])
+                hue=Hplot, hue_order = hue_order, s=70,
+                alpha = 0.65, zorder=6)
+sns.scatterplot(data=df_g, ax=ax, x=Xplot, y=Yplot, marker = 'o',
+                color='None', edgecolor='k', s=100, zorder=6)
+ax.set_ylim([0, ax.get_ylim()[1]*1.05])
 ax.set_xlabel(r'Total energy (J/cm2)')
-ax.set_ylabel(r'$\eta_N$ (s)')
-ax.legend(fontsize=6) #.set_visible(False)
+ax.set_ylabel(r'$T_{50\%}$ (s)')
+ax.legend().set_visible(False)
 
 ax = axes[1]
 ax.grid(zorder=0)
-# ax.axhline(1, color='k', linestyle='--', linewidth=1)
-# sns.scatterplot(data=df, ax=ax, x=Xplot, y=Yplot + '_norm', 
-#                 hue=Hplot, hue_order = hue_order,
-#                 alpha = 0.75, zorder=6)
-sns.scatterplot(data=df_g, ax=ax, x=Xplot, y=Yplot + '_norm', marker = 'o', # color='None', 
-                edgecolor='k', s=75, zorder=6, label='Mean\nvalues')
-ax.set_ylim([0, ax.get_ylim()[1]*1.05])
+ax.axhline(1, color='k', linestyle='--', linewidth=1)
+sns.scatterplot(data=df, ax=ax, x=Xplot, y=Yplot + '_norm', 
+                hue=Hplot, hue_order = hue_order, s=70,
+                alpha = 0.65, zorder=6)
+sns.scatterplot(data=df_g, ax=ax, x=Xplot, y=Yplot + '_norm', marker = 'o',
+                color='None', edgecolor='k', s=100, zorder=6, label='Mean\nvalues')
+ax.set_ylim([0.75, ax.get_ylim()[1]*1.05])
 ax.set_xlabel(r'Total energy (J/cm2)')
-ax.set_ylabel(r'$\eta_N$ - normalized')
-ax.legend(title='Photo-activation\nsequence [mW/cm2]', title_fontsize=10,
-          loc="upper left", bbox_to_anchor=(1, 0, 0.5, 1), ncols = 2, fontsize=9)
+ax.set_ylabel(r'$T_{50\%}$ - normalized')
+ax.legend(title='Photo-activation\nsequence [mW/cm2]', 
+          loc="upper left", bbox_to_anchor=(1, 0, 0.5, 1), ncols = 2)
 
 
 plt.tight_layout()
@@ -866,7 +1232,7 @@ fileName = 'AllResults_BeadsPulling.csv'
 filePath = os.path.join(mainDir, fileName)
 
 specif = '_26-02-11'
-excluded_cells = ['26-01-14_M1_C1']
+EXCLUDED_CELLS = ['26-01-14_M1_C1']
 
 df = pd.read_csv(filePath)
 
@@ -881,7 +1247,7 @@ Filters = [
            (df['J_fit_error'] == False),
            (df['J_R2'] >= 0.7),
            (df['date'] == '26-02-11'),
-           (df['Cell_textId'].apply(lambda x : x not in excluded_cells)),
+           (df['Cell_textid'].apply(lambda x : x not in EXCLUDED_CELLS)),
            ]
 GlobalFilter = np.ones_like(Filters[0]).astype(bool)
 for F in Filters:
@@ -904,7 +1270,7 @@ fileName = 'AllResults_BeadsPulling.csv'
 filePath = os.path.join(mainDir, fileName)
 
 specif = '_26-01-27_NoI2959'
-excluded_cells = ['26-01-14_M1_C1']
+EXCLUDED_CELLS = ['26-01-14_M1_C1']
 
 df = pd.read_csv(filePath)
 
@@ -918,7 +1284,7 @@ Filters = [(df['J_gamma2'] < 500),
            (df['J_fit_error'] == False),
            (df['J_R2'] >= 0.7),
            (df['date'] == '26-01-27'),
-           (df['Cell_textId'].apply(lambda x : x not in excluded_cells)),
+           (df['Cell_textId'].apply(lambda x : x not in EXCLUDED_CELLS)),
            ]
 GlobalFilter = np.ones_like(Filters[0]).astype(bool)
 for F in Filters:
@@ -940,7 +1306,7 @@ fileName = 'AllResults_BeadsPulling.csv'
 filePath = os.path.join(mainDir, fileName)
 
 specif = '_26-01-14_FullMix'
-excluded_cells = ['26-01-14_M1_C1']
+EXCLUDED_CELLS = ['26-01-14_M1_C1']
 
 df = pd.read_csv(filePath)
 
@@ -954,7 +1320,7 @@ Filters = [(df['J_gamma2'] < 500),
            (df['J_fit_error'] == False),
            (df['J_R2'] >= 0.7),
            (df['date'] == '26-01-14'),
-           (df['Cell_textId'].apply(lambda x : x not in excluded_cells)),
+           (df['Cell_textId'].apply(lambda x : x not in EXCLUDED_CELLS)),
            ]
 GlobalFilter = np.ones_like(Filters[0]).astype(bool)
 for F in Filters:
