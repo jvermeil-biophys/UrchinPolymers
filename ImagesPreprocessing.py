@@ -76,7 +76,7 @@ def getListOfSourceFolders(Dir, forbiddenWords = [], compulsaryWords = []): # 'd
         # Test the compulsary words only at this final step
         valid = True
         for w in compulsaryWords:
-            if w.lower() not in Dir.lower(): # compare the lower case strings
+            if w.lower() not in Dir.lower(): # compare the lower case stringsff
                 valid = False # If a compulsary word is NOT in the dir name, don't consider it
                 # print('exclude')
             
