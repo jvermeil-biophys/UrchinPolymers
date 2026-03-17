@@ -353,6 +353,7 @@ def analyse_cells_ACF(imagePathList, df_Pa, SCALE, FPS,
     
     if PLOT:
         fig, ax = plt.subplots(1, 1)
+        # ax.set_yscale('log')
         Nt = len(imagePathList)
         Nc = len(pm.cL_Set21)
         if Nt <= Nc:
