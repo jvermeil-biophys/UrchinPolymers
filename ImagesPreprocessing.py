@@ -545,11 +545,11 @@ def crop_and_copy(DirSrc, DirDst, allRefPoints, allStackPaths,
 # DirDst = 'C:/Users/Joseph/Desktop/AnalysisPulls/26-03-04_UVonCytoplasmAndBeads/Pulls'
 # DirDst_bins = ''
 
-DirSrc = 'C:/Users/Joseph/Desktop/WorkingData/LeicaData/26-01-27/Pulls'
-DirDst = 'C:/Users/Joseph/Desktop/AnalysisPulls/26-01-27_BeadTracking'
+DirSrc = up.Path_LeicaData + '/26-03-20_UVonCytoplasmAndBeads_CalibMagnetJN/M3_MagnetJN_40X_MyOne_PBS_UV'
+DirDst = up.Path_AnalysisPulls + '/26-03-20_UVonCytoplasmAndBeads_CalibMagnetJN/M3_40X_MyOne_PBS_UV_MagnetJN'
 
-DirSrc = up.Path_LeicaData + "/26-03-04/Pulls"
-DirDst = up.Path_AnalysisPulls + "/26-03-04_UVonCytoplasmAndBeads/Pulls"
+# DirSrc = up.Path_LeicaData + "/26-03-04/Pulls"
+# DirDst = up.Path_AnalysisPulls + "/26-03-04_UVonCytoplasmAndBeads/Pulls"
 
 microscope = 'Leica'
 source_format = 'single file' # 'image collection'
@@ -559,7 +559,7 @@ GetOMEdata = True
 
 scaleFactor = 1/8
 
-forbiddenWords = ['capture', 'captures', 'crop', 'crops', 'croped']
+forbiddenWords = ['bad', 'chopped'] # ['capture', 'captures', 'crop', 'crops', 'croped']
 compulsaryWords = [] # 'M1'
 
 # Disable the Warnings from TiffFile
@@ -851,19 +851,24 @@ for iP, oP in zip(allInputPaths, allOutputPaths):
     
     iD, iF = os.path.split(iP)
     Pid = '_'.join(iF.split('_')[:6])
-    data_OME = get_data_from_OMEtiff(iP)
-    if Save_OME:
-        fTxtName = Pid + '_OmeMd.txt'
-        fBinName = Pid + '_OmeMd.npy'
-        fCsvName = Pid + '_OmeMd.csv'
-        # np.savetxt(os.path.join(DirDst, fTxtName), data, fmt='%.0f', delimiter=' ', 
-        #            newline='\n', header='', footer='', comments='# ', encoding=None)
-        # np.save(os.path.join(DirDst, fBinName), data)
-        data_OME.to_csv(os.path.join(DirDst, fCsvName), float_format = '%.1f', index=False)
-    T = data_OME.loc[(data_OME['iC']==0) & (data_OME['iZ']==0), 't'].values
-    dT = T[1:] - T[:-1]
-    medT = np.median(dT)
-    stdT = np.std(dT)
+    
+    try:
+        data_OME = get_data_from_OMEtiff(iP)
+        if Save_OME:
+            fTxtName = Pid + '_OmeMd.txt'
+            fBinName = Pid + '_OmeMd.npy'
+            fCsvName = Pid + '_OmeMd.csv'
+            # np.savetxt(os.path.join(DirDst, fTxtName), data, fmt='%.0f', delimiter=' ', 
+            #            newline='\n', header='', footer='', comments='# ', encoding=None)
+            # np.save(os.path.join(DirDst, fBinName), data)
+            data_OME.to_csv(os.path.join(DirDst, fCsvName), float_format = '%.1f', index=False)
+        T = data_OME.loc[(data_OME['iC']==0) & (data_OME['iZ']==0), 't'].values
+        dT = T[1:] - T[:-1]
+        medT = np.median(dT)
+        stdT = np.std(dT)
+    except:
+        medT = np.nan
+        stdT = np.nan
     ExpData['film_dt'].append(medT)
     ExpData['film_dt_std'].append(stdT)
 

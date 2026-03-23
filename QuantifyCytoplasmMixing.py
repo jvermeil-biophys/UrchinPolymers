@@ -198,11 +198,11 @@ def get_reasonable_inner_cell_contour(img, PLOT = False):
 def get_numbers_following_text(text, target, output = 'integer'):
     if output == 'integer':
         m = re.search(r''+target, text)
-        m_num = re.search(r'[\d\.]+', text[m.end():m.end()+10])
+        m_num = re.search(r'[\d]+', text[m.end():m.end()+10])
         res = int(text[m.end():m.end()+10][m_num.start():m_num.end()])
     elif output == 'string':
         m = re.search(r''+target, text)
-        m_num = re.search(r'[\d\.-]+', text[m.end():m.end()+10])
+        m_num = re.search(r'[\d-]+', text[m.end():m.end()+10])
         res = str(text[m.end():m.end()+10][m_num.start():m_num.end()])
     return(res)
     
@@ -604,11 +604,11 @@ SCALE = SCALE_40X
 FPS = 1
 file2id = lambda x : '_'.join(x.split('_')[:5])
 
-redo_all_files = False
+redo_all_files = True
  
-dirPath = up.Path_AnalysisPulls + "/26-03-04_UVonCytoplasmAndBeads/Films5min/"
+dirPath = up.Path_AnalysisPulls + "/26-03-20_UVonCytoplasmAndBeads_CalibMagnetJN/Films_5min/"
 listAllFiles = os.listdir(dirPath)
-listTifFiles = [f for f in listAllFiles if ((f.endswith('.tif')) and ('Film5min' in f))]
+listTifFiles = [f for f in listAllFiles if ((f.endswith('.tif')))] #  and ('Film5min' in f)
 
 PaTableName = "MainIrradianceConditions.csv"
 PaTablePath = os.path.join(up.Path_AnalysisPulls, PaTableName)
