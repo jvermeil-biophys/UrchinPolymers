@@ -416,7 +416,7 @@ def tracks_analysis(tracks_data, expLabel = '',
 
     expected_medV = powerLaw(all_medD, *V_popt_pL)
     ratio_fitV = all_medV/expected_medV
-    high_cut = 1.45
+    high_cut = 1.25
     low_cut = 0.55
 
     tracks_data_f2 = []

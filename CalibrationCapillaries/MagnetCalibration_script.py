@@ -100,6 +100,7 @@ runCalibration(mainDir, SCALE, Rb, visco, filesInfo,
 
 # %% 4. Joseph
 
+
 # %%%  25-12-05 - Capillaries with thinner walls
 
 path = 'C:/Users/Utilisateur/Desktop/AnalysisPulls/25-12_DynabeadsInCapillaries_CalibrationsTests'
@@ -491,3 +492,67 @@ fig.suptitle(MainTitle)
 fig.tight_layout()
 
 plt.show()
+
+
+# %%%  26-03-20 - Re-calibrate Jessica's magnet (Magnet_JN)
+
+
+path = 'E:/AnalysisPulls' + '/26-03-20_UVonCytoplasmAndBeads_CalibMagnetJN/Calib_MagnetJN_20X_Gly75p_MyOne_Capi01'
+
+# mainDir is the directory containing the track files (.xml from TrackMate)
+mainDir = path
+
+# saveDir is the directory where the data and the plots will be saved
+saveDir = path
+
+# %%%% Capi01
+
+
+# 26-03-20
+# Jessica Ng's magnet
+# Capilariy 01 - ID=500um, w=100um
+# MyOne Beads in Glycerol 75%
+# T = 22.0°C
+
+expLabel = 'MyOne_Glycerol75%_magnetJN_capi' # The label for this condition - used as a prefix for saved data and plots
+saveResults = True             # If you want to export results as a .json file
+savePlots = True               # If you want to save the plots as a .png file
+Rb = 1 * 0.5                   # Bead radius, µm - here MyOne Dynabeads
+visco = 49.07                  # Medium viscosity, mPa.s - here 75% Gly at 22.0°C
+SCALE = 0.461                  # Microscope scale, µm/pixel
+
+filesInfo = []
+
+#### Film 1
+fI = {}
+fI['fileName'] = '20X_5fps_Gly75p_MyOne_P1_1_Tracks.xml'
+fI['FPS'] = 5
+fI['MagX'], fI['MagY'], fI['MagR'] =  508.5,  521.5, 163 * 0.5 
+fI['CropX'], fI['CropY'] = 0, 0 
+filesInfo.append(fI)
+
+#### Film 2
+fI = {}
+fI['fileName'] = '20X_5fps_Gly75p_MyOne_P2_1_Tracks.xml'
+fI['FPS'] = 5
+fI['MagX'], fI['MagY'], fI['MagR'] =  470.5,  504.5, 163 * 0.5 
+fI['CropX'], fI['CropY'] = 0, 0 
+filesInfo.append(fI)
+
+#### Film 3
+# Too much vibrations
+
+
+
+#### Run the calibration
+runCalibration(mainDir, SCALE, Rb, visco, filesInfo, 
+               saveDir, expLabel, saveResults, savePlots)
+
+
+
+# Jessica's
+# v = @(x) 71.19*exp(-x/73.4807)-28.3824*exp(-x/1.1547);
+
+
+
+

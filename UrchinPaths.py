@@ -23,7 +23,7 @@ if COMPUTERNAME == 'PROCYON-PC': # Ordi Perso
     Path_WorkingData = "E:/WorkingData"
     
 elif COMPUTERNAME == 'MINC05': # IJM
-    Path_AnalysisPulls = "C:/Users/Utilisateur/Desktop/AnalysisPulls"
+    Path_AnalysisPulls = "E:/AnalysisPulls"
     Path_WorkingData = "E:/WorkingData"
     
 elif COMPUTERNAME == 'DESKTOP-9J5NPMO': # LJP
