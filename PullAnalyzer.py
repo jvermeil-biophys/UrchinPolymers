@@ -1369,7 +1369,6 @@ def pullAnalyzer_compareTracks(list_tracks, list_track_ids, list_dict_pull, list
             ax.legend(fontsize = 11).set_zorder(6)
             ax.set_title(track_id, fontsize=10)
         
-                
         
         if mode == 'jeffrey' and PLOT:   
             ax = axes[0, it]
