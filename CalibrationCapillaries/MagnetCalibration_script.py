@@ -554,5 +554,47 @@ runCalibration(mainDir, SCALE, Rb, visco, filesInfo,
 # v = @(x) 71.19*exp(-x/73.4807)-28.3824*exp(-x/1.1547);
 
 
+# %%%% Capi01 - test with the 3rd movie
+
+
+# 26-03-20
+# Jessica Ng's magnet
+# Capilariy 01 - ID=500um, w=100um
+# MyOne Beads in Glycerol 75%
+# T = 22.0°C
+
+expLabel = 'MyOne_Glycerol75%_magnetJN_capi' # The label for this condition - used as a prefix for saved data and plots
+saveResults = True             # If you want to export results as a .json file
+savePlots = True               # If you want to save the plots as a .png file
+Rb = 1 * 0.5                   # Bead radius, µm - here MyOne Dynabeads
+visco = 49.07                  # Medium viscosity, mPa.s - here 75% Gly at 22.0°C
+SCALE = 0.461                  # Microscope scale, µm/pixel
+
+filesInfo = []
+
+#### Film 3
+fI = {}
+fI['fileName'] = '20X_5fps_Gly75p_MyOne_P3_1_Tracks.xml'
+fI['FPS'] = 5
+fI['MagX'], fI['MagY'], fI['MagR'] =  455.5,  499.5, 165 * 0.5 
+fI['CropX'], fI['CropY'] = 0, 0 
+filesInfo.append(fI)
+
+#### Film 3
+# Too much vibrations
+
+
+
+#### Run the calibration
+runCalibration(mainDir, SCALE, Rb, visco, filesInfo, 
+               saveDir, expLabel, saveResults, savePlots)
+
+
+
+# Jessica's
+# v = @(x) 71.19*exp(-x/73.4807)-28.3824*exp(-x/1.1547);
+
+
+
 
 
