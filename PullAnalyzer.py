@@ -320,6 +320,18 @@ MagnetDict = {
             -2.1236746283466172
         ],
     },
+    'magnet_JN_MyOne':{
+        "F_popt_2exp": [
+            7.805139888548116,
+            102.27510392873741,
+            1.2304327867498293,
+            270.4339259099587
+        ],
+        "F_popt_pL": [
+            20963.176438241888,
+            -1.785737243995788
+        ],
+    },
 }
 
 # %% 3. Step-by-step prototype
@@ -1432,6 +1444,31 @@ def pullAnalyzer_compareTracks(list_tracks, list_track_ids, list_dict_pull, list
 
 # %% 12. Run the functions
 
+# %%% 26-04-10_CellsIncubatedwithMix
+
+mainDir = os.path.join("E:/") # Ordi IJM
+# mainDir = os.path.join("C:/Users/josep/Desktop/Seafile") # Ordi perso
+# mainDir = os.path.join("C:/Users/Joseph/Desktop/") # Ordi LJP
+date = '26-04-10'
+subfolder = date + '_CellsIncubatedwithMix'
+
+
+analysisDir = os.path.join(mainDir, 'AnalysisPulls') # where the csv tables are
+tracksDir = os.path.join(analysisDir, subfolder, 'Tracks') # where the tracks are
+resultsDir = os.path.join(analysisDir, subfolder, 'Results')
+plotsDir = os.path.join(analysisDir, subfolder, 'Plots')
+
+# cell = '_M1_C1_Pa0_P3'
+
+# prefix_id = '26-02-11_M1_C1_Pa0_P1' # + cell # used to select a subset of the track files if needed
+prefix_id = '26-04-10' # + cell # used to select a subset of the track files if needed
+
+
+Results = pullAnalyzer_multiFiles(mainDir, date, prefix_id,
+                                    analysisDir, tracksDir, resultsDir, plotsDir,
+                                    fits = ['newton', 'jeffrey'], calibFuncType='PowerLaw',
+                                    resultsFileName = date + '_BeadsPulling',
+                                    Redo = True, PLOT = 2, SHOW = False)
 
 # %%% ... on many files
 
