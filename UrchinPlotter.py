@@ -657,7 +657,174 @@ df_Pulls['total energy'] = df_Pulls['irradiance'] * df_Pulls['duration'] / 1000
 
 #### Extra settings
 
-EXCLUDED_CELLS = ['26-01-14_M1_C1']
+EXCLUDED_CELLS = ['26-01-14_M1_C1',
+                  '26-04-10_M1_C4']
+
+
+# %%% 26-04-10
+
+
+# %%%% Filter pulling dataset
+
+df = df_Pulls
+dates = ['26-04-10'] # '26-01-14', '26-01-27', '26-02-11', '26-03-04', 
+
+df['Lc'] = 6*np.pi*df['bead radius']  
+df['J_modulus'] = df['J_k'] / df['Lc']
+df['J_visco1'] = df['J_gamma1'] / df['Lc']
+df['J_visco2'] = df['J_gamma2'] / df['Lc']
+
+Filters = [
+           (df['N_fit_error'] == False),
+           (df['J_gamma2'] <= 1e3),
+           (df['date'].apply(lambda x: x in dates)),
+           (df['Cell_textid'].apply(lambda x : x not in EXCLUDED_CELLS)),
+           ]
+GlobalFilter = np.ones_like(Filters[0]).astype(bool)
+for F in Filters:
+    GlobalFilter = GlobalFilter & F
+
+df_Pullsf = df[GlobalFilter]
+
+
+# %%%% All data
+
+dff = df_Pullsf
+
+metrics = ['J_k', 'J_gamma1', 'J_gamma2', 'N_viscosity', ]
+metric_names = ['$k_1$ (pN/µm)', '$\gamma_1$ (pN.s/µm)', '$\gamma_2$ (pN.s/µm)', '$\eta_N$ (Pa.s)']
+metric_dict = {m:mn for (m,mn) in zip(metrics, metric_names)}
+
+Pa_ids = dff['Pa_id'].unique()
+
+fig, axes = plt.subplots(2, 2, figsize=(8,5))
+axes_f = axes.flatten()
+
+for k in range(4):
+    ax = axes_f[k]
+    metric = metrics[k]
+    
+    medians = [np.median(dff.loc[dff['Pa_id']==i, metric]) for i in Pa_ids]
+    
+    for i in range(len(Pa_ids)):
+        HW = 0.35
+        ax.plot([i-HW, i+HW], [medians[i], medians[i]], ls='--', lw=2, c='dimgrey')
+    
+    sns.swarmplot(data = dff, ax=ax, 
+                  x = 'Pa_id', y = metric, hue = 'Cell_textid',
+                  size = 6)
+
+    ax.set_xlim([-0.5, len(Pa_ids)-0.5])
+    xticks_labels = ['Ctrl'] + [f'+UV (Pa{str(k)})' for k in Pa_ids[1:]]
+    ax.set_xticks([k for k in range(len(Pa_ids))], xticks_labels, rotation=15)
+    ax.set_xlabel('')
+    ax.set_ylabel(metric_dict[metric])
+    yM = ax.get_ylim()[1]
+    ax.set_ylim([0, 1.25*yM])
+    ax.grid(axis='y')
+    
+    for i in range(len(Pa_ids)):
+        ax.text(i, 1.1*yM, f'{medians[i]:.2f}', ha='center', size = 10, style='italic', c='dimgrey')
+    
+    if k == 1:
+        ax.legend(title='Cell IDs',
+                  loc="upper left",
+                  bbox_to_anchor=(1, 0, 0.5, 1))
+    else:
+        ax.legend().set_visible(False)
+
+fig.tight_layout()
+plt.show()
+
+
+
+# %%%% By cells
+
+metrics = ['J_k', 'J_gamma1', 'J_gamma2', 'N_viscosity', ]
+group = df_Pullsf.groupby(['Cell_textid', 'Pa'])
+agg_dict = {m:'mean' for m in metrics}
+dfg = group.agg(agg_dict)
+dfg = dfg.reset_index()
+dfg = dfg[dfg['Cell_textid'] != '26-04-10_M1_C4']
+
+list_cell_id = dfg['Cell_textid'].values
+for metric in agg_dict.keys():
+    A_norm = np.array([dfg.loc[((dfg['Pa']==0) & (dfg['Cell_textid']==cid)), metric] for cid in list_cell_id]).T
+    A_norm = A_norm[0]
+    dfg[metric + '_norm'] = dfg[metric] / A_norm
+
+metric_names = ['$k_1$ (pN/µm)', '$\gamma_1$ (pN.s/µm)', '$\gamma_2$ (pN.s/µm)', '$\eta_N$ (Pa.s)']
+metric_dict = {m:mn for (m,mn) in zip(metrics, metric_names)}
+
+fig, axes = plt.subplots(2, 2)
+axes_f = axes.flatten()
+
+for k in range(4):
+    ax = axes_f[k]
+    metric = metrics[k]
+    
+    for cid, c in zip(dfg['Cell_textid'].unique(), pm.colorList10):
+        val0 = dfg.loc[((dfg['Pa']==0) & (dfg['Cell_textid']==cid)), metric].values[0]
+        val1 = dfg.loc[((dfg['Pa']==1) & (dfg['Cell_textid']==cid)), metric].values[0]
+        ax.plot(0, val0, 'o', c=c, zorder = 5)
+        ax.plot(1, val1, 'o', c=c, zorder = 5)
+        ax.plot([0, 1], [val0, val1], ls='-', c='dimgray', zorder = 4)
+        
+    
+    
+    ax.set_xlim([-0.5, 1.5])
+    ax.set_xticks([0, 1], ['Ctrl', '+UV'])
+    ax.set_xlabel('')
+    ax.set_ylabel(metric_dict[metric])
+    yM = ax.get_ylim()[1]
+    ax.set_ylim([0, 1.1*yM])
+    
+    ax.grid(axis='y')
+        
+fig.suptitle('Average values by cell', fontsize=16)
+fig.tight_layout()
+plt.show()
+    
+# fig.savefig(savePath + '/res_avgByCell' + '.png', dpi=500)
+    
+    
+metric_names_2 = ['$k_1$ (ratio)', '$\gamma_1$ (ratio)', '$\gamma_2$ (ratio)', '$\eta_N$ (ratio)']
+metric_dict_2 = {m+'_norm':mn for (m,mn) in zip(metrics, metric_names_2)}
+
+fig, axes = plt.subplots(2, 2)
+axes_f = axes.flatten()
+
+for k in range(4):
+    ax = axes_f[k]
+    metric = metrics[k] + '_norm'
+    
+    for cid, c in zip(dfg['Cell_textid'].unique(), pm.colorList10):
+        val0 = dfg.loc[((dfg['Pa']==0) & (dfg['Cell_textid']==cid)), metric].values[0]
+        val1 = dfg.loc[((dfg['Pa']==1) & (dfg['Cell_textid']==cid)), metric].values[0]
+        ax.plot(0, val0, 'o', c=c, zorder = 5)
+        ax.plot(1, val1, 'o', c=c, zorder = 5)
+        ax.plot([0, 1], [val0, val1], ls='-', c='dimgray', zorder = 4)
+    
+    ax.set_xlim([-0.5, 1.5])
+    ax.set_xticks([0, 1], ['Ctrl', '+UV'])
+    ax.set_xlabel('')
+    ax.set_ylabel(metric_dict_2[metric])
+    yM = ax.get_ylim()[1]
+    ax.set_ylim([0, 1.1*yM])
+    
+    ax.grid(axis='y')
+
+fig.tight_layout()
+plt.show()
+
+
+
+
+
+
+
+
+
 
 
 # %%% 26-03-04 compared to previous
@@ -1334,15 +1501,15 @@ savePath = mainDir
 # %%% Plots by cell
 
 metrics = ['J_k', 'J_gamma1', 'J_gamma2', 'N_viscosity', ]
-group = df.groupby(['cell_id', 'Pa'])
+group = df.groupby(['Cell_textid', 'Pa'])
 agg_dict = {m:'mean' for m in metrics}
 dfg = group.agg(agg_dict)
 dfg = dfg.reset_index()
-dfg = dfg[dfg['cell_id'] != '26-01-14_M1_C1']
+dfg = dfg[dfg['Cell_textid'] != '26-01-14_M1_C1']
 
-list_cell_id = dfg['cell_id'].values
+list_cell_id = dfg['Cell_textid'].values
 for metric in agg_dict.keys():
-    A_norm = np.array([dfg.loc[((dfg['Pa']==0) & (dfg['cell_id']==cid)), metric] for cid in list_cell_id]).T
+    A_norm = np.array([dfg.loc[((dfg['Pa']==0) & (dfg['Cell_textid']==cid)), metric] for cid in list_cell_id]).T
     A_norm = A_norm[0]
     dfg[metric + '_norm'] = dfg[metric] / A_norm
 
@@ -1356,9 +1523,9 @@ for k in range(4):
     ax = axes_f[k]
     metric = metrics[k]
     
-    for cid, c in zip(dfg['cell_id'].unique(), pm.colorList10):
-        val0 = dfg.loc[((dfg['Pa']==0) & (dfg['cell_id']==cid)), metric].values[0]
-        val1 = dfg.loc[((dfg['Pa']==1) & (dfg['cell_id']==cid)), metric].values[0]
+    for cid, c in zip(dfg['Cell_textid'].unique(), pm.colorList10):
+        val0 = dfg.loc[((dfg['Pa']==0) & (dfg['Cell_textid']==cid)), metric].values[0]
+        val1 = dfg.loc[((dfg['Pa']==1) & (dfg['Cell_textid']==cid)), metric].values[0]
         ax.plot(0, val0, 'o', c=c, zorder = 5)
         ax.plot(1, val1, 'o', c=c, zorder = 5)
         ax.plot([0, 1], [val0, val1], ls='-', c='dimgray', zorder = 4)
@@ -1391,9 +1558,9 @@ for k in range(4):
     ax = axes_f[k]
     metric = metrics[k] + '_norm'
     
-    for cid, c in zip(dfg['cell_id'].unique(), pm.colorList10):
-        val0 = dfg.loc[((dfg['Pa']==0) & (dfg['cell_id']==cid)), metric].values[0]
-        val1 = dfg.loc[((dfg['Pa']==1) & (dfg['cell_id']==cid)), metric].values[0]
+    for cid, c in zip(dfg['Cell_textid'].unique(), pm.colorList10):
+        val0 = dfg.loc[((dfg['Pa']==0) & (dfg['Cell_textid']==cid)), metric].values[0]
+        val1 = dfg.loc[((dfg['Pa']==1) & (dfg['Cell_textid']==cid)), metric].values[0]
         ax.plot(0, val0, 'o', c=c, zorder = 5)
         ax.plot(1, val1, 'o', c=c, zorder = 5)
         ax.plot([0, 1], [val0, val1], ls='-', c='dimgray', zorder = 4)

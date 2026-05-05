@@ -7,157 +7,22 @@ Created on Mon Dec  1 13:54:28 2025
 
 # %% 1. Imports
 
+import os
 import numpy as np
 import pandas as pd
 import seaborn as sns
-import matplotlib as mpl
-import statsmodels.api as sm
 import matplotlib.pyplot as plt
-import xml.etree.ElementTree as ET
-
-import os
-import json
-import colorsys
 
 from scipy import interpolate, optimize
+
+import PlotMaker as pm
+import UtilityFunctions as ufun
+
 
 
 # %% 2. Helper functions
 
-# %%% Graphic settings
-
-colorListMpl = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd', 
-               '#8c564b', '#e377c2', '#7f7f7f', '#bcbd22', '#17becf']
-
-colorListSns = ['#66c2a5',  '#fc8d62', '#8da0cb', '#e78ac3', '#a6d854','#ffd92f', 
-                '#e5c494', '#b3b3b3', '#e41a1c', '#377eb8', '#4daf4a',
-                '#984ea3', '#ff7f00', '#ffff33', '#a65628', '#f781bf']
-
-colorListSns2 = ['#e41a1c', '#377eb8', '#4daf4a', '#984ea3', '#ff7f00', '#ffff33', 
-                 '#a65628', '#f781bf', '#66c2a5',  '#fc8d62', '#8da0cb', 
-                 '#e78ac3', '#a6d854','#ffd92f', '#e5c494', '#b3b3b3']
-
-def setGraphicOptions(mode = 'screen', colorList = colorListSns):
-    if mode == 'screen':
-        SMALLER_SIZE = 11
-        SMALL_SIZE = 13
-        MEDIUM_SIZE = 16
-        BIGGER_SIZE = 20
-    if mode == 'screen_big':
-        SMALLER_SIZE = 12
-        SMALL_SIZE = 14
-        MEDIUM_SIZE = 18
-        BIGGER_SIZE = 22
-    elif mode == 'print':
-        SMALLER_SIZE = 8
-        SMALL_SIZE = 10
-        MEDIUM_SIZE = 11
-        BIGGER_SIZE = 12
-        
-    plt.rc('font', size=SMALL_SIZE)          # controls default text sizes
-    plt.rc('axes', titlesize=SMALL_SIZE)     # fontsize of the axes title
-    plt.rc('axes', labelsize=SMALL_SIZE)    # fontsize of the x and y labels
-    plt.rc('xtick', labelsize=SMALLER_SIZE)    # fontsize of the tick labels
-    plt.rc('ytick', labelsize=SMALLER_SIZE)    # fontsize of the tick labels
-    plt.rc('legend', fontsize=SMALLER_SIZE)    # legend fontsize
-    plt.rc('figure', titlesize=BIGGER_SIZE)  # fontsize of the figure title
-    
-    mpl.rcParams['axes.prop_cycle'] = mpl.cycler(color=colorList) 
-    
-    
-def lighten_color(color, factor=1.0):
-    """
-    Source : https://gist.github.com/ihincks/6a420b599f43fcd7dbd79d56798c4e5a
-    and : https://stackoverflow.com/questions/37765197/darken-or-lighten-a-color-in-matplotlib
-    Lightens the given color by multiplying (1-luminosity) by the given amount.
-    Input can be matplotlib color string, hex string, or RGB tuple.
-
-    Examples:
-    >> lighten_color('g', 0.3)
-    >> lighten_color('#F034A3', 0.6)
-    >> lighten_color((.3,.55,.1), 0.5)
-    """
-    
-    try:
-        c = mpl.colors.cnames[color]
-    except:
-        c = color
-    c = colorsys.rgb_to_hls(*mpl.colors.to_rgb(c))
-    new_c = colorsys.hls_to_rgb(c[0], max(0, min(1, factor * c[1])), c[2])
-    return(new_c)
-
-
-
-# %%% Fitting routines & functions
-
-
-#### Fitting routines
-def fitLine(X, Y):
-    """
-    returns: results.params, results \n
-    Y=a*X+b ; params[0] = b,  params[1] = a
-    
-    NB:
-        R2 = results.rsquared \n
-        ci = results.conf_int(alpha=0.05) \n
-        CovM = results.cov_params() \n
-        p = results.pvalues \n
-    
-    This is how one should compute conf_int:
-        bse = results.bse \n
-        dist = stats.t \n
-        alpha = 0.05 \n
-        q = dist.ppf(1 - alpha / 2, results.df_resid) \n
-        params = results.params \n
-        lower = params - q * bse \n
-        upper = params + q * bse \n
-    """
-    
-    X = sm.add_constant(X)
-    model = sm.OLS(Y, X)
-    results = model.fit()
-    params = results.params 
-#     print(dir(results))
-    return(results.params, results)
-
-
-def fitLineHuber(X, Y, with_wlm_results = False):
-    """
-    returns: results.params, results \n
-    Y=a*X+b ; params[0] = b,  params[1] = a
-    
-    NB:
-        R2 = results.rsquared \n
-        ci = results.conf_int(alpha=0.05) \n
-        CovM = results.cov_params() \n
-        p = results.pvalues \n
-    
-    This is how one should compute conf_int:
-        bse = results.bse \n
-        dist = stats.t \n
-        alpha = 0.05 \n
-        q = dist.ppf(1 - alpha / 2, results.df_resid) \n
-        params = results.params \n
-        lower = params - q * bse \n
-        upper = params + q * bse \n
-    """
-    
-    X = sm.add_constant(X)
-    model = sm.RLM(Y, X, M=sm.robust.norms.HuberT())
-    results = model.fit()
-    params = results.params
-    
-    if not with_wlm_results:
-        out = (results.params, results)
-    else:
-        weights = results.weights
-        w_model = sm.WLS(Y, X, weights)
-        w_results = w_model.fit()
-        out = (results.params, results, w_results)
-    return(out)
-
-
-#### Good models to fit the Force-Distance function
+# %%% 2.1 Good models to fit the Force-Distance function
 def doubleExpo(x, A, k1, B, k2):
     return(A*np.exp(-x/k1) + B*np.exp(-x/k2))
 
@@ -165,78 +30,7 @@ def powerLaw(x, A, k):
     return(A*(x**k))
 
 
-# %%% File save & load
-
-
-def dict2json(d, dirPath, fileName):
-    for k in d.keys():
-        obj = d[k]
-        if isinstance(obj, np.ndarray):
-            d[k] = d[k].tolist()
-        else:
-            pass
-    with open(os.path.join(dirPath, fileName + '.json'), 'w') as fp:
-        json.dump(d, fp, indent=4)
-        
-        
-def json2dict(dirPath, fileName):
-    with open(os.path.join(dirPath, fileName + '.json'), 'r') as fp:
-        d = json.load(fp)
-    for k in d.keys():
-        obj = d[k]
-        if isinstance(obj, list):
-            d[k] = np.array(d[k])
-        else:
-            pass
-    return(d)
-
-
-def listOfdict2json(L, dirPath, fileName):
-    for d in L:
-        for k in d.keys():
-            obj = d[k]
-            if isinstance(obj, np.ndarray):
-                d[k] = d[k].tolist()
-            else:
-                pass
-    with open(os.path.join(dirPath, fileName + '.json'), 'w') as fp:
-        json.dump(L, fp, indent=4)
-      
-        
-def json2listOfdict(dirPath, fileName):
-    with open(os.path.join(dirPath, fileName + '.json'), 'r') as fp:
-        L = json.load(fp)
-    for d in L:
-        for k in d.keys():
-            obj = d[k]
-            if isinstance(obj, list):
-                d[k] = np.array(d[k])
-            else:
-                pass
-    return(L)
-
-
-def importTrackMateTracks(filepath):
-    """
-    Parse a TrackMate XML file and return list of tracks.
-    Each track: numpy array [t, x, y].
-    """
-    tree = ET.parse(filepath)
-    root = tree.getroot()
-    tracks = []
-    for particle in root.findall('particle'):
-        L = []
-        for detection in particle.iter("detection"):
-            # print(detection)
-            # ID = int(spot.attrib["ID"])
-            t = float(detection.attrib["t"])
-            x = float(detection.attrib["x"])
-            y = float(detection.attrib["y"])
-            L.append([t, x, y])
-        tracks.append(np.array(L))
-    return(tracks)
-
-# %% 2.2 Clean Tracks of weird points when importing them
+# %%% 2.2 Clean Tracks of weird points when importing them
 
 def cleanRawTrack(track):
     track_valid = True
@@ -295,7 +89,7 @@ def tracks_pretreatment(all_tracks, SCALE, FPS,
         tracks_data[i].update({'X':X2, 'Y':Y2,
                                'medX':medX2, 'medY':medY2})
         #### Rotate the trajectory by its own angle
-        parms, res, wlm_res = fitLineHuber(X2, Y2, with_wlm_results=True)
+        parms, res, wlm_res = ufun.fitLineHuber(X2, Y2, with_wlm_results=True)
         b_fit, a_fit = parms
         r2 = wlm_res.rsquared
         theta = np.atan(a_fit)
@@ -345,6 +139,10 @@ def tracks_pretreatment(all_tracks, SCALE, FPS,
                                })
     return(tracks_data)
 
+
+def tracks_trajectories(tracks_data, expLabel = '', 
+                       saveResults = True, savePlots = True, saveDir = '',
+                       return_fig = 0):
 
 
 def tracks_calibration(tracks_data, expLabel = '', 
@@ -500,8 +298,8 @@ def tracks_calibration(tracks_data, expLabel = '',
     #### 3.4 Plot the clean fits
     fig2, axes2 = plt.subplots(2, 2, figsize=(12, 8))
     fig = fig2
-    color_V = colorListMpl[0]
-    color_F = colorListSns[0]
+    color_V = pm.colorListMpl[0]
+    color_F = pm.colorListSns[0]
     ax = axes2[0,0]
     ax.plot(all_D, all_V, ls='', marker='.', alpha = alpha, c = color_V)
     ax.plot(D_plot, V_fit_2exp, ls='-', color='r', label = label_2exp)
@@ -579,8 +377,8 @@ def tracks_calibration(tracks_data, expLabel = '',
                        'all_V':all_V,
                        'all_F':all_F,
                        }
-        listOfdict2json(tracks_data_f2, saveDir, expLabel+'_allTracksData')
-        dict2json(dictResults, saveDir, expLabel+'_fitData')     
+        ufun.listOfdict2json(tracks_data_f2, saveDir, expLabel+'_allTracksData')
+        ufun.dict2json(dictResults, saveDir, expLabel+'_fitData')     
         
     if return_fig == 1:
         return(fig1, axes1)
@@ -589,7 +387,7 @@ def tracks_calibration(tracks_data, expLabel = '',
 
 
 
-def tracks_viscosity(tracks_data, Rb = 0.5, expLabel = '',
+def tracks_calcViscosity(tracks_data, Rb = 0.5, expLabel = '',
                     saveResults = True, savePlots = True, saveDir = '',
                     return_fig = 0):
     
@@ -738,7 +536,7 @@ def tracks_viscosity(tracks_data, Rb = 0.5, expLabel = '',
 def runCalibration(mainDir, SCALE, Rb, visco, filesInfo, 
                    saveDir, expLabel, saveResults, savePlots):
     
-    setGraphicOptions(mode = 'screen_big', colorList = colorListMpl)
+    pm.setGraphicOptions(mode = 'screen_big', colorList = pm.colorListMpl)
     
     tracks_data = [];
     Nfiles = len(filesInfo)
@@ -751,18 +549,18 @@ def runCalibration(mainDir, SCALE, Rb, visco, filesInfo,
         FPS = fI['FPS']
         MagX, MagY, MagR = fI['MagX'], fI['MagY'], fI['MagR']
         CropX, CropY = fI['CropX'], fI['CropY']
-        all_tracks = importTrackMateTracks(filePath)
+        all_tracks = ufun.importTrackMateTracks(filePath)
         tracks_data += tracks_pretreatment(all_tracks, 
                                            SCALE, FPS, MagX, MagY, MagR, 
                                            Rb, visco, CropX, CropY)
     # 2. Run analysis
-    tracks_analysis(tracks_data, expLabel, saveResults, savePlots, saveDir)
+    tracks_calibration(tracks_data, expLabel, saveResults, savePlots, saveDir)
 
 
 def runViscoAnalysis(mainDir, SCALE, Rb, D2F_func, filesInfo, 
                 saveDir, expLabel, saveResults, savePlots):
     
-    setGraphicOptions(mode = 'screen_big', colorList = colorListMpl)
+    pm.setGraphicOptions(mode = 'screen_big', colorList = pm.colorListMpl)
     
     tracks_data = [];
     Nfiles = len(filesInfo)
@@ -775,12 +573,12 @@ def runViscoAnalysis(mainDir, SCALE, Rb, D2F_func, filesInfo,
         FPS = fI['FPS']
         MagX, MagY, MagR = fI['MagX'], fI['MagY'], fI['MagR']
         CropX, CropY = fI['CropX'], fI['CropY']
-        all_tracks = importTrackMateTracks(filePath)
+        all_tracks = ufun.importTrackMateTracks(filePath)
         tracks_data += tracks_pretreatment(all_tracks, SCALE, FPS, 
                                 MagX, MagY, MagR, Rb, CropX, CropY,
                                 D2F_func)
     # 2. Run analysis
-    tracks_analysis(tracks_data, Rb, expLabel, saveResults, savePlots, saveDir)
+    tracks_calcViscosity(tracks_data, Rb, expLabel, saveResults, savePlots, saveDir)
 
 
 def compareCalibrations(srcDir, labelList = [], 
@@ -790,7 +588,7 @@ def compareCalibrations(srcDir, labelList = [],
     supTitle = ''
     saveTitle = ''
     for lab in labelList:
-        fitData = json2dict(srcDir, lab + '_fitData')
+        fitData = ufun.json2dict(srcDir, lab + '_fitData')
         dataList.append(fitData)
         supTitle += (lab + ' vs. ')
         saveTitle += (lab + '-v-')
@@ -803,10 +601,10 @@ def compareCalibrations(srcDir, labelList = [],
     
     for i, data in enumerate(dataList):
         lab = labelList[i]
-        color_V = colorListMpl[i]
-        color_F = colorListMpl[i+len(dataList)]
-        color_fitV = lighten_color(color_V, factor=0.6)
-        color_fitF = lighten_color(color_F, factor=0.6)
+        color_V = pm.colorListMpl[i]
+        color_F = pm.colorListMpl[i+len(dataList)]
+        color_fitV = pm.lighten_color(color_V, factor=0.6)
+        color_fitF = pm.lighten_color(color_F, factor=0.6)
         D_plot = np.linspace(1, 5000, 500)
         all_D, all_V, all_F = data['all_D'], data['all_V'], data['all_F']
         

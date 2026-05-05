@@ -545,8 +545,8 @@ def crop_and_copy(DirSrc, DirDst, allRefPoints, allStackPaths,
 # DirDst = 'C:/Users/Joseph/Desktop/AnalysisPulls/26-03-04_UVonCytoplasmAndBeads/Pulls'
 # DirDst_bins = ''
 
-DirSrc = up.Path_LeicaData + '/26-03-20_UVonCytoplasmAndBeads_CalibMagnetJN/M3_MagnetJN_40X_MyOne_PBS_UV'
-DirDst = up.Path_AnalysisPulls + '/26-03-20_UVonCytoplasmAndBeads_CalibMagnetJN/M3_40X_MyOne_PBS_UV_MagnetJN'
+DirSrc = up.Path_LeicaData + '/26-03-20_UVonCytoplasmAndBeads_CalibMagnetJN/M2_MagnetJN_40X_MyOne_HPMA-20p_I2959-200mM_UV'
+DirDst = up.Path_AnalysisPulls + '/26-03-20_UVonCytoplasmAndBeads_CalibMagnetJN/Pulls/M2_40X_MyOne_HPMA-20p_I2959-200mM_UV_MagnetJN'
 
 # DirSrc = up.Path_LeicaData + "/26-03-04/Pulls"
 # DirDst = up.Path_AnalysisPulls + "/26-03-04_UVonCytoplasmAndBeads/Pulls"
