@@ -11,12 +11,13 @@ import os
 import numpy as np
 import pandas as pd
 import seaborn as sns
+import matplotlib as mpl
 import matplotlib.pyplot as plt
 
 from scipy import interpolate, optimize
 
-import PlotMaker as pm
-import UtilityFunctions as ufun
+import Libs.PlotMaker as pm
+import Libs.UtilityFunctions as ufun
 
 
 
@@ -63,8 +64,8 @@ def cleanAllRawTracks(all_tracks):
 # %% 3. Core functions
 
 def tracks_pretreatment(all_tracks, SCALE, FPS, 
-                        MagX, MagY, MagR, Rb, visco,
-                        CropX, CropY):
+                        MagX, MagY, MagR, Rb, CropX, CropY, 
+                        mode = 'calibMag', D2F_func = None, visco = 0):
     tracks_data = []
     MagX *= SCALE
     MagY *= SCALE
@@ -130,22 +131,117 @@ def tracks_pretreatment(all_tracks, SCALE, FPS,
         #                 left=10, right=10, order=3)
         # V_kalman = dxdt(D, T, kind="kalman", alpha=1)
         V = V_spline # Seems to be the best one
-        # Compute the force, ie the viscous drag for given dynamic viscosity in mPa.s
-        F = 6 * np.pi * visco*1e-3 * Rb*1e-6 * V*1e-6 * 1e12 # pN
+        
+        if mode == 'calibMag':
+            # Compute the force, ie the viscous drag for given dynamic viscosity in mPa.s
+            F = 6 * np.pi * visco*1e-3 * Rb*1e-6 * V*1e-6 * 1e12 # pN
+            
+        elif mode == 'measureVisco':
+            F = D2F_func(D)
+            
         #
         medD, medV, medF = np.median(D), np.median(V), np.median(F)
         tracks_data[i].update({'D':D, 'V':V, 'F':F,
                                'medD':medD, 'medV':medV, 'medF':medF
                                })
+        
     return(tracks_data)
 
 
-def tracks_trajectories(tracks_data, expLabel = '', 
-                       saveResults = True, savePlots = True, saveDir = '',
-                       return_fig = 0):
 
 
-def tracks_calibration(tracks_data, expLabel = '', 
+def tracks_trajectories(mainDir, filesInfo, SCALE, FPS, Rb):
+    
+    pm.setGraphicOptions(mode = 'screen_big', colorList = pm.colorListMpl)
+    
+    tracks_data = [];
+    Nfiles = len(filesInfo)
+    for k in range(Nfiles):
+        fI = filesInfo[k]
+        fileName = fI['fileName']
+        filePath = os.path.join(mainDir, fileName)
+        FPS = fI['FPS']
+        MagX, MagY, MagR = fI['MagX'], fI['MagY'], fI['MagR']
+        CropX, CropY = fI['CropX'], fI['CropY']
+        all_tracks = ufun.importTrackMateTracks(filePath)
+        
+        MagX *= SCALE
+        MagY *= SCALE
+        MagR *= SCALE
+        CropX *= SCALE
+        CropY *= SCALE
+        all_tracks = cleanAllRawTracks(all_tracks)
+    
+        for i, track in enumerate(all_tracks):
+            #### Conversion in um and sec
+            T = track[:, 0] * (1/FPS)
+            X = track[:, 1] * SCALE
+            Y = track[:, 2] * SCALE
+                    
+            tracks_data.append({'T':T, 'Xraw':X, 'Yraw':Y})
+            
+            #### Origin as the magnet center
+            X2, Y2 = (X+CropX)-MagX, MagY-(Y+CropY)
+            # NB: inversion of Y so that the trajectories shown by matplotlib look like the Fiji ones
+            medX2, medY2 = np.median(X2), np.median(Y2)
+            tracks_data[-1].update({'X':X2, 'Y':Y2,
+                                   'medX':medX2, 'medY':medY2})
+            
+            #### Rotate the trajectory by its own angle
+            parms, res, wlm_res = ufun.fitLineHuber(X2, Y2, with_wlm_results=True)
+            b_fit, a_fit = parms
+            r2 = wlm_res.rsquared
+            theta = np.atan(a_fit)
+            tracks_data[-1].update({'a_fit':a_fit, 'b_fit':b_fit, 'r2_fit':r2, 'theta':theta})
+            
+            #### Rotate the trajectory by its angle with the magnet
+            phi = np.atan(medY2/medX2)
+            delta = theta-phi # delta is the angle between the traj fit & strait line to the magnet
+            tracks_data[-1].update({'phi':phi, 'delta':delta})
+    
+    fig, axes = plt.subplots(1, 2)
+    ax = axes[0]
+    circle = mpl.patches.Circle((0, 0), radius=MagR, 
+                                edgecolor='dimgray', linewidth=2, 
+                                facecolor='None', zorder = 12)
+    ax.add_patch(circle)
+    ax.axis('equal')
+    ax.grid()
+    list_x0 = []
+    
+    Xplot = np.linspace(-1000, 1500, 20) * SCALE
+    Nc = len(pm.cL_Set21)
+    
+    for i, track in enumerate(tracks_data):
+        
+        # try:
+        #     print(track['Y'][0])
+        # except:
+        #     return(track)
+        
+        if (np.median(np.abs(track['Y'])) > 200*SCALE) and (track['r2_fit'] >= 0.9):
+            x0 = -track['b_fit']/track['a_fit']
+            list_x0.append(x0)
+            Yplot = track['a_fit'] * Xplot + track['b_fit']
+            c = pm.cL_Set21[i%Nc]
+            
+            ax = axes[0]
+            ax.plot(track['X'], track['Y'], color = pm.lighten_color(c, 0.8), ls='', marker='o', ms=3, zorder=10)
+            ax.plot(Xplot, Yplot, color = c, ls='-', marker='', lw=1, zorder=9, alpha=0.75)
+            ax.plot([x0], [0], color = pm.lighten_color(c, 0.8), marker='P', ms=5, zorder=10)
+            
+    ax = axes[1]
+    sns.swarmplot(ax=ax, y=list_x0)
+    ax.set_ylabel('Magnet x-pos')
+    ax.set_ylim([-200, 30])
+    ax.grid(axis='y')
+        
+        
+    fig.tight_layout()
+    plt.plot()
+    
+    
+def tracks_calibration(tracks_data, expLabel = '',
                        saveResults = True, savePlots = True, saveDir = '',
                        return_fig = 0):
     

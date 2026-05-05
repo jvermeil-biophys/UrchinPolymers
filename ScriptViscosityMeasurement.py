@@ -21,89 +21,19 @@ import colorsys
 
 from scipy import interpolate, optimize
 
-import PlotMaker as pm
-import UrchinPaths as up
-import MagnetsCalibrationsConstants as mcc
-import Toolbox1_CalibrateMagnet_MeasureViscosity as tb1
-
-# %% 2. Helper functions
-
-# %%% Graphic settings
-
-# colorListMpl = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd', 
-#                '#8c564b', '#e377c2', '#7f7f7f', '#bcbd22', '#17becf']
-
-# colorListSns = ['#66c2a5',  '#fc8d62', '#8da0cb', '#e78ac3', '#a6d854','#ffd92f', 
-#                 '#e5c494', '#b3b3b3', '#e41a1c', '#377eb8', '#4daf4a',
-#                 '#984ea3', '#ff7f00', '#ffff33', '#a65628', '#f781bf']
-
-# colorListSns2 = ['#e41a1c', '#377eb8', '#4daf4a', '#984ea3', '#ff7f00', '#ffff33', 
-#                  '#a65628', '#f781bf', '#66c2a5',  '#fc8d62', '#8da0cb', 
-#                  '#e78ac3', '#a6d854','#ffd92f', '#e5c494', '#b3b3b3']
-
-# def setGraphicOptions(mode = 'screen', colorList = colorListSns):
-#     if mode == 'screen':
-#         SMALLER_SIZE = 11
-#         SMALL_SIZE = 13
-#         MEDIUM_SIZE = 16
-#         BIGGER_SIZE = 20
-#     if mode == 'screen_big':
-#         SMALLER_SIZE = 12
-#         SMALL_SIZE = 14
-#         MEDIUM_SIZE = 18
-#         BIGGER_SIZE = 22
-#     elif mode == 'print':
-#         SMALLER_SIZE = 8
-#         SMALL_SIZE = 10
-#         MEDIUM_SIZE = 11
-#         BIGGER_SIZE = 12
-        
-#     plt.rc('font', size=SMALL_SIZE)          # controls default text sizes
-#     plt.rc('axes', titlesize=SMALL_SIZE)     # fontsize of the axes title
-#     plt.rc('axes', labelsize=SMALL_SIZE)    # fontsize of the x and y labels
-#     plt.rc('xtick', labelsize=SMALLER_SIZE)    # fontsize of the tick labels
-#     plt.rc('ytick', labelsize=SMALLER_SIZE)    # fontsize of the tick labels
-#     plt.rc('legend', fontsize=SMALLER_SIZE)    # legend fontsize
-#     plt.rc('figure', titlesize=BIGGER_SIZE)  # fontsize of the figure title
-    
-#     mpl.rcParams['axes.prop_cycle'] = mpl.cycler(color=colorList) 
-    
-    
-# def lighten_color(color, factor=1.0):
-#     """
-#     Source : https://gist.github.com/ihincks/6a420b599f43fcd7dbd79d56798c4e5a
-#     and : https://stackoverflow.com/questions/37765197/darken-or-lighten-a-color-in-matplotlib
-#     Lightens the given color by multiplying (1-luminosity) by the given amount.
-#     Input can be matplotlib color string, hex string, or RGB tuple.
-
-#     Examples:
-#     >> lighten_color('g', 0.3)
-#     >> lighten_color('#F034A3', 0.6)
-#     >> lighten_color((.3,.55,.1), 0.5)
-#     """
-    
-#     try:
-#         c = mpl.colors.cnames[color]
-#     except:
-#         c = color
-#     c = colorsys.rgb_to_hls(*mpl.colors.to_rgb(c))
-#     new_c = colorsys.hls_to_rgb(c[0], max(0, min(1, factor * c[1])), c[2])
-#     return(new_c)
-
+import Libs.PlotMaker as pm
+import Libs.UrchinPaths as up
+import Libs.UtilityFunctions as ufun
+import Libs.MagnetsCalibrationsConstants as mcc
+import Libs.ToolboxCalibVisco as tbcv
 
 
 # %% 2. Run an analysis
 
 # %%% Empty template 
 
-parms_pL = [
-        39603.33040969049,
-        -2.0162526263553215
-    ]
-
-D2F_pL = lambda x : powerLaw(x, *parms_pL)
-
-D2F_func = D2F_pL
+magnet, beads, funcType = 'magnet_JX', 'MyOne', 'power law'
+D2F_func = mcc.getMagnet_D2F(magnet, beads, funcType)
 
 # mainDir is the directory containing the track files (.xml from TrackMate)
 mainDir = ''
@@ -130,29 +60,17 @@ fI['CropX'], fI['CropY'] = 0, 0
 filesInfo.append(fI)
 
 #### Run the analysis
-runAnalysis(mainDir, SCALE, Rb, D2F_func, filesInfo, 
-               saveDir, expLabel, saveResults, savePlots)
+tbcv.runViscoAnalysis(mainDir, SCALE, Rb, D2F_func, filesInfo, 
+                      saveDir, expLabel, saveResults, savePlots)
 
 # %%% 26/04/09
 
 # Source
 # E:\AnalysisPulls\26-03-20_UVonCytoplasmAndBeads_CalibMagnetJN\Calib_MagnetJN_20X_Gly75p_MyOne_Capi01
 # MyOne_Glycerol75%_magnetJN_capi_fitData.json
-parms_2exp = [
-        7.805139888548116,
-        102.27510392873741,
-        1.2304327867498293,
-        270.4339259099587
-    ]
-D2F_2exp = lambda x : doubleExpo(x, *parms_2exp)
-parms_pL = [
-        20963.176438241888,
-        -1.785737243995788
-    ]
 
-D2F_pL = lambda x : powerLaw(x, *parms_pL)
-
-D2F_func = D2F_pL
+magnet, beads, funcType = 'magnet_JN', 'MyOne', 'power law'
+D2F_func = mcc.getMagnet_D2F(magnet, beads, funcType)
 
 # %%%% Capillary 1 Control
 
@@ -191,8 +109,10 @@ filesInfo.append(fI)
 
 
 #### Run the analysis
-runAnalysis(mainDir, SCALE, Rb, D2F_func, filesInfo, 
-               saveDir, expLabel, saveResults, savePlots)
+# runAnalysis(mainDir, SCALE, Rb, D2F_func, filesInfo, 
+#                saveDir, expLabel, saveResults, savePlots)
+tbcv.runViscoAnalysis(mainDir, SCALE, Rb, D2F_func, filesInfo, 
+                      saveDir, expLabel, saveResults, savePlots)
 
 # %%%% Capillary 1 UV 0.03A 5min
 

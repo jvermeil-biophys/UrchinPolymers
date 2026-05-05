@@ -64,7 +64,7 @@ from collections.abc import Collection
 
 #### Local Imports
 
-import PlotMaker as pm
+import Libs.PlotMaker as pm
 
 
 # %% (1) Utility functions
