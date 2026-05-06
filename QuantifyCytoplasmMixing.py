@@ -606,7 +606,7 @@ file2id = lambda x : '_'.join(x.split('_')[:5])
 
 redo_all_files = True
  
-dirPath = up.Path_AnalysisPulls + "/26-03-20_UVonCytoplasmAndBeads_CalibMagnetJN/Films_5min/"
+dirPath = up.Path_AnalysisPulls + "/26-04-08_CellsIncubatedwithMix/Films_5min/"
 listAllFiles = os.listdir(dirPath)
 listTifFiles = [f for f in listAllFiles if ((f.endswith('.tif')))] #  and ('Film5min' in f)
 

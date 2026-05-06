@@ -20,7 +20,8 @@ import json
 import colorsys
 
 from scipy import interpolate, optimize
-import UrchinPaths as up
+
+import Libs.UrchinPaths as up
 
 # %% 2. Helper functions
 
