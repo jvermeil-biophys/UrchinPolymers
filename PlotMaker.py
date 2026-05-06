@@ -713,9 +713,7 @@ def D1Plot(data, fig = None, ax = None, condition='', parameter='',
         fig, ax = plt.subplots(1,1, figsize=(figWidth, figHeight))
     markersize = 5 * markersizeFactor
     linewidth = 0.75*markersizeFactor
-    
-        
-        
+
     palette = getSnsPalette(co_order, styleDict)
     
     #### Swarmplot
@@ -796,8 +794,7 @@ def D1Plot_violin(data, fig = None, ax = None, condition='', parameter='',
         figHeight = 5
         figWidth = 5*Nco*figSizeFactor
         fig, ax = plt.subplots(1,1, figsize=(figWidth, figHeight))    
-        
-        
+
     palette = getSnsPalette(co_order, styleDict)
     
     #### Swarmplot
