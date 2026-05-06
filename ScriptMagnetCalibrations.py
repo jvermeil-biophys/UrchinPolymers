@@ -26,6 +26,10 @@ import Libs.UrchinPaths as up
 import Libs.UtilityFunctions as ufun
 import Libs.MagnetsCalibrationsConstants as mcc
 import Libs.ToolboxCalibVisco as tbcv
+from Libs.GlycerolCalc import getGlycerolViscosity
+# getGlycerolViscosity(ratio, T)
+
+pm.setGraphicOptions(mode = 'screen')
 
 
 # %% 2. Empty template 
@@ -138,43 +142,45 @@ mainDir = up.Path_AnalysisPulls + '26-04-30_CalibMagnet_JV01_and_JN/Tracks'
 # saveDir is the directory where the data and the plots will be saved
 saveDir = up.Path_AnalysisPulls + '26-04-30_CalibMagnet_JV01_and_JN/Results'
 
-expLabel = 'MyOne_Glycerol80%' # The label for this condition - used as a prefix for saved data and plots
-saveResults = True             # If you want to export results as a .json file
-savePlots = True               # If you want to save the plots as a .png file
-Rb = 1 * 0.5                   # Bead radius, µm - here MyOne Dynabeads
-visco = 80.383                 # Medium viscosity, mPa.s - here 80% Gly at 21.8°C
-SCALE = 0.461                  # Microscope scale, µm/pixel
-FPS = 5                        # Frame per second, 1/s
+expLabel = '26-04-30_Magnet-JV01_MyOne_Glycerol80%' # The label for this condition - used as a prefix for saved data and plots
+saveResults = True                      # If you want to export results as a .json file
+savePlots = True                        # If you want to save the plots as a .png file
+Rb = 1 * 0.5                            # Bead radius, µm - here MyOne Dynabeads
+visco = getGlycerolViscosity(0.80, 22)   # Medium viscosity, mPa.s - here 75% Gly at 22°C
+SCALE = 0.461                           # Microscope scale, µm/pixel
+FPS = 5                                 # Frame per second, 1/s
+Mag_dX0 = 84
 
 filesInfo = []
 
 fI = {}
-fI['fileName'] = '26-04-09_M1_Gly80p_Magnet-JV01_capi01_P1_Tracks.xml'
+fI['fileName'] = '26-04-30_M1_Gly80p_Magnet-JV01_capi01_P1_Tracks.xml'
 fI['FPS'] = 5
 fI['MagX'], fI['MagY'], fI['MagR'] =  368, 496, 146 * 0.5 
 fI['CropX'], fI['CropY'] = 0, 0 
 filesInfo.append(fI)
 
 fI = {}
-fI['fileName'] = '26-04-09_M1_Gly80p_Magnet-JV01_capi01_P2_Tracks.xml'
+fI['fileName'] = '26-04-30_M1_Gly80p_Magnet-JV01_capi01_P2_Tracks.xml'
 fI['FPS'] = 5
 fI['MagX'], fI['MagY'], fI['MagR'] =  331.5, 506.5, 149 * 0.5 
 fI['CropX'], fI['CropY'] = 0, 0 
 filesInfo.append(fI)
 
 fI = {}
-fI['fileName'] = '26-04-09_M1_Gly80p_Magnet-JV01_capi01_P3_Tracks.xml'
+fI['fileName'] = '26-04-30_M1_Gly80p_Magnet-JV01_capi01_P3_Tracks.xml'
 fI['FPS'] = 5
 fI['MagX'], fI['MagY'], fI['MagR'] =  354.5, 486.5, 147 * 0.5 
 fI['CropX'], fI['CropY'] = 0, 0 
 filesInfo.append(fI)
 
 
-tbcv.tracks_trajectories(mainDir, filesInfo, SCALE, FPS, Rb)
+# tbcv.tracks_trajectories(mainDir, filesInfo, SCALE, FPS, Rb,
+#                          label=expLabel, saveData=True, dstDir=saveDir)
 
 #### Run the calibration
-# tbcv.runCalibration(mainDir, SCALE, Rb, visco, filesInfo, 
-#                     saveDir, expLabel, saveResults, savePlots)
+tbcv.runCalibration(mainDir, SCALE, Rb, Mag_dX0, visco, filesInfo, 
+                    saveDir, expLabel, saveResults, savePlots)
 
 # %%%% M2 - Magnet_JV01, MyOne, Gly 75%
 
@@ -184,42 +190,126 @@ mainDir = up.Path_AnalysisPulls + '26-04-30_CalibMagnet_JV01_and_JN/Tracks'
 # saveDir is the directory where the data and the plots will be saved
 saveDir = up.Path_AnalysisPulls + '26-04-30_CalibMagnet_JV01_and_JN/Results'
 
-expLabel = 'MyOne_Glycerol75%' # The label for this condition - used as a prefix for saved data and plots
+expLabel = '26-04-30_Magnet-JV01_MyOne_Glycerol75%' # The label for this condition - used as a prefix for saved data and plots
 saveResults = True             # If you want to export results as a .json file
 savePlots = True               # If you want to save the plots as a .png file
 Rb = 1 * 0.5                   # Bead radius, µm - here MyOne Dynabeads
-visco = 49.078                 # Medium viscosity, mPa.s - here 80% Gly at 21.8°C
+visco = getGlycerolViscosity(0.75, 22)   # Medium viscosity, mPa.s - here 75% Gly at 22°C
 SCALE = 0.461                  # Microscope scale, µm/pixel
 FPS = 5                        # Frame per second, 1/s
+Mag_dX0 = 84
 
 filesInfo = []
 
 fI = {}
-fI['fileName'] = '26-04-09_M2_Gly75p_Magnet-JV01_capi02_P1_Tracks.xml'
+fI['fileName'] = '26-04-30_M2_Gly75p_Magnet-JV01_capi02_P1_Tracks.xml'
 fI['FPS'] = 5
 fI['MagX'], fI['MagY'], fI['MagR'] =  449, 525, 146 * 0.5 
 fI['CropX'], fI['CropY'] = 0, 0 
 filesInfo.append(fI)
 
 fI = {}
-fI['fileName'] = '26-04-09_M2_Gly75p_Magnet-JV01_capi02_P2_Tracks.xml'
+fI['fileName'] = '26-04-30_M2_Gly75p_Magnet-JV01_capi02_P2_Tracks.xml'
 fI['FPS'] = 5
 fI['MagX'], fI['MagY'], fI['MagR'] =  490, 522, 150 * 0.5 
 fI['CropX'], fI['CropY'] = 0, 0 
 filesInfo.append(fI)
 
 fI = {}
-fI['fileName'] = '26-04-09_M2_Gly75p_Magnet-JV01_capi02_P3_Tracks.xml'
+fI['fileName'] = '26-04-30_M2_Gly75p_Magnet-JV01_capi02_P3_Tracks.xml'
 fI['FPS'] = 5
 fI['MagX'], fI['MagY'], fI['MagR'] =  467, 503, 150 * 0.5 
 fI['CropX'], fI['CropY'] = 0, 0 
 filesInfo.append(fI)
 
-tbcv.tracks_trajectories(mainDir, filesInfo, SCALE, FPS, Rb)
+# tbcv.tracks_trajectories(mainDir, filesInfo, SCALE, FPS, Rb,
+#                          label=expLabel, saveData=True, dstDir=saveDir)
 
 #### Run the calibration
-# tbcv.runCalibration(mainDir, SCALE, Rb, visco, filesInfo, 
-#                     saveDir, expLabel, saveResults, savePlots)
+tbcv.runCalibration(mainDir, SCALE, Rb, Mag_dX0, visco, filesInfo, 
+                    saveDir, expLabel, saveResults, savePlots)
+
+# %%%% M1 & M2 - Magnet_JV01, MyOne, assuming both were actually Gly 75%
+
+# mainDir is the directory containing the track files (.xml from TrackMate)
+mainDir = up.Path_AnalysisPulls + '26-04-30_CalibMagnet_JV01_and_JN/Tracks'
+
+# saveDir is the directory where the data and the plots will be saved
+saveDir = up.Path_AnalysisPulls + '26-04-30_CalibMagnet_JV01_and_JN/Results'
+
+expLabel = '26-04-30_Magnet-JV01_MyOne_Glycerol75%' # The label for this condition - used as a prefix for saved data and plots
+saveResults = True             # If you want to export results as a .json file
+savePlots = True               # If you want to save the plots as a .png file
+Rb = 1 * 0.5                   # Bead radius, µm - here MyOne Dynabeads
+visco = getGlycerolViscosity(0.75, 22)   # Medium viscosity, mPa.s - here 75% Gly at 22°C
+SCALE = 0.461                  # Microscope scale, µm/pixel
+FPS = 5                        # Frame per second, 1/s
+Mag_dX0 = 84
+
+filesInfo = []
+
+fI = {}
+fI['fileName'] = '26-04-30_M1_Gly80p_Magnet-JV01_capi01_P1_Tracks.xml'
+fI['FPS'] = 5
+fI['MagX'], fI['MagY'], fI['MagR'] =  368, 496, 146 * 0.5 
+fI['CropX'], fI['CropY'] = 0, 0 
+filesInfo.append(fI)
+
+fI = {}
+fI['fileName'] = '26-04-30_M1_Gly80p_Magnet-JV01_capi01_P2_Tracks.xml'
+fI['FPS'] = 5
+fI['MagX'], fI['MagY'], fI['MagR'] =  331.5, 506.5, 149 * 0.5 
+fI['CropX'], fI['CropY'] = 0, 0 
+filesInfo.append(fI)
+
+fI = {}
+fI['fileName'] = '26-04-30_M1_Gly80p_Magnet-JV01_capi01_P3_Tracks.xml'
+fI['FPS'] = 5
+fI['MagX'], fI['MagY'], fI['MagR'] =  354.5, 486.5, 147 * 0.5 
+fI['CropX'], fI['CropY'] = 0, 0 
+filesInfo.append(fI)
+
+fI = {}
+fI['fileName'] = '26-04-30_M2_Gly75p_Magnet-JV01_capi02_P1_Tracks.xml'
+fI['FPS'] = 5
+fI['MagX'], fI['MagY'], fI['MagR'] =  449, 525, 146 * 0.5 
+fI['CropX'], fI['CropY'] = 0, 0 
+filesInfo.append(fI)
+
+fI = {}
+fI['fileName'] = '26-04-30_M2_Gly75p_Magnet-JV01_capi02_P2_Tracks.xml'
+fI['FPS'] = 5
+fI['MagX'], fI['MagY'], fI['MagR'] =  490, 522, 150 * 0.5 
+fI['CropX'], fI['CropY'] = 0, 0 
+filesInfo.append(fI)
+
+fI = {}
+fI['fileName'] = '26-04-30_M2_Gly75p_Magnet-JV01_capi02_P3_Tracks.xml'
+fI['FPS'] = 5
+fI['MagX'], fI['MagY'], fI['MagR'] =  467, 503, 150 * 0.5 
+fI['CropX'], fI['CropY'] = 0, 0 
+filesInfo.append(fI)
+
+# tbcv.tracks_trajectories(mainDir, filesInfo, SCALE, FPS, Rb,
+#                          label=expLabel, saveData=True, dstDir=saveDir)
+
+#### Run the calibration
+tbcv.runCalibration(mainDir, SCALE, Rb, Mag_dX0, visco, filesInfo, 
+                    saveDir, expLabel, saveResults, savePlots)
+
+# %%%% M1 & M2 - Magnet_JV01, MyOne, compare Gly80% and Gly 75%
+
+
+srcDir = up.Path_AnalysisPulls + '26-04-30_CalibMagnet_JV01_and_JN/Results'
+saveDir = up.Path_AnalysisPulls + '26-04-30_CalibMagnet_JV01_and_JN/Results'
+
+labelList = ['26-04-30_Magnet-JV01_MyOne_Glycerol80%', 
+             '26-04-30_Magnet-JV01_MyOne_Glycerol75%']
+
+tbcv.compareCalibrations(srcDir, labelList = labelList, 
+                         savePlots = True, saveDir = saveDir,
+                         showRawData = True, show2ExpFits = False, showPlFits = True)
+    
 
 
 # %%%% M3 - Magnet_JN, MyOne, Gly 80%
@@ -230,45 +320,47 @@ mainDir = up.Path_AnalysisPulls + '26-04-30_CalibMagnet_JV01_and_JN/Tracks'
 # saveDir is the directory where the data and the plots will be saved
 saveDir = up.Path_AnalysisPulls + '26-04-30_CalibMagnet_JV01_and_JN/Results'
 
-expLabel = 'MyOne_Glycerol80%' # The label for this condition - used as a prefix for saved data and plots
+expLabel = '26-04-30_Magnet-JN_MyOne_Glycerol80%' # The label for this condition - used as a prefix for saved data and plots
 saveResults = True             # If you want to export results as a .json file
 savePlots = True               # If you want to save the plots as a .png file
 Rb = 1 * 0.5                   # Bead radius, µm - here MyOne Dynabeads
-visco = 80.383                 # Medium viscosity, mPa.s - here 80% Gly at 21.8°C
+visco = getGlycerolViscosity(0.80, 22)                 # Medium viscosity, mPa.s - here 80% Gly at 21.8°C
 SCALE = 0.461                  # Microscope scale, µm/pixel
-FPS = 5                        # Frame per second, 1/s
+FPS = 5                        # Frame per second, 1/
+Mag_dX0 = 64
 
 filesInfo = []
 
 fI = {}
-fI['fileName'] = '26-04-09_M3_Gly80p_Magnet-JN_capi01_P1_Tracks.xml'
+fI['fileName'] = '26-04-30_M3_Gly80p_Magnet-JN_capi01_P1_Tracks.xml'
 fI['FPS'] = 5
 fI['MagX'], fI['MagY'], fI['MagR'] =  361.5, 528.5, 177 * 0.5 
 fI['CropX'], fI['CropY'] = 0, 0 
 filesInfo.append(fI)
 
 fI = {}
-fI['fileName'] = '26-04-09_M3_Gly80p_Magnet-JN_capi01_P2_Tracks.xml'
+fI['fileName'] = '26-04-30_M3_Gly80p_Magnet-JN_capi01_P2_Tracks.xml'
 fI['FPS'] = 5
 fI['MagX'], fI['MagY'], fI['MagR'] =  395, 525, 180 * 0.5 
 fI['CropX'], fI['CropY'] = 0, 0 
 filesInfo.append(fI)
 
 fI = {}
-fI['fileName'] = '26-04-09_M3_Gly80p_Magnet-JN_capi01_P3_Tracks.xml'
+fI['fileName'] = '26-04-30_M3_Gly80p_Magnet-JN_capi01_P3_Tracks.xml'
 fI['FPS'] = 5
 fI['MagX'], fI['MagY'], fI['MagR'] =  370.5, 523.5, 179 * 0.5 
 fI['CropX'], fI['CropY'] = 0, 0 
 filesInfo.append(fI)
 
-tbcv.tracks_trajectories(mainDir, filesInfo, SCALE, FPS, Rb)
+# tbcv.tracks_trajectories(mainDir, filesInfo, SCALE, FPS, Rb,
+#                          label=expLabel, saveData=True, dstDir=saveDir)
 
 #### Run the calibration
-# tbcv.runCalibration(mainDir, SCALE, Rb, visco, filesInfo, 
-#                     saveDir, expLabel, saveResults, savePlots)
+tbcv.runCalibration(mainDir, SCALE, Rb, Mag_dX0, visco, filesInfo, 
+                    saveDir, expLabel, saveResults, savePlots)
 
 
-# %%%% M4  - Magnet_JN, MyOne, Gly 75%
+# %%%% M4 - Magnet_JN, MyOne, Gly 75%
 
 # mainDir is the directory containing the track files (.xml from TrackMate)
 mainDir = up.Path_AnalysisPulls + '26-04-30_CalibMagnet_JV01_and_JN/Tracks'
@@ -276,42 +368,144 @@ mainDir = up.Path_AnalysisPulls + '26-04-30_CalibMagnet_JV01_and_JN/Tracks'
 # saveDir is the directory where the data and the plots will be saved
 saveDir = up.Path_AnalysisPulls + '26-04-30_CalibMagnet_JV01_and_JN/Results'
 
-expLabel = 'MyOne_Glycerol75%' # The label for this condition - used as a prefix for saved data and plots
+expLabel = '26-04-30_Magnet-JN_MyOne_Glycerol75%' # The label for this condition - used as a prefix for saved data and plots
 saveResults = True             # If you want to export results as a .json file
 savePlots = True               # If you want to save the plots as a .png file
 Rb = 1 * 0.5                   # Bead radius, µm - here MyOne Dynabeads
-visco = 49.078                 # Medium viscosity, mPa.s - here 80% Gly at 21.8°C
+visco = getGlycerolViscosity(0.75, 22)                 # Medium viscosity, mPa.s - here 80% Gly at 21.8°C
 SCALE = 0.461                  # Microscope scale, µm/pixel
 FPS = 5                        # Frame per second, 1/s
+Mag_dX0 = 64
 
 filesInfo = []
 
 fI = {}
-fI['fileName'] = '26-04-09_M4_Gly75p_Magnet-JN_capi02_P1_Tracks.xml'
+fI['fileName'] = '26-04-30_M4_Gly75p_Magnet-JN_capi02_P1_Tracks.xml'
 fI['FPS'] = 5
 fI['MagX'], fI['MagY'], fI['MagR'] =  448, 509, 168 * 0.5 
 fI['CropX'], fI['CropY'] = 0, 0 
 filesInfo.append(fI)
 
 fI = {}
-fI['fileName'] = '26-04-09_M4_Gly75p_Magnet-JN_capi02_P2_Tracks.xml'
+fI['fileName'] = '26-04-30_M4_Gly75p_Magnet-JN_capi02_P2_Tracks.xml'
 fI['FPS'] = 5
 fI['MagX'], fI['MagY'], fI['MagR'] =  456.5, 507.5, 173 * 0.5 
 fI['CropX'], fI['CropY'] = 0, 0 
 filesInfo.append(fI)
 
 fI = {}
-fI['fileName'] = '26-04-09_M4_Gly75p_Magnet-JN_capi02_P3_Tracks.xml'
+fI['fileName'] = '26-04-30_M4_Gly75p_Magnet-JN_capi02_P3_Tracks.xml'
 fI['FPS'] = 5
 fI['MagX'], fI['MagY'], fI['MagR'] =  460, 506, 172 * 0.5 
 fI['CropX'], fI['CropY'] = 0, 0 
 filesInfo.append(fI)
 
+# tbcv.tracks_trajectories(mainDir, filesInfo, SCALE, FPS, Rb,
+#                          label=expLabel, saveData=True, dstDir=saveDir)
 
 #### Run the calibration
-tbcv.runCalibration(mainDir, SCALE, Rb, visco, filesInfo, 
+tbcv.runCalibration(mainDir, SCALE, Rb, Mag_dX0, visco, filesInfo, 
                     saveDir, expLabel, saveResults, savePlots)
 
+
+# %%%% M3 & M4 - Magnet_JN, MyOne, assuming both were actually Gly 75%
+
+
+# mainDir is the directory containing the track files (.xml from TrackMate)
+mainDir = up.Path_AnalysisPulls + '26-04-30_CalibMagnet_JV01_and_JN/Tracks'
+
+# saveDir is the directory where the data and the plots will be saved
+saveDir = up.Path_AnalysisPulls + '26-04-30_CalibMagnet_JV01_and_JN/Results'
+
+expLabel = '26-04-30_Magnet-JN_MyOne_Glycerol75%' # The label for this condition - used as a prefix for saved data and plots
+saveResults = True             # If you want to export results as a .json file
+savePlots = True               # If you want to save the plots as a .png file
+Rb = 1 * 0.5                   # Bead radius, µm - here MyOne Dynabeads
+visco = getGlycerolViscosity(0.75, 22)                 # Medium viscosity, mPa.s - here 80% Gly at 21.8°C
+SCALE = 0.461                  # Microscope scale, µm/pixel
+FPS = 5                        # Frame per second, 1/s
+Mag_dX0 = 64 # µm
+
+filesInfo = []
+
+fI = {}
+fI['fileName'] = '26-04-30_M3_Gly80p_Magnet-JN_capi01_P1_Tracks.xml'
+fI['FPS'] = 5
+fI['MagX'], fI['MagY'], fI['MagR'] =  361.5, 528.5, 177 * 0.5 
+fI['CropX'], fI['CropY'] = 0, 0 
+filesInfo.append(fI)
+
+fI = {}
+fI['fileName'] = '26-04-30_M3_Gly80p_Magnet-JN_capi01_P2_Tracks.xml'
+fI['FPS'] = 5
+fI['MagX'], fI['MagY'], fI['MagR'] =  395, 525, 180 * 0.5 
+fI['CropX'], fI['CropY'] = 0, 0 
+filesInfo.append(fI)
+
+fI = {}
+fI['fileName'] = '26-04-30_M3_Gly80p_Magnet-JN_capi01_P3_Tracks.xml'
+fI['FPS'] = 5
+fI['MagX'], fI['MagY'], fI['MagR'] =  370.5, 523.5, 179 * 0.5 
+fI['CropX'], fI['CropY'] = 0, 0 
+filesInfo.append(fI)
+
+fI = {}
+fI['fileName'] = '26-04-30_M4_Gly75p_Magnet-JN_capi02_P1_Tracks.xml'
+fI['FPS'] = 5
+fI['MagX'], fI['MagY'], fI['MagR'] =  448, 509, 168 * 0.5 
+fI['CropX'], fI['CropY'] = 0, 0 
+filesInfo.append(fI)
+
+fI = {}
+fI['fileName'] = '26-04-30_M4_Gly75p_Magnet-JN_capi02_P2_Tracks.xml'
+fI['FPS'] = 5
+fI['MagX'], fI['MagY'], fI['MagR'] =  456.5, 507.5, 173 * 0.5 
+fI['CropX'], fI['CropY'] = 0, 0 
+filesInfo.append(fI)
+
+fI = {}
+fI['fileName'] = '26-04-30_M4_Gly75p_Magnet-JN_capi02_P3_Tracks.xml'
+fI['FPS'] = 5
+fI['MagX'], fI['MagY'], fI['MagR'] =  460, 506, 172 * 0.5 
+fI['CropX'], fI['CropY'] = 0, 0 
+filesInfo.append(fI)
+
+tbcv.tracks_trajectories(mainDir, filesInfo, SCALE, FPS, Rb,
+                         label=expLabel, saveData=True, dstDir=saveDir)
+
+#### Run the calibration
+tbcv.runCalibration(mainDir, SCALE, Rb, Mag_dX0, visco, filesInfo, 
+                    saveDir, expLabel, saveResults, savePlots)
+
+
+# %%%% M3 & M4 - Magnet_JN, MyOne, compare Gly80% and Gly 75%
+
+
+srcDir = up.Path_AnalysisPulls + '26-04-30_CalibMagnet_JV01_and_JN/Results'
+saveDir = up.Path_AnalysisPulls + '26-04-30_CalibMagnet_JV01_and_JN/Results'
+
+labelList = ['26-03-20_Magnet-JN_MyOne_Glycerol75%',
+             '26-04-30_Magnet-JN_MyOne_Glycerol75%',
+             ]
+
+tbcv.compareCalibrations(srcDir, labelList = labelList, 
+                         savePlots = True, saveDir = saveDir,
+                         showRawData = True, show2ExpFits = False, showPlFits = True)
+
+# %%%% M1 & M2 & M3 & M4 - Magnet_JN, MyOne, compare Gly80% and Gly 75%
+
+
+srcDir = up.Path_AnalysisPulls + '26-04-30_CalibMagnet_JV01_and_JN/Results'
+saveDir = up.Path_AnalysisPulls + '26-04-30_CalibMagnet_JV01_and_JN/Results'
+
+labelList = ['26-03-20_Magnet-JN_MyOne_Glycerol75%',
+             '26-04-30_Magnet-JN_MyOne_Glycerol75%',
+             '26-04-30_Magnet-JV01_MyOne_Glycerol75%',
+             ]
+
+tbcv.compareCalibrations(srcDir, labelList = labelList, 
+                         savePlots = True, saveDir = saveDir,
+                         showRawData = True, show2ExpFits = False, showPlFits = True)
 
 # %%% ----------------------------
 
@@ -426,6 +620,64 @@ tbcv.runCalibration(mainDir, SCALE, Rb, visco, filesInfo,
 # Jessica's
 # v = @(x) 71.19*exp(-x/73.4807)-28.3824*exp(-x/1.1547);
 
+
+# %%%% Retry with new code
+
+
+# 26-03-20
+# Jessica Ng's magnet
+# Capilariy 01 - ID=500um, w=100um
+# MyOne Beads in Glycerol 75%
+# T = 22.0°C
+
+# mainDir is the directory containing the track files (.xml from TrackMate)
+mainDir = up.Path_AnalysisPulls + \
+        '/26-03-20_UVonCytoplasmAndBeads_CalibMagnetJN/Calib_MagnetJN_20X_Gly75p_MyOne_Capi01'
+
+# saveDir is the directory where the data and the plots will be saved
+saveDir = up.Path_AnalysisPulls + \
+        '/26-03-20_UVonCytoplasmAndBeads_CalibMagnetJN/Calib_MagnetJN_20X_Gly75p_MyOne_Capi01/Results'
+
+expLabel = '26-03-20_Magnet-JN_MyOne_Glycerol75%' # The label for this condition - used as a prefix for saved data and plots
+saveResults = True             # If you want to export results as a .json file
+savePlots = True               # If you want to save the plots as a .png file
+Rb = 1 * 0.5                   # Bead radius, µm - here MyOne Dynabeads
+visco = getGlycerolViscosity(0.75, 22)                  # Medium viscosity, mPa.s - here 75% Gly at 22.0°C
+SCALE = 0.461                  # Microscope scale, µm/pixel
+Mag_dX0 = 50 # µm
+
+filesInfo = []
+
+#### Film 1
+fI = {}
+fI['fileName'] = '20X_5fps_Gly75p_MyOne_P1_1_Tracks.xml'
+fI['FPS'] = 5
+fI['MagX'], fI['MagY'], fI['MagR'] =  508.5,  521.5, 163 * 0.5 
+fI['CropX'], fI['CropY'] = 0, 0 
+filesInfo.append(fI)
+
+#### Film 2
+fI = {}
+fI['fileName'] = '20X_5fps_Gly75p_MyOne_P2_1_Tracks.xml'
+fI['FPS'] = 5
+fI['MagX'], fI['MagY'], fI['MagR'] =  470.5,  504.5, 163 * 0.5 
+fI['CropX'], fI['CropY'] = 0, 0 
+filesInfo.append(fI)
+
+#### Film 3
+# Too much vibrations
+
+tbcv.tracks_trajectories(mainDir, filesInfo, SCALE, FPS, Rb,
+                         label=expLabel, saveData=True, dstDir=saveDir)
+
+#### Run the calibration
+tbcv.runCalibration(mainDir, SCALE, Rb, Mag_dX0, visco, filesInfo, 
+               saveDir, expLabel, saveResults, savePlots)
+
+
+
+# Jessica's
+# v = @(x) 71.19*exp(-x/73.4807)-28.3824*exp(-x/1.1547);
 
 # %%% ----------------------------
 

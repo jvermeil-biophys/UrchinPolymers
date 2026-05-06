@@ -271,15 +271,15 @@ def consoleTextTester_02():
 
 def setGraphicOptions(mode = 'screen', palette = 'Set2', colorList = cL_Set21):
     if mode == 'screen':
-        SMALLER_SIZE = 11
-        SMALL_SIZE = 13
-        MEDIUM_SIZE = 16
-        BIGGER_SIZE = 20
+        SMALLER_SIZE = 10
+        SMALL_SIZE = 12
+        MEDIUM_SIZE = 14
+        BIGGER_SIZE = 16
     if mode == 'screen_big':
         SMALLER_SIZE = 12
         SMALL_SIZE = 14
-        MEDIUM_SIZE = 18
-        BIGGER_SIZE = 22
+        MEDIUM_SIZE = 16
+        BIGGER_SIZE = 20
     elif mode == 'print':
         SMALLER_SIZE = 8
         SMALL_SIZE = 10
@@ -292,7 +292,7 @@ def setGraphicOptions(mode = 'screen', palette = 'Set2', colorList = cL_Set21):
     plt.rc('xtick', labelsize=SMALLER_SIZE)    # fontsize of the tick labels
     plt.rc('ytick', labelsize=SMALLER_SIZE)    # fontsize of the tick labels
     plt.rc('legend', fontsize=SMALLER_SIZE)    # legend fontsize
-    plt.rc('figure', titlesize=BIGGER_SIZE)  # fontsize of the figure title
+    plt.rc('figure', titlesize=MEDIUM_SIZE)  # fontsize of the figure title
     
     sns.set_palette(sns.color_palette(palette))
     matplotlib.rcParams['axes.prop_cycle'] = matplotlib.cycler(color=colorList) 

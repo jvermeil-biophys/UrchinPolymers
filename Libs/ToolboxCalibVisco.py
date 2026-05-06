@@ -63,13 +63,14 @@ def cleanAllRawTracks(all_tracks):
 
 # %% 3. Core functions
 
-def tracks_pretreatment(all_tracks, SCALE, FPS, 
-                        MagX, MagY, MagR, Rb, CropX, CropY, 
+def rawTracks_pretreatment(all_tracks, SCALE, FPS, 
+                        MagX, MagY, MagR, Rb, CropX, CropY, Mag_dX0,
                         mode = 'calibMag', D2F_func = None, visco = 0):
     tracks_data = []
     MagX *= SCALE
     MagY *= SCALE
     MagR *= SCALE
+    # Mag_dX0 is already in µm
     CropX *= SCALE
     CropY *= SCALE
     all_tracks = cleanAllRawTracks(all_tracks)
@@ -83,9 +84,9 @@ def tracks_pretreatment(all_tracks, SCALE, FPS,
         tracks_data.append({'T':T, 'Xraw':X, 'Yraw':Y})
         
         #### Origin as the magnet center
-        X2, Y2 = (X+CropX)-MagX, MagY-(Y+CropY)
-        # NB: inversion of Y so that the trajectories 
-        # shown by matplotlib look like the Fiji ones
+        X2, Y2 = (X + CropX) - MagX + Mag_dX0, MagY - (Y + CropY)
+        # NB: inversion of Y so that the trajectories shown by matplotlib look like the Fiji ones
+        # Mag_dX0 is here to locate the position within the magnet where the beads converge
         medX2, medY2 = np.median(X2), np.median(Y2)
         tracks_data[i].update({'X':X2, 'Y':Y2,
                                'medX':medX2, 'medY':medY2})
@@ -113,7 +114,10 @@ def tracks_pretreatment(all_tracks, SCALE, FPS,
                                # 'X4':X4, 'Y4':Y4,
                                })
         #### Compute distances [Several possible definitions]
-        D2 = np.array(((X2**2 + Y2**2)**0.5) - MagR) # Seems like the best one
+        D2 = np.array((X2**2 + Y2**2)**0.5) # Seems like the best one
+        
+        # D2 = np.array(((X2**2 + Y2**2)**0.5) - MagR) # Seems like the best one
+        
         # D3 = np.array(X3 - MagR)
         # D4 = np.array(X4 - MagR) # Note: D4 == D2, almost
         # tracks_data[i].update({'D2':D2, 'D3':D3, 'D4':D4,
@@ -150,7 +154,8 @@ def tracks_pretreatment(all_tracks, SCALE, FPS,
 
 
 
-def tracks_trajectories(mainDir, filesInfo, SCALE, FPS, Rb):
+def tracks_trajectories(mainDir, filesInfo, SCALE, FPS, Rb, 
+                        saveData = False, dstDir = '', label = ''):
     
     pm.setGraphicOptions(mode = 'screen_big', colorList = pm.colorListMpl)
     
@@ -187,65 +192,101 @@ def tracks_trajectories(mainDir, filesInfo, SCALE, FPS, Rb):
             tracks_data[-1].update({'X':X2, 'Y':Y2,
                                    'medX':medX2, 'medY':medY2})
             
-            #### Rotate the trajectory by its own angle
+            #### Angle of the trajectory
             parms, res, wlm_res = ufun.fitLineHuber(X2, Y2, with_wlm_results=True)
             b_fit, a_fit = parms
             r2 = wlm_res.rsquared
             theta = np.atan(a_fit)
             tracks_data[-1].update({'a_fit':a_fit, 'b_fit':b_fit, 'r2_fit':r2, 'theta':theta})
             
-            #### Rotate the trajectory by its angle with the magnet
+            #### Angle with the magnet
             phi = np.atan(medY2/medX2)
             delta = theta-phi # delta is the angle between the traj fit & strait line to the magnet
             tracks_data[-1].update({'phi':phi, 'delta':delta})
     
-    fig, axes = plt.subplots(1, 2)
+    fig = plt.figure(figsize=(10, 6))
+    gs = mpl.gridspec.GridSpec(1, 3, figure=fig)
+    ax1 = fig.add_subplot(gs[:2])
+    ax2 = fig.add_subplot(gs[-1])
+    axes = [ax1, ax2]
+
     ax = axes[0]
     circle = mpl.patches.Circle((0, 0), radius=MagR, 
-                                edgecolor='dimgray', linewidth=2, 
+                                edgecolor='k', linewidth=1.5, 
                                 facecolor='None', zorder = 12)
     ax.add_patch(circle)
     ax.axis('equal')
     ax.grid()
     list_x0 = []
     
-    Xplot = np.linspace(-1000, 1500, 20) * SCALE
+    Xplot = np.linspace(-500/SCALE, 700/SCALE, 20) * SCALE
     Nc = len(pm.cL_Set21)
     
     for i, track in enumerate(tracks_data):
         
-        # try:
-        #     print(track['Y'][0])
-        # except:
-        #     return(track)
-        
-        if (np.median(np.abs(track['Y'])) > 200*SCALE) and (track['r2_fit'] >= 0.9):
+        if (np.median(np.abs(track['Y'])) > 200*SCALE) and (track['r2_fit'] >= 0.98) and (len(track['Y']) > 100):
             x0 = -track['b_fit']/track['a_fit']
             list_x0.append(x0)
             Yplot = track['a_fit'] * Xplot + track['b_fit']
             c = pm.cL_Set21[i%Nc]
             
             ax = axes[0]
-            ax.plot(track['X'], track['Y'], color = pm.lighten_color(c, 0.8), ls='', marker='o', ms=3, zorder=10)
+            ax.plot(track['X'], track['Y'], color = pm.lighten_color(c, 0.8), ls='', marker='o', ms=1, zorder=10)
             ax.plot(Xplot, Yplot, color = c, ls='-', marker='', lw=1, zorder=9, alpha=0.75)
-            ax.plot([x0], [0], color = pm.lighten_color(c, 0.8), marker='P', ms=5, zorder=10)
+            ax.plot([x0], [0], color = pm.lighten_color(c, 0.8), marker='P', ms=3, zorder=10, alpha=0.75)
+            
+    ax = axes[0]
+    ax.set_xlabel('x (µm)')
+    ax.set_ylabel('y (µm)')
+    ax.set_xlim([-300, 500])
+    ax.set_ylim([-400, 400])
             
     ax = axes[1]
-    sns.swarmplot(ax=ax, y=list_x0)
-    ax.set_ylabel('Magnet x-pos')
+    list_x0 = np.array(list_x0)
+    med = np.median(list_x0)
+    Perc = 5
+    pLow, pHigh = np.percentile(list_x0, Perc), np.percentile(list_x0, 100-Perc)
+    list_x0_b = (list_x0 > pLow) & (list_x0 < pHigh)
+    list_x0_f = list_x0[list_x0_b]
+    mean, std, ste = np.mean(list_x0_f), np.std(list_x0_f), np.std(list_x0_f)/(len(list_x0)**0.5)
+    
+    sns.swarmplot(ax=ax, y=list_x0, s=7, alpha = 0.8, zorder=4)
+    sns.swarmplot(ax=ax, y=list_x0_f, s=7, zorder=5)
+    ax.axhline(med, ls='-', lw=2, color='darkred', zorder=3, label=f'Median={med:.1f}')
+    ax.errorbar([0], mean, yerr=std, xerr=None, color = 'dimgray', # ecolor=None, 
+                ls = '', marker = '+', markersize = 8, mew = 1.5,
+                elinewidth=1.5, capsize=3, capthick=2, zorder=5)
+    ax.errorbar([0], mean, yerr=ste, xerr=None, color = 'black', # ecolor=None, 
+                ls = '', marker = '+', markersize = 8, mew = 1.5,
+                elinewidth=1.5, capsize=3, capthick=1.5, zorder=5, 
+                label=f'Mean={mean:.1f}' + r'$\pm $' + f'{ste:.1f}')
+    ax.set_ylabel('x for y=0')
+    ax.set_xlabel(' ')
     ax.set_ylim([-200, 30])
     ax.grid(axis='y')
-        
-        
+    ax.legend(handlelength = 1)
+    
+    if len(label) > 0:
+        fig.suptitle(label, y=0.95)
     fig.tight_layout()
     plt.plot()
+    
+    if saveData:
+        resDict = {'list_x0' : list_x0,
+                   'list_x0_f' : list_x0_f,
+                   'median' : med, 'mean' : mean, 
+                   'std' : std, 'ste' : ste}
+        ufun.dict2json(resDict, dirPath = dstDir, fileName = label + '_trajResults')
+        fig.savefig(os.path.join(dstDir, label + '_trajPlots.png'), dpi=300)
+        
+    
     
     
 def tracks_calibration(tracks_data, expLabel = '',
                        saveResults = True, savePlots = True, saveDir = '',
-                       return_fig = 0):
+                       return_fig = 0, MagR=60, Mag_dX0=0):
     
-    MagR = 60 # µm - Typical Diameter
+    # MagR = 60 # µm - Typical Diameter
     
     #### 1.1 First filter
     tracks_data_f1 = []
@@ -257,7 +298,7 @@ def tracks_calibration(tracks_data, expLabel = '',
         if (crit1 and crit2 and crit3):
             tracks_data_f1.append(track)
         
-    fig1, axes1 = plt.subplots(1, 3, figsize = (24, 8))
+    fig1, axes1 = plt.subplots(1, 3, figsize = (18, 6))
     fig = fig1
     #### 1.2 Plot all trajectories
     ax = axes1[0]
@@ -274,7 +315,7 @@ def tracks_calibration(tracks_data, expLabel = '',
         ax.plot(X, Y)
 
     for ax in axes1[:2]:
-        circle1 = plt.Circle((0, 0), MagR, color='dimgrey')
+        circle1 = plt.Circle((Mag_dX0, 0), MagR, color='dimgrey')
         ax.add_patch(circle1)
         # ax.axvspan(wall_L, wall_R, color='lightgray', zorder=0)
         ax.set_xlim([0, 800])
@@ -312,7 +353,7 @@ def tracks_calibration(tracks_data, expLabel = '',
     expected_medV = powerLaw(all_medD, *V_popt_pL)
     ratio_fitV = all_medV/expected_medV
     high_cut = 1.25
-    low_cut = 0.55
+    low_cut = 0.75
 
     tracks_data_f2 = []
     removed_tracks = []
@@ -489,6 +530,12 @@ def tracks_calcViscosity(tracks_data, Rb = 0.5, expLabel = '',
     
     MagR = 60 # µm - Typical Diameter
     
+    #### To Do !!
+    # - Refine between the two ways to measure visco
+    # - Exclude outliers in a smart way (percentiles)
+    
+    
+    
     #### 1.1 First filter
     tracks_data_f1 = []
     for track in tracks_data:
@@ -554,7 +601,7 @@ def tracks_calcViscosity(tracks_data, Rb = 0.5, expLabel = '',
     expected_medV = powerLaw(all_medD, *V_popt_pL)
     ratio_fitV = all_medV/expected_medV
     high_cut = 1.25
-    low_cut = 0.55
+    low_cut = 0.75
 
     tracks_data_f2 = []
     removed_tracks = []
@@ -624,18 +671,34 @@ def tracks_calcViscosity(tracks_data, Rb = 0.5, expLabel = '',
     ax.legend(fontsize=10)
     
     fig2.tight_layout()
-    
     plt.show()
+    
+    if savePlots:
+        fig1.savefig(os.path.join(saveDir, expLabel + '_Traj.png'), dpi=400)
+        fig2.savefig(os.path.join(saveDir, expLabel + '_Fits.png'), dpi=400)
+        
+    # if saveResults:
+    #     dictResults = {'V_popt_2exp':V_popt_2exp,
+    #                    'V_popt_pL':V_popt_pL,
+    #                    'F_popt_2exp':F_popt_2exp,
+    #                    'F_popt_pL':F_popt_pL,
+    #                    'all_D':all_D,
+    #                    'all_V':all_V,
+    #                    'all_F':all_F,
+    #                    }
+    #     ufun.listOfdict2json(tracks_data_f2, saveDir, expLabel+'_allTracksData')
+    #     ufun.dict2json(dictResults, saveDir, expLabel+'_fitData')
     
 # %% 4. Main functions
 
-def runCalibration(mainDir, SCALE, Rb, visco, filesInfo, 
+def runCalibration(mainDir, SCALE, Rb, Mag_dX0, visco, filesInfo, 
                    saveDir, expLabel, saveResults, savePlots):
     
-    pm.setGraphicOptions(mode = 'screen_big', colorList = pm.colorListMpl)
+    pm.setGraphicOptions(mode = 'screen', colorList = pm.colorListMpl)
     
     tracks_data = [];
     Nfiles = len(filesInfo)
+    list_MagR = []
 
     # 1. Import all the files data & run the pretreatment
     for i in range(Nfiles):
@@ -645,18 +708,20 @@ def runCalibration(mainDir, SCALE, Rb, visco, filesInfo,
         FPS = fI['FPS']
         MagX, MagY, MagR = fI['MagX'], fI['MagY'], fI['MagR']
         CropX, CropY = fI['CropX'], fI['CropY']
+        list_MagR.append(MagR*SCALE)
         all_tracks = ufun.importTrackMateTracks(filePath)
-        tracks_data += tracks_pretreatment(all_tracks, 
-                                           SCALE, FPS, MagX, MagY, MagR, 
-                                           Rb, visco, CropX, CropY)
+        tracks_data += rawTracks_pretreatment(all_tracks, SCALE, FPS, 
+                                MagX, MagY, MagR, Rb, CropX, CropY, Mag_dX0,
+                                mode = 'calibMag', visco = visco)
     # 2. Run analysis
-    tracks_calibration(tracks_data, expLabel, saveResults, savePlots, saveDir)
+    tracks_calibration(tracks_data, expLabel, saveResults, savePlots, saveDir,
+                       MagR=np.mean(list_MagR), Mag_dX0=Mag_dX0)
 
 
-def runViscoAnalysis(mainDir, SCALE, Rb, D2F_func, filesInfo, 
+def runViscoAnalysis(mainDir, SCALE, Rb, Mag_dX0, D2F_func, filesInfo, 
                 saveDir, expLabel, saveResults, savePlots):
     
-    pm.setGraphicOptions(mode = 'screen_big', colorList = pm.colorListMpl)
+    pm.setGraphicOptions(mode = 'screen', colorList = pm.colorListMpl)
     
     tracks_data = [];
     Nfiles = len(filesInfo)
@@ -670,11 +735,13 @@ def runViscoAnalysis(mainDir, SCALE, Rb, D2F_func, filesInfo,
         MagX, MagY, MagR = fI['MagX'], fI['MagY'], fI['MagR']
         CropX, CropY = fI['CropX'], fI['CropY']
         all_tracks = ufun.importTrackMateTracks(filePath)
-        tracks_data += tracks_pretreatment(all_tracks, SCALE, FPS, 
-                                MagX, MagY, MagR, Rb, CropX, CropY,
-                                D2F_func)
+        tracks_data += rawTracks_pretreatment(all_tracks, SCALE, FPS, 
+                            MagX, MagY, MagR, Rb, CropX, CropY, Mag_dX0,
+                            mode = 'measureVisco', D2F_func = D2F_func)
     # 2. Run analysis
     tracks_calcViscosity(tracks_data, Rb, expLabel, saveResults, savePlots, saveDir)
+
+
 
 
 def compareCalibrations(srcDir, labelList = [], 

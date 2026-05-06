@@ -433,6 +433,30 @@ def json2dict(dirPath, fileName):
             pass
     return(d)
 
+def listOfdict2json(L, dirPath, fileName):
+    for d in L:
+        for k in d.keys():
+            obj = d[k]
+            if isinstance(obj, np.ndarray):
+                d[k] = d[k].tolist()
+            else:
+                pass
+    with open(os.path.join(dirPath, fileName + '.json'), 'w') as fp:
+        json.dump(L, fp, indent=4)
+      
+        
+def json2listOfdict(dirPath, fileName):
+    with open(os.path.join(dirPath, fileName + '.json'), 'r') as fp:
+        L = json.load(fp)
+    for d in L:
+        for k in d.keys():
+            obj = d[k]
+            if isinstance(obj, list):
+                d[k] = np.array(d[k])
+            else:
+                pass
+    return(L)
+
 def dicts_concat(list_of_dicts):
     dict_of_lists = {}
     for k in list_of_dicts[0].keys():

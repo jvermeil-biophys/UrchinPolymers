@@ -78,31 +78,33 @@ dict_magnet_JX = {
 
 dict_magnet_JN = {
     'MyOne':{
+        "Mag_dX0": 64,
         "F_popt_2exp": [
-            7.805139888548116,
-            102.27510392873741,
-            1.2304327867498293,
-            270.4339259099587
+            13.820500579976736,
+            119.71453567900843,
+            0.20956376936301224,
+            1586.7192153013225
         ],
         "F_popt_pL": [
-            20963.176438241888,
-            -1.785737243995788
-        ],
+            560580.2607405437,
+            -2.2802474890224578
+        ]
     },
 }
 
 
 dict_magnet_JV01 = {
     'MyOne':{
+        "Mag_dX0": 84,
         "F_popt_2exp": [
-            0,
-            0,
-            0,
-            0
+            45.75274682033969,
+            83.64537794898102,
+            3.5862061932381724,
+            251.08014392188855
         ],
         "F_popt_pL": [
-            0,
-            0
+            7142909.695105301,
+            -2.6174034023237014
         ],
     },
 }
@@ -119,16 +121,25 @@ dict_allMagnets = {
 # %% Utility function
 
 def getMagnet_D2F(magnet, beads, funcType):
-    
     if funcType in ['power law', 'power-law', 'powerLaw', 'power_law', 'pl', 'pL', 'PL']:
         funcType = "F_popt_pL"
+        fun = powerLaw
     elif funcType in ['2exp', '2Exp', '2_exp', '2_Exp', '2expo', '2Expo', 
                       'double expo', 'double Expo', 'doubleExpo', 'double_expo', 'double-expo',
                       'double exponential', 'double Exponential', 'doubleExponential', 
                       'double_exponential', 'double-exponential',]:
         funcType = "F_popt_2exp"
+        fun = doubleExpo
     
-    D2F_func = dict_allMagnets[magnet][beads][funcType]
-    
+    D2F_parms = dict_allMagnets[magnet][beads][funcType]
+    D2F_func = lambda x : fun(x, *D2F_parms)
     return(D2F_func)
    
+    
+   
+def getMagnet_dX0(magnet, beads):
+    try:    
+        dX0 = dict_allMagnets[magnet][beads]['Mag_dX0']
+    except:
+        dX0 = 0
+    return(dX0)

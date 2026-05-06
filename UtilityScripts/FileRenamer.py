@@ -81,6 +81,7 @@ def inverseDate(path, target='file', test = True, recursiveAction = False, excep
             inverseDate(os.path.join(path,d), target, test = test, recursiveAction = True, exceptStrings = exceptStrings)
     print(renamedListTarget)
     
+    
 def inverseDateInsideFile(path, test = True):
     f = open(path, 'r')
     data = f.read()
@@ -97,6 +98,7 @@ def inverseDateInsideFile(path, test = True):
         f = open(path, 'w')
         f.write(data)
         f.close()
+        
 
 def findAndRename(path, target_string, new_string, target='file', 
                   test = True, recursiveAction = False, exceptStrings = []):
@@ -260,6 +262,20 @@ def findAndRemove(path, target_string, target='file', test = True,
     print(renamedListTarget)
     print(len(renamedListTarget))
     return(renamedListTarget)
+
+# -----------------------------------------------------------------------------------------------
+# %% Script Other renaming
+
+s1 = '26-04-09'
+s2 = '26-04-30'
+
+# path0 = "E:/AnalysisPulls/26-04-30_CalibMagnet_JV01_and_JN"
+path0 = "E:/WorkingData/LeicaData/26-04-30_CalibMagnet_JV01_and_JN"
+sub = ''
+path = path0 + sub
+
+findAndRename(path, s1, s2, 
+              target = 'all', test = True, recursiveAction = True, exceptStrings = [])
 
 # -----------------------------------------------------------------------------------------------
 # %% Script Other renaming
