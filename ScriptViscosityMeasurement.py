@@ -66,7 +66,229 @@ tbcv.runViscoAnalysis(mainDir, SCALE, Rb, Mag_dX0, D2F_func, filesInfo,
 
 # %% ------
 
-# %% Test with calib data from 26-04-30 (circular reasonning, i know)
+# %% 26-05-07 
+
+magnet, beads, funcType = 'magnet_JV01', 'MyOne', 'power law'
+D2F_func = mcc.getMagnet_D2F(magnet, beads, funcType)
+Mag_dX0 = mcc.getMagnet_dX0(magnet, beads)
+
+# mainDir is the directory containing the track files (.xml from TrackMate)
+mainDir = up.Path_AnalysisPulls + '26-05-07_ViscoInCapillaries/Tracks'
+
+# saveDir is the directory where the data and the plots will be saved
+saveDir = up.Path_AnalysisPulls + '26-05-07_ViscoInCapillaries/ResultsVisco'
+
+# %%% M2 Gly80%
+
+expLabel = '26-05-07_Magnet-JV01_MyOne_Glycerol80%_M2_P2'            # The label for this condition - used as a prefix for saved data and plots
+saveResults = True       # If you want to export results as a .json file
+savePlots = True         # If you want to save the plots as a .png file
+Rb = 0.5                   # Bead radius, µm - here MyOne Dynabeads
+SCALE = 0.461                # Microscope scale, µm/pixel
+
+filesInfo = []
+
+fI = {}
+fI['fileName'] = '26-05-07_M2_Gly80p_P2_Tracks.xml'
+fI['FPS'] = 5
+fI['MagX'], fI['MagY'], fI['MagR'] =  518.5, 578.5, 143 * 0.5 
+fI['CropX'], fI['CropY'] = 0, 0 
+filesInfo.append(fI)
+
+
+#### Run the analysis
+
+tbcv.runViscoAnalysis(mainDir, SCALE, Rb, Mag_dX0, D2F_func, filesInfo, 
+                      saveDir, expLabel, saveResults, savePlots)
+
+# %%% M3 - noUV
+
+expLabel = '26-05-07_Magnet-JV01_MyOne_Gly80%_M3_HPMA300-PI50-noUV_P6'            # The label for this condition - used as a prefix for saved data and plots
+saveResults = True       # If you want to export results as a .json file
+savePlots = True         # If you want to save the plots as a .png file
+Rb = 0.5                   # Bead radius, µm - here MyOne Dynabeads
+SCALE = 0.461                # Microscope scale, µm/pixel
+
+filesInfo = []
+
+# fI = {}
+# fI['fileName'] = '26-05-07_M3_Gly80p_HPMAg-300mM_I2959-50mM_UV-none_P1_Tracks.xml'
+# fI['FPS'] = 5
+# fI['MagX'], fI['MagY'], fI['MagR'] =  575.5, 597.5, 137 * 0.5
+# fI['CropX'], fI['CropY'] = 0, 0 
+# filesInfo.append(fI)
+
+# fI = {}
+# fI['fileName'] = '26-05-07_M3_Gly80p_HPMAg-300mM_I2959-50mM_UV-none_P2_Tracks.xml'
+# fI['FPS'] = 5
+# fI['MagX'], fI['MagY'], fI['MagR'] = 548.5, 621.5, 133 * 0.5
+# fI['CropX'], fI['CropY'] = 0, 0 
+# filesInfo.append(fI)
+
+
+fI = {}
+fI['fileName'] = '26-05-07_M3_Gly80p_HPMAg-300mM_I2959-50mM_UV-none_P6_Tracks.xml'
+fI['FPS'] = 5
+fI['MagX'], fI['MagY'], fI['MagR'] = 504.5, 587.5, 133 * 0.5
+fI['CropX'], fI['CropY'] = 0, 0 
+filesInfo.append(fI)
+
+
+#### Run the analysis
+
+tbcv.runViscoAnalysis(mainDir, SCALE, Rb, Mag_dX0, D2F_func, filesInfo, 
+                      saveDir, expLabel, saveResults, savePlots)
+
+# %%% M3 - UV 0.2A 5min
+
+expLabel = '26-05-07_Magnet-JV01_MyOne_Gly80%_M3_HPMA300-PI50-UV0A2-5min'            # The label for this condition - used as a prefix for saved data and plots
+saveResults = True       # If you want to export results as a .json file
+savePlots = True         # If you want to save the plots as a .png file
+Rb = 0.5                   # Bead radius, µm - here MyOne Dynabeads
+SCALE = 0.461                # Microscope scale, µm/pixel
+
+filesInfo = []
+
+fI = {}
+fI['fileName'] = '26-05-07_M3_Gly80p_HPMAg-300mM_I2959-50mM_UV-0A2-5min_P3_Tracks.xml'
+fI['FPS'] = 5
+fI['MagX'], fI['MagY'], fI['MagR'] = 501.5, 619.5, 139 * 0.5 
+fI['CropX'], fI['CropY'] = 0, 0 
+filesInfo.append(fI)
+
+fI = {}
+fI['fileName'] = '26-05-07_M3_Gly80p_HPMAg-300mM_I2959-50mM_UV-0A2-5min_P4_Tracks.xml'
+fI['FPS'] = 5
+fI['MagX'], fI['MagY'], fI['MagR'] = 473, 556, 152 * 0.5 
+fI['CropX'], fI['CropY'] = 0, 0 
+filesInfo.append(fI)
+
+
+#### Run the analysis
+
+tbcv.runViscoAnalysis(mainDir, SCALE, Rb, Mag_dX0, D2F_func, filesInfo, 
+                      saveDir, expLabel, saveResults, savePlots)
+
+# %%% M3 - UV 0.2A 10min
+
+expLabel = '26-05-07_Magnet-JV01_MyOne_Gly80%_M3_HPMA300-PI50-UV0A2-10min'            # The label for this condition - used as a prefix for saved data and plots
+saveResults = True       # If you want to export results as a .json file
+savePlots = True         # If you want to save the plots as a .png file
+Rb = 0.5                   # Bead radius, µm - here MyOne Dynabeads
+SCALE = 0.461                # Microscope scale, µm/pixel
+
+filesInfo = []
+
+fI = {}
+fI['fileName'] = '26-05-07_M3_Gly80p_HPMAg-300mM_I2959-50mM_UV-0A2-10min_P7_Tracks.xml'
+fI['FPS'] = 5
+fI['MagX'], fI['MagY'], fI['MagR'] = 510, 580, 138 * 0.5 
+fI['CropX'], fI['CropY'] = 0, 0 
+filesInfo.append(fI)
+
+fI = {}
+fI['fileName'] = '26-05-07_M3_Gly80p_HPMAg-300mM_I2959-50mM_UV-0A2-10min_P8_Tracks.xml'
+fI['FPS'] = 5
+fI['MagX'], fI['MagY'], fI['MagR'] = 504, 581, 148 * 0.5 
+fI['CropX'], fI['CropY'] = 0, 0 
+filesInfo.append(fI)
+
+
+#### Run the analysis
+
+tbcv.runViscoAnalysis(mainDir, SCALE, Rb, Mag_dX0, D2F_func, filesInfo, 
+                      saveDir, expLabel, saveResults, savePlots)
+
+
+# %%% M3 - UV 1A 5min
+
+expLabel = '26-05-07_Magnet-JV01_MyOne_Gly80%_M3_HPMA300-PI50-UV1A-5min'            # The label for this condition - used as a prefix for saved data and plots
+saveResults = True       # If you want to export results as a .json file
+savePlots = True         # If you want to save the plots as a .png file
+Rb = 0.5                   # Bead radius, µm - here MyOne Dynabeads
+SCALE = 0.461                # Microscope scale, µm/pixel
+
+filesInfo = []
+
+fI = {}
+fI['fileName'] = '26-05-07_M3_Gly80p_HPMAg-300mM_I2959-50mM_UV-1A-5min_P5_Tracks.xml'
+fI['FPS'] = 5
+fI['MagX'], fI['MagY'], fI['MagR'] =  415.5, 560.5, 135 * 0.5 
+fI['CropX'], fI['CropY'] = 0, 0 
+filesInfo.append(fI)
+
+
+#### Run the analysis
+
+tbcv.runViscoAnalysis(mainDir, SCALE, Rb, Mag_dX0, D2F_func, filesInfo, 
+                      saveDir, expLabel, saveResults, savePlots)
+
+# %%% M4 - noUV
+
+expLabel = '26-05-07_Magnet-JV01_MyOne_Gly80%_M4_HPMA300-PI100-noUV'            # The label for this condition - used as a prefix for saved data and plots
+saveResults = True       # If you want to export results as a .json file
+savePlots = True         # If you want to save the plots as a .png file
+Rb = 0.5                   # Bead radius, µm - here MyOne Dynabeads
+SCALE = 0.461                # Microscope scale, µm/pixel
+
+filesInfo = []
+
+fI = {}
+fI['fileName'] = '26-05-07_M4_Gly80p_HPMAg-300mM_I2959-100mM_UV-none_P1_Tracks.xml'
+fI['FPS'] = 5
+fI['MagX'], fI['MagY'], fI['MagR'] =  424, 588, 144 * 0.5
+fI['CropX'], fI['CropY'] = 0, 0 
+filesInfo.append(fI)
+
+fI = {}
+fI['fileName'] = '26-05-07_M4_Gly80p_HPMAg-300mM_I2959-100mM_UV-none_P3_Tracks.xml'
+fI['FPS'] = 5
+fI['MagX'], fI['MagY'], fI['MagR'] = 431, 569, 152 * 0.5
+fI['CropX'], fI['CropY'] = 0, 0 
+filesInfo.append(fI)
+
+
+
+#### Run the analysis
+
+tbcv.runViscoAnalysis(mainDir, SCALE, Rb, Mag_dX0, D2F_func, filesInfo, 
+                      saveDir, expLabel, saveResults, savePlots)
+
+
+# %%% M4 - UV 0.2A 5min
+
+expLabel = '26-05-07_Magnet-JV01_MyOne_Gly80%_M4_HPMA300-PI100-UV-0A2-5min'            # The label for this condition - used as a prefix for saved data and plots
+saveResults = True       # If you want to export results as a .json file
+savePlots = True         # If you want to save the plots as a .png file
+Rb = 0.5                   # Bead radius, µm - here MyOne Dynabeads
+SCALE = 0.461                # Microscope scale, µm/pixel
+
+filesInfo = []
+
+fI = {}
+fI['fileName'] = '26-05-07_M4_Gly80p_HPMAg-300mM_I2959-100mM_UV-0A2-5min_P2_Tracks.xml'
+fI['FPS'] = 5
+fI['MagX'], fI['MagY'], fI['MagR'] = 430, 570, 148 * 0.5
+fI['CropX'], fI['CropY'] = 0, 0 
+filesInfo.append(fI)
+
+fI = {}
+fI['fileName'] = '26-05-07_M4_Gly80p_HPMAg-300mM_I2959-100mM_UV-0A2-5min_P4_Tracks.xml'
+fI['FPS'] = 5
+fI['MagX'], fI['MagY'], fI['MagR'] = 438, 522, 138 * 0.5 
+fI['CropX'], fI['CropY'] = 0, 0 
+filesInfo.append(fI)
+
+
+#### Run the analysis
+
+tbcv.runViscoAnalysis(mainDir, SCALE, Rb, Mag_dX0, D2F_func, filesInfo, 
+                      saveDir, expLabel, saveResults, savePlots)
+
+# %% ------
+
+# %% 26-04-30 - test with calib data
+#### (kind of a circular reasonning, i know)
 
 magnet, beads, funcType = 'magnet_JV01', 'MyOne', 'power law'
 D2F_func = mcc.getMagnet_D2F(magnet, beads, funcType)
@@ -172,7 +394,7 @@ filesInfo.append(fI)
 tbcv.runViscoAnalysis(mainDir, SCALE, Rb, Mag_dX0, D2F_func, filesInfo, 
                       saveDir, expLabel, saveResults, savePlots)
 
-# %% 26/04/09
+# %% 26-04-09
 
 # Source
 # E:\AnalysisPulls\26-03-20_UVonCytoplasmAndBeads_CalibMagnetJN\Calib_MagnetJN_20X_Gly75p_MyOne_Capi01
@@ -320,37 +542,39 @@ tbcv.runViscoAnalysis(mainDir, SCALE, Rb, Mag_dX0, D2F_func, filesInfo,
 
 
 
-# %% 26/03/17
+# %% 26-03-18
 
 # Source
 # C:\Users\Utilisateur\Desktop\AnalysisPulls\26-01-07_Calib_MagnetJingAude\26-01-07_20x_MyOneGly75p\Results
 # MyOne_Glycerol75%_magnetJX_capi_fitData.json
-parms_2exp = [
-        5.99012502563366,
-        100.84369389492127,
-        0.11435249326662983,
-        2101.719709808641
-    ]
-D2F_2exp = lambda x : mcc.doubleExpo(x, *parms_2exp)
-parms_pL = [
-        39603.33040969049,
-        -2.0162526263553215
-    ]
-D2F_pL = lambda x : mcc.powerLaw(x, *parms_pL)
+# parms_2exp = [
+#         5.99012502563366,
+#         100.84369389492127,
+#         0.11435249326662983,
+#         2101.719709808641
+#     ]
+# D2F_2exp = lambda x : mcc.doubleExpo(x, *parms_2exp)
+# parms_pL = [
+#         39603.33040969049,
+#         -2.0162526263553215
+#     ]
+# D2F_pL = lambda x : mcc.powerLaw(x, *parms_pL)
 
-D2F_func = D2F_pL
+# D2F_func = D2F_pL
+
+magnet, beads, funcType = 'magnet_JX', 'MyOne', 'power law'
+D2F_func = mcc.getMagnet_D2F(magnet, beads, funcType)
+Mag_dX0 = mcc.getMagnet_dX0(magnet, beads)
+
+# mainDir is the directory containing the track files (.xml from TrackMate)
+mainDir = up.Path_AnalysisPulls + '26-03-18_ViscoInCapillaries/Tracks'
+
+# saveDir is the directory where the data and the plots will be saved
+saveDir = up.Path_AnalysisPulls + '26-03-18_ViscoInCapillaries/NewMeasVisco'
 
 # %%%% Capillary 1 Control
 
-path = up.Path_WorkingData + '/LeicaData/26-03-18_UVonCapillaryBulk'
-
-# mainDir is the directory containing the track files (.xml from TrackMate)
-mainDir = path + '/Tracks'
-
-# saveDir is the directory where the data and the plots will be saved
-saveDir = path
-
-expLabel = '26-03-18_TestUV_before'            # The label for this condition - used as a prefix for saved data and plots
+expLabel = '26-03-18_M1_TestUV_before'            # The label for this condition - used as a prefix for saved data and plots
 saveResults = True       # If you want to export results as a .json file
 savePlots = True         # If you want to save the plots as a .png file
 Rb = 0.5                   # Bead radius, µm - here MyOne Dynabeads
@@ -389,15 +613,8 @@ tbcv.runViscoAnalysis(mainDir, SCALE, Rb, Mag_dX0, D2F_func, filesInfo,
 
 # %%%% Capillary 1 UV 600mW 1min
 
-path = up.Path_WorkingData + '/LeicaData/26-03-18_UVonCapillaryBulk'
 
-# mainDir is the directory containing the track files (.xml from TrackMate)
-mainDir = path + '/Tracks'
-
-# saveDir is the directory where the data and the plots will be saved
-saveDir = path
-
-expLabel = 'UV-600mW-1min'            # The label for this condition - used as a prefix for saved data and plots
+expLabel = '26-03-18_M1_UV-600mW-1min'            # The label for this condition - used as a prefix for saved data and plots
 saveResults = True       # If you want to export results as a .json file
 savePlots = True         # If you want to save the plots as a .png file
 Rb = 0.5                   # Bead radius, µm - here MyOne Dynabeads
@@ -429,15 +646,8 @@ tbcv.runViscoAnalysis(mainDir, SCALE, Rb, Mag_dX0, D2F_func, filesInfo,
 
 # %%%% Capillary 2 Control
 
-path = up.Path_WorkingData + '/LeicaData/26-03-18_UVonCapillaryBulk'
 
-# mainDir is the directory containing the track files (.xml from TrackMate)
-mainDir = path + '/Tracks'
-
-# saveDir is the directory where the data and the plots will be saved
-saveDir = path
-
-expLabel = 'TestUV_before'            # The label for this condition - used as a prefix for saved data and plots
+expLabel = '26-03-18_M2_TestUV_before'            # The label for this condition - used as a prefix for saved data and plots
 saveResults = True       # If you want to export results as a .json file
 savePlots = True         # If you want to save the plots as a .png file
 Rb = 0.5                   # Bead radius, µm - here MyOne Dynabeads
@@ -476,15 +686,8 @@ tbcv.runViscoAnalysis(mainDir, SCALE, Rb, Mag_dX0, D2F_func, filesInfo,
 
 # %%%% Capillary 2 UV 120mW 5min
 
-path = up.Path_WorkingData + '/LeicaData/26-03-18_UVonCapillaryBulk'
 
-# mainDir is the directory containing the track files (.xml from TrackMate)
-mainDir = path + '/Tracks'
-
-# saveDir is the directory where the data and the plots will be saved
-saveDir = path
-
-expLabel = 'UV-120mW-5min'            # The label for this condition - used as a prefix for saved data and plots
+expLabel = '26-03-18_M2_UV-120mW-5min'            # The label for this condition - used as a prefix for saved data and plots
 saveResults = True       # If you want to export results as a .json file
 savePlots = True         # If you want to save the plots as a .png file
 Rb = 0.5                   # Bead radius, µm - here MyOne Dynabeads
@@ -507,15 +710,7 @@ tbcv.runViscoAnalysis(mainDir, SCALE, Rb, Mag_dX0, D2F_func, filesInfo,
 
 # %%%% Capillary 2 UV 1800mW 1min
 
-path = up.Path_WorkingData + '/LeicaData/26-03-18_UVonCapillaryBulk'
-
-# mainDir is the directory containing the track files (.xml from TrackMate)
-mainDir = path + '/Tracks'
-
-# saveDir is the directory where the data and the plots will be saved
-saveDir = path
-
-expLabel = 'UV-1800mW-1min'            # The label for this condition - used as a prefix for saved data and plots
+expLabel = '26-03-18_M2_UV-1800mW-1min'            # The label for this condition - used as a prefix for saved data and plots
 saveResults = True       # If you want to export results as a .json file
 savePlots = True         # If you want to save the plots as a .png file
 Rb = 0.5                   # Bead radius, µm - here MyOne Dynabeads
@@ -538,7 +733,7 @@ tbcv.runViscoAnalysis(mainDir, SCALE, Rb, Mag_dX0, D2F_func, filesInfo,
 
 
 
-# %% 26/01/07
+# %% 26-01-07
 
 # Source
 # C:\Users\Utilisateur\Desktop\AnalysisPulls\26-01-07_Calib_MagnetJingAude\26-01-07_20x_MyOneGly75p\Results
