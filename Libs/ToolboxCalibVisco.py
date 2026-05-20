@@ -639,36 +639,67 @@ def tracks_calcViscosity(tracks_data, Rb = 0.5, expLabel = '',
     #### 3.1 Final fits
     # Global visco calculation
     [a, b] = np.polyfit(all_V, all_F, 1)
-    visco_global = a / (6*np.pi*Rb)
+    # visco_global = a / (6*np.pi*Rb)
+    # visco_global_mPas = visco_global*1000
+    # print(visco_global)
+    
+    parms, results = ufun.fitLineHuber(all_V, all_F, 
+                                       with_wlm_results = False, 
+                                       with_intercept = False)
+    slope = parms[0]
+    visco_global = slope / (6*np.pi*Rb)
     visco_global_mPas = visco_global*1000
     print(visco_global)
+    
+    
     
     # Calculation per trajectory
     visco_list = []
     for track in tracks_data_f2:
         tV = track['V']
         tF = track['F']
-        [ta, tb] = np.polyfit(tV, tF, 1)
-        visco = ta / (6*np.pi*Rb)
-        visco_list.append(visco)
+        
+        # [ta, tb] = np.polyfit(tV, tF, 1)
+        # visco = ta / (6*np.pi*Rb)
+        # visco_mPas = visco*1000
+        # visco_list.append(visco_mPas)
+        
+        # parms, results, wlm_results = ufun.fitLine(tV, tF, 
+        #                                    with_wlm_results = True, 
+        #                                    with_intercept = False)
+        parms, results = ufun.fitLine(tV, tF, with_intercept = False)
+        t_slope = parms[0]
+        visco = t_slope / (6*np.pi*Rb)
+        visco_mPas = visco*1000
+        R2 = results.rsquared
+        if R2 > 0.95 and visco_mPas > 0:
+            visco_list.append(visco_mPas)
     
     # Plots
     V_plot = np.linspace(0, np.max(all_V), 100)
     fig2, axes2 = plt.subplots(1, 2)
-    fig2.suptitle('Summary - ' + expLabel)
+    NS = len(expLabel.split('_'))
+    if NS > 4:
+        SupTitle = 'Summary\n' + '_'.join(expLabel.split('_')[:4]) + '\n' + '_'.join(expLabel.split('_')[4:])
+    else:
+        SupTitle = 'Summary\n' + '_'.join(expLabel.split('_'))
+    fig2.suptitle(SupTitle, y=0.93)
     
     ax = axes2[0]
     ax.plot(all_V, all_F, ls='', marker='.', alpha=0.05)
-    ax.plot(V_plot, a*V_plot + b, ls='-', c='darkred', lw=1.5, 
-            label = f'Fit y=ax+b,\n a = {a:.2f}, b = {b:.2f}')
+    # ax.plot(V_plot, a*V_plot + b, ls='-', c='darkred', lw=1.5, 
+    #         label = f'Fit y=ax+b,\n a={a:.2f}, b={b:.2f}\n' + '$\\eta$' + f'={visco_global_mPas:.1f}mPa.s')
+    ax.plot(V_plot, slope*V_plot, ls='-', c='darkred', lw=1.5, 
+            label = f'Fit y=k.x, k={slope:.2f}\n' + '$\\eta$' + f'={visco_global_mPas:.1f}mPa.s')
     ax.set_xlabel('V (µm/s)')
     ax.set_ylabel('F (pN)')
-    ax.legend(fontsize=10)
+    ax.grid()
+    ax.legend(fontsize=8)
 
     ax = axes2[1]
-    sns.swarmplot(ax=ax, x=['']*len(visco_list), y=visco_list, size=2)
-    ax.axhline(visco_global, color='darkred', ls='-', label = f'Viscosity = {visco_global_mPas:.1f} mPa.s')
-    ax.legend(fontsize=10)
+    sns.swarmplot(ax=ax, y=visco_list, size = 1.5 + (15/(len(visco_list)**0.5))) # x=['']*len(visco_list)
+    # ax.axhline(visco_global, color='darkred', ls='-', label = f'Viscosity={visco_global_mPas:.1f} mPa.s')
+    # ax.legend(fontsize=8)
     
     fig2.tight_layout()
     plt.show()

@@ -19,7 +19,7 @@ COMPUTERNAME = os.environ['COMPUTERNAME']
 # 1.1 Init main directories
 
 if COMPUTERNAME == 'PROCYON-PC': # Ordi Perso
-    Path_AnalysisPulls = "C:/Users/josep/Desktop/Seafile/AnalysisPulls/"
+    Path_AnalysisPulls = "C:/Users/josep/Desktop/Seafile/DownloadedFromSeafile/"
     Path_WorkingData = "E:/WorkingData/"
     
 elif COMPUTERNAME == 'MINC05': # IJM
