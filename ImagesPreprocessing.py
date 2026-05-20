@@ -76,7 +76,7 @@ def getListOfSourceFolders(Dir, forbiddenWords = [], compulsaryWords = []): # 'd
         # Test the compulsary words only at this final step
         valid = True
         for w in compulsaryWords:
-            if w.lower() not in Dir.lower(): # compare the lower case strings
+            if w.lower() not in Dir.lower(): # compare the lower case stringsff
                 valid = False # If a compulsary word is NOT in the dir name, don't consider it
                 # print('exclude')
             
@@ -546,11 +546,11 @@ def crop_and_copy(DirSrc, DirDst, allRefPoints, allStackPaths,
 # DirDst = 'C:/Users/Joseph/Desktop/AnalysisPulls/26-03-04_UVonCytoplasmAndBeads/Pulls'
 # DirDst_bins = ''
 
-# DirSrc = 'C:/Users/Joseph/Desktop/WorkingData/LeicaData/26-01-27/Pulls'
-# DirDst = 'C:/Users/Joseph/Desktop/AnalysisPulls/26-01-27_BeadTracking'
+DirSrc = up.Path_LeicaData + '/26-03-20_UVonCytoplasmAndBeads_CalibMagnetJN/M2_MagnetJN_40X_MyOne_HPMA-20p_I2959-200mM_UV'
+DirDst = up.Path_AnalysisPulls + '/26-03-20_UVonCytoplasmAndBeads_CalibMagnetJN/Pulls/M2_40X_MyOne_HPMA-20p_I2959-200mM_UV_MagnetJN'
 
-DirSrc = up.Path_LeicaData + "/26-03-04/Pulls"
-DirDst = up.Path_AnalysisPulls + "/26-03-04_UVonCytoplasmAndBeads/Pulls"
+# DirSrc = up.Path_LeicaData + "/26-03-04/Pulls"
+# DirDst = up.Path_AnalysisPulls + "/26-03-04_UVonCytoplasmAndBeads/Pulls"
 
 DirSrc = 'C:/Users/josep/Desktop/Seafile/DownloadedFromSeafile/26-04-10/26-04-10_M1_IncubedCells_HPMA-100mM_I2959-20mM_AOTCRh'
 DirDst = up.Path_AnalysisPulls + "/26-04-10_CellsIncubatedwithMix/Pulls"
@@ -563,7 +563,7 @@ GetOMEdata = True
 
 scaleFactor = 1/8
 
-forbiddenWords = ['capture', 'captures', 'crop', 'crops', 'croped', 'snap', 'out', 'bad'] # 
+forbiddenWords = ['bad', 'chopped'] # ['capture', 'captures', 'crop', 'crops', 'croped']
 compulsaryWords = [] # 'M1'
 
 # Disable the Warnings from TiffFile
@@ -859,19 +859,24 @@ for iP, oP in zip(allInputPaths, allOutputPaths):
     
     iD, iF = os.path.split(iP)
     Pid = '_'.join(iF.split('_')[:6])
-    data_OME = get_data_from_OMEtiff(iP)
-    if Save_OME:
-        fTxtName = Pid + '_OmeMd.txt'
-        fBinName = Pid + '_OmeMd.npy'
-        fCsvName = Pid + '_OmeMd.csv'
-        # np.savetxt(os.path.join(DirDst, fTxtName), data, fmt='%.0f', delimiter=' ', 
-        #            newline='\n', header='', footer='', comments='# ', encoding=None)
-        # np.save(os.path.join(DirDst, fBinName), data)
-        data_OME.to_csv(os.path.join(DirDst, fCsvName), float_format = '%.1f', index=False)
-    T = data_OME.loc[(data_OME['iC']==0) & (data_OME['iZ']==0), 't'].values
-    dT = T[1:] - T[:-1]
-    medT = np.median(dT)
-    stdT = np.std(dT)
+    
+    try:
+        data_OME = get_data_from_OMEtiff(iP)
+        if Save_OME:
+            fTxtName = Pid + '_OmeMd.txt'
+            fBinName = Pid + '_OmeMd.npy'
+            fCsvName = Pid + '_OmeMd.csv'
+            # np.savetxt(os.path.join(DirDst, fTxtName), data, fmt='%.0f', delimiter=' ', 
+            #            newline='\n', header='', footer='', comments='# ', encoding=None)
+            # np.save(os.path.join(DirDst, fBinName), data)
+            data_OME.to_csv(os.path.join(DirDst, fCsvName), float_format = '%.1f', index=False)
+        T = data_OME.loc[(data_OME['iC']==0) & (data_OME['iZ']==0), 't'].values
+        dT = T[1:] - T[:-1]
+        medT = np.median(dT)
+        stdT = np.std(dT)
+    except:
+        medT = np.nan
+        stdT = np.nan
     ExpData['film_dt'].append(medT)
     ExpData['film_dt_std'].append(stdT)
 

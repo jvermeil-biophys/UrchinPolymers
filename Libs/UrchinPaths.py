@@ -20,11 +20,11 @@ COMPUTERNAME = os.environ['COMPUTERNAME']
 
 if COMPUTERNAME == 'PROCYON-PC': # Ordi Perso
     Path_AnalysisPulls = "C:/Users/josep/Desktop/Seafile/AnalysisPulls/"
-    Path_WorkingData = "E:/WorkingData"
+    Path_WorkingData = "E:/WorkingData/"
     
 elif COMPUTERNAME == 'MINC05': # IJM
-    Path_AnalysisPulls = "C:/Users/Utilisateur/Desktop/AnalysisPulls"
-    Path_WorkingData = "E:/WorkingData"
+    Path_AnalysisPulls = "E:/AnalysisPulls/"
+    Path_WorkingData = "E:/WorkingData/"
     
 elif COMPUTERNAME == 'DESKTOP-9J5NPMO': # LJP
     Path_AnalysisPulls = "C:/Users/Joseph/Desktop/AnalysisPulls/"

@@ -21,6 +21,7 @@ import colorsys
 
 from scipy import interpolate, optimize
 
+import Libs.UrchinPaths as up
 
 # %% 2. Helper functions
 
@@ -420,7 +421,7 @@ def tracks_analysis(tracks_data, Rb = 0.5, expLabel = '',
 
     expected_medV = powerLaw(all_medD, *V_popt_pL)
     ratio_fitV = all_medV/expected_medV
-    high_cut = 1.45
+    high_cut = 1.25
     low_cut = 0.55
 
     tracks_data_f2 = []
@@ -460,6 +461,7 @@ def tracks_analysis(tracks_data, Rb = 0.5, expLabel = '',
     # Global visco calculation
     [a, b] = np.polyfit(all_V, all_F, 1)
     visco_global = a / (6*np.pi*Rb)
+    visco_global_mPas = visco_global*1000
     print(visco_global)
     
     # Calculation per trajectory
@@ -474,14 +476,22 @@ def tracks_analysis(tracks_data, Rb = 0.5, expLabel = '',
     # Plots
     V_plot = np.linspace(0, np.max(all_V), 100)
     fig2, axes2 = plt.subplots(1, 2)
+    fig2.suptitle('Summary - ' + expLabel)
     
     ax = axes2[0]
     ax.plot(all_V, all_F, ls='', marker='.', alpha=0.05)
     ax.plot(V_plot, a*V_plot + b, ls='-', c='darkred', lw=1.5, 
             label = f'Fit y=ax+b,\n a = {a:.2f}, b = {b:.2f}')
+    ax.set_xlabel('V (µm/s)')
+    ax.set_ylabel('F (pN)')
+    ax.legend(fontsize=10)
 
     ax = axes2[1]
-    sns.swarmplot(ax=ax, x=['']*len(visco_list), y=visco_list)
+    sns.swarmplot(ax=ax, x=['']*len(visco_list), y=visco_list, size=2)
+    ax.axhline(visco_global, color='darkred', ls='-', label = f'Viscosity = {visco_global_mPas:.1f} mPa.s')
+    ax.legend(fontsize=10)
+    
+    fig2.tight_layout()
     
     plt.show()
     
@@ -519,6 +529,15 @@ def runAnalysis(mainDir, SCALE, Rb, D2F_func, filesInfo,
 
 # %%% Empty template 
 
+parms_pL = [
+        39603.33040969049,
+        -2.0162526263553215
+    ]
+
+D2F_pL = lambda x : powerLaw(x, *parms_pL)
+
+D2F_func = D2F_pL
+
 # mainDir is the directory containing the track files (.xml from TrackMate)
 mainDir = ''
 
@@ -542,6 +561,386 @@ fI['FPS'] = FPS
 fI['MagX'], fI['MagY'], fI['MagR'] = 0, 0, 0 * 0.5 
 fI['CropX'], fI['CropY'] = 0, 0 
 filesInfo.append(fI)
+
+#### Run the analysis
+runAnalysis(mainDir, SCALE, Rb, D2F_func, filesInfo, 
+               saveDir, expLabel, saveResults, savePlots)
+
+# %%% 26/04/09
+
+# Source
+# E:\AnalysisPulls\26-03-20_UVonCytoplasmAndBeads_CalibMagnetJN\Calib_MagnetJN_20X_Gly75p_MyOne_Capi01
+# MyOne_Glycerol75%_magnetJN_capi_fitData.json
+parms_2exp = [
+        7.805139888548116,
+        102.27510392873741,
+        1.2304327867498293,
+        270.4339259099587
+    ]
+D2F_2exp = lambda x : doubleExpo(x, *parms_2exp)
+parms_pL = [
+        20963.176438241888,
+        -1.785737243995788
+    ]
+
+D2F_pL = lambda x : powerLaw(x, *parms_pL)
+
+D2F_func = D2F_pL
+
+# %%%% Capillary 1 Control
+
+path = up.Path_AnalysisPulls + '/26-04-09_ViscoInCapillaries'
+
+# mainDir is the directory containing the track files (.xml from TrackMate)
+mainDir = path + '/Tracks'
+
+# saveDir is the directory where the data and the plots will be saved
+saveDir = path
+
+expLabel = 'TestUV_before_26-04-09'            # The label for this condition - used as a prefix for saved data and plots
+saveResults = True       # If you want to export results as a .json file
+savePlots = True         # If you want to save the plots as a .png file
+Rb = 0.5                   # Bead radius, µm - here MyOne Dynabeads
+SCALE = 0.461                # Microscope scale, µm/pixel
+
+filesInfo = []
+
+#### Film 1
+# fI = {}
+# fI['fileName'] = '26-04-09_Gly80p_MyOne_HPMA-100mM_I2959-10mM_P1_noUV_Tracks.xml'
+# fI['FPS'] = 5
+# fI['MagX'], fI['MagY'], fI['MagR'] =  127.5,  472.5, 155 * 0.5 
+# fI['CropX'], fI['CropY'] = 0, 0 
+# filesInfo.append(fI)
+
+
+#### Film 5
+fI = {}
+fI['fileName'] = '26-04-09_Gly80p_MyOne_HPMA-100mM_I2959-10mM_P5_noUV_Tracks.xml'
+fI['FPS'] = 5
+fI['MagX'], fI['MagY'], fI['MagR'] =  126.5,  516.5, 167 * 0.5 
+fI['CropX'], fI['CropY'] = 0, 0 
+filesInfo.append(fI)
+
+
+#### Run the analysis
+runAnalysis(mainDir, SCALE, Rb, D2F_func, filesInfo, 
+               saveDir, expLabel, saveResults, savePlots)
+
+# %%%% Capillary 1 UV 0.03A 5min
+
+path = up.Path_AnalysisPulls + '/26-04-09_ViscoInCapillaries'
+
+# mainDir is the directory containing the track files (.xml from TrackMate)
+mainDir = path + '/Tracks'
+
+# saveDir is the directory where the data and the plots will be saved
+saveDir = path
+
+expLabel = 'UV-0A03-5min'            # The label for this condition - used as a prefix for saved data and plots
+saveResults = True       # If you want to export results as a .json file
+savePlots = True         # If you want to save the plots as a .png file
+Rb = 0.5                   # Bead radius, µm - here MyOne Dynabeads
+SCALE = 0.461                # Microscope scale, µm/pixel
+
+filesInfo = []
+
+#### Film 2
+fI = {}
+fI['fileName'] = '26-04-09_Gly80p_MyOne_HPMA-100mM_I2959-10mM_P2_UV-0A03-5min_Tracks.xml'
+fI['FPS'] = 5
+fI['MagX'], fI['MagY'], fI['MagR'] =  146.5,  461.5, 161 * 0.5 
+fI['CropX'], fI['CropY'] = 0, 0 
+filesInfo.append(fI)
+
+
+#### Run the analysis
+runAnalysis(mainDir, SCALE, Rb, D2F_func, filesInfo, 
+               saveDir, expLabel, saveResults, savePlots)
+
+# %%%% Capillary 1 UV 0.1A 5min
+
+path = up.Path_AnalysisPulls + '/26-04-09_ViscoInCapillaries'
+
+# mainDir is the directory containing the track files (.xml from TrackMate)
+mainDir = path + '/Tracks'
+
+# saveDir is the directory where the data and the plots will be saved
+saveDir = path
+
+expLabel = 'UV-0A1-5min'            # The label for this condition - used as a prefix for saved data and plots
+saveResults = True       # If you want to export results as a .json file
+savePlots = True         # If you want to save the plots as a .png file
+Rb = 0.5                   # Bead radius, µm - here MyOne Dynabeads
+SCALE = 0.461                # Microscope scale, µm/pixel
+
+filesInfo = []
+
+
+#### Film 3
+fI = {}
+fI['fileName'] = '26-04-09_Gly80p_MyOne_HPMA-100mM_I2959-10mM_P3_UV-0A1-5min_Tracks.xml'
+fI['FPS'] = 5
+fI['MagX'], fI['MagY'], fI['MagR'] =  113,  514, 168 * 0.5 
+fI['CropX'], fI['CropY'] = 0, 0 
+filesInfo.append(fI)
+
+
+#### Run the analysis
+runAnalysis(mainDir, SCALE, Rb, D2F_func, filesInfo, 
+               saveDir, expLabel, saveResults, savePlots)
+
+
+# %%%% Capillary 1 UV 0.2A 5min
+
+path = up.Path_AnalysisPulls + '/26-04-09_ViscoInCapillaries'
+
+# mainDir is the directory containing the track files (.xml from TrackMate)
+mainDir = path + '/Tracks'
+
+# saveDir is the directory where the data and the plots will be saved
+saveDir = path
+
+expLabel = 'UV-0A2-5min'            # The label for this condition - used as a prefix for saved data and plots
+saveResults = True       # If you want to export results as a .json file
+savePlots = True         # If you want to save the plots as a .png file
+Rb = 0.5                   # Bead radius, µm - here MyOne Dynabeads
+SCALE = 0.461                # Microscope scale, µm/pixel
+
+filesInfo = []
+
+#### Film 4
+fI = {}
+fI['fileName'] = '26-04-09_Gly80p_MyOne_HPMA-100mM_I2959-10mM_P4_UV-0A2-5min_Tracks.xml'
+fI['FPS'] = 5
+fI['MagX'], fI['MagY'], fI['MagR'] =  120,  513, 168 * 0.5 
+fI['CropX'], fI['CropY'] = 0, 0 
+filesInfo.append(fI)
+
+#### Run the analysis
+runAnalysis(mainDir, SCALE, Rb, D2F_func, filesInfo, 
+               saveDir, expLabel, saveResults, savePlots)
+
+
+
+
+# %%% 26/03/17
+
+# Source
+# C:\Users\Utilisateur\Desktop\AnalysisPulls\26-01-07_Calib_MagnetJingAude\26-01-07_20x_MyOneGly75p\Results
+# MyOne_Glycerol75%_magnetJX_capi_fitData.json
+parms_2exp = [
+        5.99012502563366,
+        100.84369389492127,
+        0.11435249326662983,
+        2101.719709808641
+    ]
+D2F_2exp = lambda x : doubleExpo(x, *parms_2exp)
+parms_pL = [
+        39603.33040969049,
+        -2.0162526263553215
+    ]
+D2F_pL = lambda x : powerLaw(x, *parms_pL)
+
+D2F_func = D2F_pL
+
+# %%%% Capillary 1 Control
+
+path = up.Path_WorkingData + '/LeicaData/26-03-18_UVonCapillaryBulk'
+
+# mainDir is the directory containing the track files (.xml from TrackMate)
+mainDir = path + '/Tracks'
+
+# saveDir is the directory where the data and the plots will be saved
+saveDir = path
+
+expLabel = '26-03-18_TestUV_before'            # The label for this condition - used as a prefix for saved data and plots
+saveResults = True       # If you want to export results as a .json file
+savePlots = True         # If you want to save the plots as a .png file
+Rb = 0.5                   # Bead radius, µm - here MyOne Dynabeads
+SCALE = 0.461                # Microscope scale, µm/pixel
+
+filesInfo = []
+
+#### Film 1
+fI = {}
+fI['fileName'] = 'Capi01_noUV_P1_Tracks.xml'
+fI['FPS'] = 5
+fI['MagX'], fI['MagY'], fI['MagR'] =  126,  415, 168 * 0.5 
+fI['CropX'], fI['CropY'] = 0, 0 
+filesInfo.append(fI)
+
+#### Film 2
+fI = {}
+fI['fileName'] = 'Capi01_noUV_P2_Tracks.xml'
+fI['FPS'] = 5
+fI['MagX'], fI['MagY'], fI['MagR'] =  107,  360, 168 * 0.5 
+fI['CropX'], fI['CropY'] = 0, 0 
+filesInfo.append(fI)
+
+#### Film 3
+fI = {}
+fI['fileName'] = 'Capi01_noUV_P3_Tracks.xml'
+fI['FPS'] = 5
+fI['MagX'], fI['MagY'], fI['MagR'] =  101,  353, 168 * 0.5 
+fI['CropX'], fI['CropY'] = 0, 0 
+filesInfo.append(fI)
+
+
+#### Run the analysis
+runAnalysis(mainDir, SCALE, Rb, D2F_func, filesInfo, 
+               saveDir, expLabel, saveResults, savePlots)
+
+# %%%% Capillary 1 UV 600mW 1min
+
+path = up.Path_WorkingData + '/LeicaData/26-03-18_UVonCapillaryBulk'
+
+# mainDir is the directory containing the track files (.xml from TrackMate)
+mainDir = path + '/Tracks'
+
+# saveDir is the directory where the data and the plots will be saved
+saveDir = path
+
+expLabel = 'UV-600mW-1min'            # The label for this condition - used as a prefix for saved data and plots
+saveResults = True       # If you want to export results as a .json file
+savePlots = True         # If you want to save the plots as a .png file
+Rb = 0.5                   # Bead radius, µm - here MyOne Dynabeads
+SCALE = 0.461                # Microscope scale, µm/pixel
+
+filesInfo = []
+
+#### Film 4
+fI = {}
+fI['fileName'] = 'Capi01_UV-0A36-1min_P1_Tracks.xml'
+fI['FPS'] = 5
+fI['MagX'], fI['MagY'], fI['MagR'] =  115,  392, 168 * 0.5 
+fI['CropX'], fI['CropY'] = 0, 0 
+filesInfo.append(fI)
+
+#### Film 5
+fI = {}
+fI['fileName'] = 'Capi01_UV-0A36-1min_P2_Tracks.xml'
+fI['FPS'] = 5
+fI['MagX'], fI['MagY'], fI['MagR'] =  103,  441, 168 * 0.5 
+fI['CropX'], fI['CropY'] = 0, 0 
+filesInfo.append(fI)
+
+#### Run the analysis
+runAnalysis(mainDir, SCALE, Rb, D2F_func, filesInfo, 
+               saveDir, expLabel, saveResults, savePlots)
+
+
+
+# %%%% Capillary 2 Control
+
+path = up.Path_WorkingData + '/LeicaData/26-03-18_UVonCapillaryBulk'
+
+# mainDir is the directory containing the track files (.xml from TrackMate)
+mainDir = path + '/Tracks'
+
+# saveDir is the directory where the data and the plots will be saved
+saveDir = path
+
+expLabel = 'TestUV_before'            # The label for this condition - used as a prefix for saved data and plots
+saveResults = True       # If you want to export results as a .json file
+savePlots = True         # If you want to save the plots as a .png file
+Rb = 0.5                   # Bead radius, µm - here MyOne Dynabeads
+SCALE = 0.461                # Microscope scale, µm/pixel
+
+filesInfo = []
+
+#### Film 6
+fI = {}
+fI['fileName'] = 'Capi02_noUV_P1_Tracks.xml'
+fI['FPS'] = 5
+fI['MagX'], fI['MagY'], fI['MagR'] =  110,  431, 168 * 0.5 
+fI['CropX'], fI['CropY'] = 0, 0 
+filesInfo.append(fI)
+
+#### Film 7
+fI = {}
+fI['fileName'] = 'Capi02_noUV_P2_Tracks.xml'
+fI['FPS'] = 5
+fI['MagX'], fI['MagY'], fI['MagR'] =  119,  395, 168 * 0.5 
+fI['CropX'], fI['CropY'] = 0, 0 
+filesInfo.append(fI)
+
+#### Film 8
+fI = {}
+fI['fileName'] = 'Capi02_noUV_P3_Tracks.xml'
+fI['FPS'] = 5
+fI['MagX'], fI['MagY'], fI['MagR'] =  119,  403, 168 * 0.5 
+fI['CropX'], fI['CropY'] = 0, 0 
+filesInfo.append(fI)
+
+
+#### Run the analysis
+runAnalysis(mainDir, SCALE, Rb, D2F_func, filesInfo, 
+               saveDir, expLabel, saveResults, savePlots)
+
+# %%%% Capillary 2 UV 120mW 5min
+
+path = up.Path_WorkingData + '/LeicaData/26-03-18_UVonCapillaryBulk'
+
+# mainDir is the directory containing the track files (.xml from TrackMate)
+mainDir = path + '/Tracks'
+
+# saveDir is the directory where the data and the plots will be saved
+saveDir = path
+
+expLabel = 'UV-120mW-5min'            # The label for this condition - used as a prefix for saved data and plots
+saveResults = True       # If you want to export results as a .json file
+savePlots = True         # If you want to save the plots as a .png file
+Rb = 0.5                   # Bead radius, µm - here MyOne Dynabeads
+SCALE = 0.461                # Microscope scale, µm/pixel
+
+filesInfo = []
+
+#### Film 9
+fI = {}
+fI['fileName'] = 'Capi02_UV-0A08-5min_P2_Tracks.xml'
+fI['FPS'] = 5
+fI['MagX'], fI['MagY'], fI['MagR'] =  100,  392, 168 * 0.5 
+fI['CropX'], fI['CropY'] = 0, 0 
+filesInfo.append(fI)
+
+#### Run the analysis
+runAnalysis(mainDir, SCALE, Rb, D2F_func, filesInfo, 
+               saveDir, expLabel, saveResults, savePlots)
+
+
+# %%%% Capillary 2 UV 1800mW 1min
+
+path = up.Path_WorkingData + '/LeicaData/26-03-18_UVonCapillaryBulk'
+
+# mainDir is the directory containing the track files (.xml from TrackMate)
+mainDir = path + '/Tracks'
+
+# saveDir is the directory where the data and the plots will be saved
+saveDir = path
+
+expLabel = 'UV-1800mW-1min'            # The label for this condition - used as a prefix for saved data and plots
+saveResults = True       # If you want to export results as a .json file
+savePlots = True         # If you want to save the plots as a .png file
+Rb = 0.5                   # Bead radius, µm - here MyOne Dynabeads
+SCALE = 0.461                # Microscope scale, µm/pixel
+
+filesInfo = []
+
+#### Film 10
+fI = {}
+fI['fileName'] = 'Capi02_UV-1A08-1min_P1_Tracks.xml'
+fI['FPS'] = 5
+fI['MagX'], fI['MagY'], fI['MagR'] =  115,  391, 168 * 0.5 
+fI['CropX'], fI['CropY'] = 0, 0 
+filesInfo.append(fI)
+
+
+#### Run the analysis
+runAnalysis(mainDir, SCALE, Rb, D2F_func, filesInfo, 
+               saveDir, expLabel, saveResults, savePlots)
+
+
 
 # %%% 26/01/07
 

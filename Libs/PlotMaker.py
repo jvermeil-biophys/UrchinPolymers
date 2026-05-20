@@ -52,7 +52,7 @@ from statannotations.stats.StatTest import StatTest
 
 #### Local Imports
 
-import UtilityFunctions as ufun
+import Libs.UtilityFunctions as ufun
 
 
 #### Potentially useful lines of code
@@ -90,6 +90,10 @@ markerList10 = ['o', 's', 'D', '>', '^', 'P', 'X', '<', 'v', 'p']
 # colors = prop_cycle.by_key()['color']
 my_default_color_list = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd', 
                          '#8c564b', '#e377c2', '#7f7f7f', '#bcbd22', '#17becf']
+
+colorListMpl = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd', 
+               '#8c564b', '#e377c2', '#7f7f7f', '#bcbd22', '#17becf']
+
 my_default_color_cycle = cycler(color=my_default_color_list)
 plt.rcParams['axes.prop_cycle'] = my_default_color_cycle
 
@@ -143,6 +147,14 @@ cL_Set1 = palette_Set1.as_hex()[:-1]
 
 cL_Set12 = cL_Set1 + cL_Set2
 cL_Set21 = cL_Set2 + cL_Set1
+
+colorListSns = ['#66c2a5',  '#fc8d62', '#8da0cb', '#e78ac3', '#a6d854','#ffd92f', 
+                '#e5c494', '#b3b3b3', '#e41a1c', '#377eb8', '#4daf4a',
+                '#984ea3', '#ff7f00', '#ffff33', '#a65628', '#f781bf']
+
+colorListSns2 = ['#e41a1c', '#377eb8', '#4daf4a', '#984ea3', '#ff7f00', '#ffff33', 
+                 '#a65628', '#f781bf', '#66c2a5',  '#fc8d62', '#8da0cb', 
+                 '#e78ac3', '#a6d854','#ffd92f', '#e5c494', '#b3b3b3']
 
 # %%%% 1.2.3 Display color / marker lists
 
@@ -259,15 +271,15 @@ def consoleTextTester_02():
 
 def setGraphicOptions(mode = 'screen', palette = 'Set2', colorList = cL_Set21):
     if mode == 'screen':
-        SMALLER_SIZE = 11
-        SMALL_SIZE = 13
-        MEDIUM_SIZE = 16
-        BIGGER_SIZE = 20
+        SMALLER_SIZE = 10
+        SMALL_SIZE = 12
+        MEDIUM_SIZE = 14
+        BIGGER_SIZE = 16
     if mode == 'screen_big':
         SMALLER_SIZE = 12
         SMALL_SIZE = 14
-        MEDIUM_SIZE = 18
-        BIGGER_SIZE = 22
+        MEDIUM_SIZE = 16
+        BIGGER_SIZE = 20
     elif mode == 'print':
         SMALLER_SIZE = 8
         SMALL_SIZE = 10
@@ -280,7 +292,7 @@ def setGraphicOptions(mode = 'screen', palette = 'Set2', colorList = cL_Set21):
     plt.rc('xtick', labelsize=SMALLER_SIZE)    # fontsize of the tick labels
     plt.rc('ytick', labelsize=SMALLER_SIZE)    # fontsize of the tick labels
     plt.rc('legend', fontsize=SMALLER_SIZE)    # legend fontsize
-    plt.rc('figure', titlesize=BIGGER_SIZE)  # fontsize of the figure title
+    plt.rc('figure', titlesize=MEDIUM_SIZE)  # fontsize of the figure title
     
     sns.set_palette(sns.color_palette(palette))
     matplotlib.rcParams['axes.prop_cycle'] = matplotlib.cycler(color=colorList) 
@@ -714,8 +726,6 @@ def D1Plot(data, fig = None, ax = None, condition='', parameter='',
     markersize = 5 * markersizeFactor
     linewidth = 0.75*markersizeFactor
     
-        
-        
     palette = getSnsPalette(co_order, styleDict)
     
     #### Swarmplot
@@ -796,8 +806,7 @@ def D1Plot_violin(data, fig = None, ax = None, condition='', parameter='',
         figHeight = 5
         figWidth = 5*Nco*figSizeFactor
         fig, ax = plt.subplots(1,1, figsize=(figWidth, figHeight))    
-        
-        
+
     palette = getSnsPalette(co_order, styleDict)
     
     #### Swarmplot
