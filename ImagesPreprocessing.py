@@ -96,7 +96,8 @@ def getListOfSourceFolders(Dir, forbiddenWords = [], compulsaryWords = []): # 'd
                                           compulsaryWords=compulsaryWords) 
     # Recursive call to the function !
     # In the end this function will have explored all the sub directories of Dir,
-    # searching for folders containing tif files, without forbidden words in their names.        
+    # searching for folders containing tif files, without forbidden words in their names.  
+    
     return(res)
 
 
@@ -545,11 +546,14 @@ def crop_and_copy(DirSrc, DirDst, allRefPoints, allStackPaths,
 # DirDst = 'C:/Users/Joseph/Desktop/AnalysisPulls/26-03-04_UVonCytoplasmAndBeads/Pulls'
 # DirDst_bins = ''
 
-DirSrc = 'C:/Users/Joseph/Desktop/WorkingData/LeicaData/26-01-27/Pulls'
-DirDst = 'C:/Users/Joseph/Desktop/AnalysisPulls/26-01-27_BeadTracking'
+# DirSrc = 'C:/Users/Joseph/Desktop/WorkingData/LeicaData/26-01-27/Pulls'
+# DirDst = 'C:/Users/Joseph/Desktop/AnalysisPulls/26-01-27_BeadTracking'
 
 DirSrc = up.Path_LeicaData + "/26-03-04/Pulls"
 DirDst = up.Path_AnalysisPulls + "/26-03-04_UVonCytoplasmAndBeads/Pulls"
+
+DirSrc = 'C:/Users/josep/Desktop/Seafile/DownloadedFromSeafile/26-04-10/26-04-10_M1_IncubedCells_HPMA-100mM_I2959-20mM_AOTCRh'
+DirDst = up.Path_AnalysisPulls + "/26-04-10_CellsIncubatedwithMix/Pulls"
 
 microscope = 'Leica'
 source_format = 'single file' # 'image collection'
@@ -559,7 +563,7 @@ GetOMEdata = True
 
 scaleFactor = 1/8
 
-forbiddenWords = ['capture', 'captures', 'crop', 'crops', 'croped']
+forbiddenWords = ['capture', 'captures', 'crop', 'crops', 'croped', 'snap', 'out', 'bad'] # 
 compulsaryWords = [] # 'M1'
 
 # Disable the Warnings from TiffFile
@@ -798,12 +802,16 @@ allOutputPaths = []
 allOutputPaths = os.listdir(DirDst)
 allOutputPaths = [os.path.join(DirDst, f) for f in allOutputPaths if f.endswith('.tif')]
 allOutputPid = ['_'.join((os.path.split(path)[1]).split('_')[:5]) for path in allOutputPaths]
+for i, oPid in enumerate(allOutputPid):
+    if oPid.endswith('.tif'):
+        allOutputPid[i] = oPid[:-4]
 
 N = len(allOutputPaths)
 
 allInputDirPaths = getListOfSourceFolders(DirSrc,
                                        forbiddenWords = forbiddenWords,
                                        compulsaryWords = compulsaryWords)
+
 allInputPid = ['_'.join((os.path.split(path)[1]).split('_')[:5]) for path in allInputDirPaths]
 inputDict = {k:v for (k,v) in zip(allInputPid, allInputDirPaths)}
 
@@ -870,7 +878,9 @@ for iP, oP in zip(allInputPaths, allOutputPaths):
 for k in ExpData.keys():
     if len(ExpData[k]) == 0:
         ExpData[k] = np.ones(N) * np.nan
-    
+        
+    # print(k, len(ExpData[k]))
+
 ExpDf = pd.DataFrame(ExpData)
 ExpDf.to_csv(os.path.join(DirDst, 'Automatic_ExperimentalConditions.csv'), float_format = '%.2f', index=False)
 
