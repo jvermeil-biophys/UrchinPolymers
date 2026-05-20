@@ -95,7 +95,7 @@ SCALE = 0.461                # Microscope scale, µm/pixel
 #### No UV
 
 
-# %%% M2 TBD NaSS-300mM I2959-25mM 
+# %%% M2 NaSS-300mM I2959-25mM 
 
 # 26-05-11 Magnet Positions
 # MyOne beads in Glycerol mix
@@ -108,6 +108,72 @@ SCALE = 0.461                # Microscope scale, µm/pixel
 
 
 #### No UV
+# Get infos
+filesInfo = []
+expLabel = '26-05-11_Magnet-JV01_MyOne_Gly80%_M2_NaSS300mM-PI25mM-noUV'  
+# The label for this condition - used as a prefix for saved data and plots
+
+# fI = {}
+# fI['fileName'] = '26-05-11_M2_Gly80p_NaSS-300mM_I2959-25mM_P1_Tracks.xml'
+# fI['FPS'] = 2
+# fI['MagX'], fI['MagY'], fI['MagR'] = 507, 526, 148 * 0.5
+# fI['CropX'], fI['CropY'] = 0, 0 
+# filesInfo.append(fI)
+
+fI = {}
+fI['fileName'] = '26-05-11_M2_Gly80p_NaSS-300mM_I2959-25mM_P2_Tracks.xml'
+fI['FPS'] = 2
+fI['MagX'], fI['MagY'], fI['MagR'] = 497, 534, 148 * 0.5
+fI['CropX'], fI['CropY'] = 0, 0 
+filesInfo.append(fI)
+
+# fI = {}
+# fI['fileName'] = '26-05-11_M2_Gly80p_NaSS-300mM_I2959-25mM_P5_Tracks.xml'
+# fI['FPS'] = 2
+# fI['MagX'], fI['MagY'], fI['MagR'] =  474, 551, 148 * 0.5
+# fI['CropX'], fI['CropY'] = 0, 0 
+# filesInfo.append(fI)
+
+# Run the analysis
+tbcv.runViscoAnalysis(mainDir, SCALE, Rb, Mag_dX0, D2F_func, filesInfo, 
+                      saveDir, expLabel, saveResults, savePlots)
+
+#### UV 0.2A 5min
+# Get infos
+filesInfo = []
+expLabel = '26-05-11_Magnet-JV01_MyOne_Gly80%_M2_NaSS30mM-PI25mM-UV5min0A2'  
+# The label for this condition - used as a prefix for saved data and plots
+
+
+fI = {}
+fI['fileName'] = '26-05-11_M2_Gly80p_NaSS-300mM_I2959-25mM_UV-0A2-5min_P3_Tracks.xml'
+fI['FPS'] = 2
+fI['MagX'], fI['MagY'], fI['MagR'] = 495, 537, 148 * 0.5
+fI['CropX'], fI['CropY'] = 0, 0 
+filesInfo.append(fI)
+
+# Run the analysis
+tbcv.runViscoAnalysis(mainDir, SCALE, Rb, Mag_dX0, D2F_func, filesInfo, 
+                      saveDir, expLabel, saveResults, savePlots)
+
+
+#### UV 0.4A 1min
+# Get infos
+filesInfo = []
+expLabel = '26-05-11_Magnet-JV01_MyOne_Gly80%_M2_NaSS300mM-PI25mM-UV1min0A4'  
+# The label for this condition - used as a prefix for saved data and plots
+
+fI = {}
+fI['fileName'] = '26-05-11_M2_Gly80p_NaSS-300mM_I2959-25mM_UV-0A4-1min_P4_Tracks.xml'
+fI['FPS'] = 2
+fI['MagX'], fI['MagY'], fI['MagR'] =  483, 536, 148 * 0.5
+fI['CropX'], fI['CropY'] = 0, 0 
+filesInfo.append(fI)
+
+# Run the analysis
+tbcv.runViscoAnalysis(mainDir, SCALE, Rb, Mag_dX0, D2F_func, filesInfo, 
+                      saveDir, expLabel, saveResults, savePlots, 
+                      low_cut = 0.55, high_cut = 1.75)
 
 
 # %%% M3 NaSS-200mM I2959-25mM
@@ -203,7 +269,7 @@ tbcv.runViscoAnalysis(mainDir, SCALE, Rb, Mag_dX0, D2F_func, filesInfo,
 
 
 
-# %%% M4 TBD NaSS-500mM I2959-25mM 
+# %%% M4 NaSS-500mM I2959-25mM 
 
 # 26-05-11 Magnet Positions
 # MyOne beads in Glycerol mix
@@ -216,8 +282,71 @@ SCALE = 0.461                # Microscope scale, µm/pixel
 
 
 #### No UV
+# Get infos
+filesInfo = []
+expLabel = '26-05-11_Magnet-JV01_MyOne_Gly80%_M4_NaSS500mM-PI25mM-UV5min0A2'  
+# The label for this condition - used as a prefix for saved data and plots
+
+fI = {}
+fI['fileName'] = '26-05-11_M4_Gly80p_NaSS-500mM_I2959-25mM_P1_Tracks.xml'
+fI['FPS'] = 2
+fI['MagX'], fI['MagY'], fI['MagR'] = 399, 539, 146 * 0.5
+fI['CropX'], fI['CropY'] = 0, 0 
+filesInfo.append(fI)
+
+fI = {}
+fI['fileName'] = '26-05-11_M4_Gly80p_NaSS-500mM_I2959-25mM_P2_Tracks.xml'
+fI['FPS'] = 2
+fI['MagX'], fI['MagY'], fI['MagR'] = 499, 550, 146 * 0.5
+fI['CropX'], fI['CropY'] = 0, 0 
+filesInfo.append(fI)
+
+fI = {}
+fI['fileName'] = '26-05-11_M4_Gly80p_NaSS-500mM_I2959-25mM_P3_Tracks.xml'
+fI['FPS'] = 2
+fI['MagX'], fI['MagY'], fI['MagR'] = 510, 547, 146 * 0.5
+fI['CropX'], fI['CropY'] = 0, 0 
+filesInfo.append(fI)
+
+# Run the analysis
+tbcv.runViscoAnalysis(mainDir, SCALE, Rb, Mag_dX0, D2F_func, filesInfo, 
+                      saveDir, expLabel, saveResults, savePlots)
 
 
+#### UV 5min 0.2A
+# Get infos
+filesInfo = []
+expLabel = '26-05-11_Magnet-JV01_MyOne_Gly80%_M4_NaSS500mM-PI25mM-UV5min0A2'  
+# The label for this condition - used as a prefix for saved data and plots
+
+fI = {}
+fI['fileName'] = '26-05-11_M4_Gly80p_NaSS-500mM_I2959-25mM_UV-0A2-5min_P4_Tracks.xml'
+fI['FPS'] = 2
+fI['MagX'], fI['MagY'], fI['MagR'] = 508, 541, 146 * 0.5
+fI['CropX'], fI['CropY'] = 0, 0 
+filesInfo.append(fI)
+
+# Run the analysis
+tbcv.runViscoAnalysis(mainDir, SCALE, Rb, Mag_dX0, D2F_func, filesInfo, 
+                      saveDir, expLabel, saveResults, savePlots)
+
+
+#### UV 1min 0.4A
+# Get infos
+filesInfo = []
+expLabel = '26-05-11_Magnet-JV01_MyOne_Gly80%_M4_NaSS500mM-PI25mM-UV1min0A4'  
+# The label for this condition - used as a prefix for saved data and plots
+
+fI = {}
+fI['fileName'] = '26-05-11_M4_Gly80p_NaSS-500mM_I2959-25mM_UV-0A4-1min_P5_Tracks.xml'
+fI['FPS'] = 2
+fI['MagX'], fI['MagY'], fI['MagR'] = 508, 540, 146 * 0.5
+fI['CropX'], fI['CropY'] = 0, 0 
+filesInfo.append(fI)
+
+# Run the analysis
+tbcv.runViscoAnalysis(mainDir, SCALE, Rb, Mag_dX0, D2F_func, filesInfo, 
+                      saveDir, expLabel, saveResults, savePlots)
 
 
 

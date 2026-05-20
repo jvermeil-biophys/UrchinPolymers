@@ -526,7 +526,7 @@ def tracks_calibration(tracks_data, expLabel = '',
 
 def tracks_calcViscosity(tracks_data, Rb = 0.5, expLabel = '',
                     saveResults = True, savePlots = True, saveDir = '',
-                    return_fig = 0):
+                    return_fig = 0, low_cut = 0.75, high_cut = 1.25):
     
     MagR = 60 # µm - Typical Diameter
     
@@ -600,8 +600,8 @@ def tracks_calcViscosity(tracks_data, Rb = 0.5, expLabel = '',
 
     expected_medV = powerLaw(all_medD, *V_popt_pL)
     ratio_fitV = all_medV/expected_medV
-    high_cut = 1.25
-    low_cut = 0.75
+    # high_cut = 1.35
+    # low_cut = 0.65
 
     tracks_data_f2 = []
     removed_tracks = []
@@ -750,7 +750,8 @@ def runCalibration(mainDir, SCALE, Rb, Mag_dX0, visco, filesInfo,
 
 
 def runViscoAnalysis(mainDir, SCALE, Rb, Mag_dX0, D2F_func, filesInfo, 
-                saveDir, expLabel, saveResults, savePlots):
+                     saveDir, expLabel, saveResults, savePlots, 
+                     low_cut = 0.75, high_cut = 1.25):
     
     pm.setGraphicOptions(mode = 'screen', colorList = pm.colorListMpl)
     
@@ -770,7 +771,9 @@ def runViscoAnalysis(mainDir, SCALE, Rb, Mag_dX0, D2F_func, filesInfo,
                             MagX, MagY, MagR, Rb, CropX, CropY, Mag_dX0,
                             mode = 'measureVisco', D2F_func = D2F_func)
     # 2. Run analysis
-    tracks_calcViscosity(tracks_data, Rb, expLabel, saveResults, savePlots, saveDir)
+    tracks_calcViscosity(tracks_data, Rb, expLabel, 
+                         saveResults, savePlots, saveDir, 
+                         low_cut = low_cut, high_cut = high_cut)
 
 
 
