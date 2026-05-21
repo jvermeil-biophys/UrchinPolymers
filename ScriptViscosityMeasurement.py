@@ -141,7 +141,7 @@ tbcv.runViscoAnalysis(mainDir, SCALE, Rb, Mag_dX0, D2F_func, filesInfo,
 #### UV 0.2A 5min
 # Get infos
 filesInfo = []
-expLabel = '26-05-11_Magnet-JV01_MyOne_Gly80%_M2_NaSS30mM-PI25mM-UV5min0A2'  
+expLabel = '26-05-11_Magnet-JV01_MyOne_Gly80%_M2_NaSS300mM-PI25mM-UV5min0A2'  
 # The label for this condition - used as a prefix for saved data and plots
 
 
@@ -154,7 +154,8 @@ filesInfo.append(fI)
 
 # Run the analysis
 tbcv.runViscoAnalysis(mainDir, SCALE, Rb, Mag_dX0, D2F_func, filesInfo, 
-                      saveDir, expLabel, saveResults, savePlots)
+                      saveDir, expLabel, saveResults, savePlots,
+                      low_cut = 0.65, high_cut = 1.20)
 
 
 #### UV 0.4A 1min
@@ -284,7 +285,7 @@ SCALE = 0.461                # Microscope scale, µm/pixel
 #### No UV
 # Get infos
 filesInfo = []
-expLabel = '26-05-11_Magnet-JV01_MyOne_Gly80%_M4_NaSS500mM-PI25mM-UV5min0A2'  
+expLabel = '26-05-11_Magnet-JV01_MyOne_Gly80%_M4_NaSS500mM-PI25mM-noUV'  
 # The label for this condition - used as a prefix for saved data and plots
 
 fI = {}
@@ -383,16 +384,17 @@ fI['MagX'], fI['MagY'], fI['MagR'] = 510.5, 562.5, 143 * 0.5
 fI['CropX'], fI['CropY'] = 0, 0 
 filesInfo.append(fI)
 
-fI = {}
-fI['fileName'] = '26-05-11_M5_Gly80p_NaSS-100mM_I2959-25mM_P7_Tracks.xml'
-fI['FPS'] = 2
-fI['MagX'], fI['MagY'], fI['MagR'] = 405, 544, 148 * 0.5
-fI['CropX'], fI['CropY'] = 0, 0 
-filesInfo.append(fI)
+# fI = {}
+# fI['fileName'] = '26-05-11_M5_Gly80p_NaSS-100mM_I2959-25mM_P7_Tracks.xml'
+# fI['FPS'] = 2
+# fI['MagX'], fI['MagY'], fI['MagR'] = 405, 544, 148 * 0.5
+# fI['CropX'], fI['CropY'] = 0, 0 
+# filesInfo.append(fI)
 
 # Run the analysis
 tbcv.runViscoAnalysis(mainDir, SCALE, Rb, Mag_dX0, D2F_func, filesInfo, 
-                      saveDir, expLabel, saveResults, savePlots)
+                      saveDir, expLabel, saveResults, savePlots,
+                      low_cut = 0.65, high_cut = 1.15)
 
 
 #### UV 0.2A 5min
@@ -418,7 +420,8 @@ filesInfo.append(fI)
 
 # Run the analysis
 tbcv.runViscoAnalysis(mainDir, SCALE, Rb, Mag_dX0, D2F_func, filesInfo, 
-                      saveDir, expLabel, saveResults, savePlots)
+                      saveDir, expLabel, saveResults, savePlots,
+                      low_cut = 0.65, high_cut = 1.15)
 
 
 #### UV 0.4A 1min
@@ -428,12 +431,12 @@ filesInfo = []
 expLabel = '26-05-11_Magnet-JV01_MyOne_Gly80%_M5_NaSS100mM-PI25mM-UV1min0A4'  
 # The label for this condition - used as a prefix for saved data and plots
 
-fI = {}
-fI['fileName'] = '26-05-11_M5_Gly80p_NaSS-100mM_I2959-25mM_UV-0A4-1min_P5_Tracks.xml'
-fI['FPS'] = 2
-fI['MagX'], fI['MagY'], fI['MagR'] = 496.5, 564.5, 143 * 0.5
-fI['CropX'], fI['CropY'] = 0, 0 
-filesInfo.append(fI)
+# fI = {}
+# fI['fileName'] = '26-05-11_M5_Gly80p_NaSS-100mM_I2959-25mM_UV-0A4-1min_P5_Tracks.xml'
+# fI['FPS'] = 2
+# fI['MagX'], fI['MagY'], fI['MagR'] = 496.5, 564.5, 143 * 0.5
+# fI['CropX'], fI['CropY'] = 0, 0 
+# filesInfo.append(fI)
 
 fI = {}
 fI['fileName'] = '26-05-11_M5_Gly80p_NaSS-100mM_I2959-25mM_UV-0A4-1min_P6_Tracks.xml'
@@ -444,7 +447,8 @@ filesInfo.append(fI)
 
 # Run the analysis
 tbcv.runViscoAnalysis(mainDir, SCALE, Rb, Mag_dX0, D2F_func, filesInfo, 
-                      saveDir, expLabel, saveResults, savePlots)
+                      saveDir, expLabel, saveResults, savePlots,
+                      low_cut = 0.65, high_cut = 1.15)
 
 
 # %%% M6 NaSS-500mM No PI
