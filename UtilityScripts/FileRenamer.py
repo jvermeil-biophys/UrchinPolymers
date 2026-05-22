@@ -263,6 +263,22 @@ def findAndRemove(path, target_string, target='file', test = True,
     print(len(renamedListTarget))
     return(renamedListTarget)
 
+
+# -----------------------------------------------------------------------------------------------
+# %% Script Other renaming
+
+s1 = '26-05-11'
+s2 = '26-05-21'
+
+# path0 = "E:/AnalysisPulls/26-04-30_CalibMagnet_JV01_and_JN"
+path0 = "C:/Users/Joseph/Desktop/WorkingData/" + "LeicaData/26-05-21_Visco_Gly80p_MyOne_Magnet-JV01/26-05-21_M3_Gly80p_HPMA-300mM_I2959-25mM"
+sub = ''
+path = path0 + sub
+
+findAndRename(path, s1, s2, 
+              target = 'all', test = False, recursiveAction = True, exceptStrings = [])
+
+
 # -----------------------------------------------------------------------------------------------
 # %% Script Other renaming
 
