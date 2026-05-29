@@ -94,8 +94,97 @@ Rb = 0.5                   # Bead radius, µm - here MyOne Dynabeads
 SCALE = 0.461                # Microscope scale, µm/pixel
 
 
-#### No UV
 
+#### No UV
+# Get infos
+filesInfo = []
+expLabel = '26-05-21_Magnet-JV01_MyOne_Gly80%_M1_HPMA200mM_PI25mM_UVnone'  
+# The label for this condition - used as a prefix for saved data and plots
+
+fI = {}
+fI['fileName'] = '26-05-21_M1_Gly80p_HPMA-200mM_I2959-25mM_UV-none_P1_Tracks.xml'
+fI['FPS'] = 2
+fI['MagX'], fI['MagY'], fI['MagR'] = 400, 506, 140 * 0.5
+fI['CropX'], fI['CropY'] = 0, 0 
+filesInfo.append(fI)
+
+fI = {}
+fI['fileName'] = '26-05-21_M1_Gly80p_HPMA-200mM_I2959-25mM_UV-none_P2_Tracks.xml'
+fI['FPS'] = 2
+fI['MagX'], fI['MagY'], fI['MagR'] = 407, 504, 140 * 0.5
+fI['CropX'], fI['CropY'] = 0, 0 
+filesInfo.append(fI)
+
+# fI = {}
+# fI['fileName'] = '26-05-21_M1_Gly80p_HPMA-200mM_I2959-25mM_UV-none_P3_Tracks.xml'
+# fI['FPS'] = 2
+# fI['MagX'], fI['MagY'], fI['MagR'] = 506, 518, 140 * 0.5
+# fI['CropX'], fI['CropY'] = 0, 0 
+# filesInfo.append(fI)
+
+# fI = {}
+# fI['fileName'] = '26-05-21_M1_Gly80p_HPMA-200mM_I2959-25mM_UV-none_P8_Tracks.xml'
+# fI['FPS'] = 2
+# fI['MagX'], fI['MagY'], fI['MagR'] = 534, 506, 140 * 0.5
+# fI['CropX'], fI['CropY'] = 0, 0 
+# filesInfo.append(fI)
+
+# Run the analysis
+tbcv.runViscoAnalysis(mainDir, SCALE, Rb, Mag_dX0, D2F_func, filesInfo, 
+                      saveDir, expLabel, saveResults, savePlots, 
+                      low_cut = 0.75, high_cut = 1.25)
+
+
+#### UV 5min 0.2A
+# Get infos
+filesInfo = []
+expLabel = '26-05-21_Magnet-JV01_MyOne_Gly80%_M1_HPMA200mM_PI25mM_UV5min0A2'  
+# The label for this condition - used as a prefix for saved data and plots
+
+fI = {}
+fI['fileName'] = '26-05-21_M1_Gly80p_HPMA-200mM_I2959-25mM_UV-0A2-5min_P4_Tracks.xml'
+fI['FPS'] = 2
+fI['MagX'], fI['MagY'], fI['MagR'] = 504, 513, 140 * 0.5
+fI['CropX'], fI['CropY'] = 0, 0 
+filesInfo.append(fI)
+
+# fI = {}
+# fI['fileName'] = '26-05-21_M1_Gly80p_HPMA-200mM_I2959-25mM_UV-0A2-5min_P6_Tracks.xml'
+# fI['FPS'] = 2
+# fI['MagX'], fI['MagY'], fI['MagR'] = 508, 499, 140 * 0.5
+# fI['CropX'], fI['CropY'] = 0, 0 
+# filesInfo.append(fI)
+
+# Run the analysis
+tbcv.runViscoAnalysis(mainDir, SCALE, Rb, Mag_dX0, D2F_func, filesInfo, 
+                      saveDir, expLabel, saveResults, savePlots, 
+                      low_cut = 0.75, high_cut = 1.25)
+
+
+#### UV 1min 0.4A
+# Get infos
+filesInfo = []
+expLabel = '26-05-21_Magnet-JV01_MyOne_Gly80%_M1_HPMA200mM_PI25mM_UV1min0A4'  
+# The label for this condition - used as a prefix for saved data and plots
+
+fI = {}
+fI['fileName'] = '26-05-21_M1_Gly80p_HPMA-200mM_I2959-25mM_UV-0A4-1min_P5_Tracks.xml'
+fI['FPS'] = 2
+fI['MagX'], fI['MagY'], fI['MagR'] = 503, 517, 140 * 0.5
+fI['CropX'], fI['CropY'] = 0, 0 
+filesInfo.append(fI)
+
+# fI = {}
+# fI['fileName'] = '26-05-21_M1_Gly80p_HPMA-200mM_I2959-25mM_UV-0A4-1min_P7_Tracks.xml'
+# fI['FPS'] = 2
+# fI['MagX'], fI['MagY'], fI['MagR'] = 511, 496, 140 * 0.5
+# fI['CropX'], fI['CropY'] = 0, 0 
+# filesInfo.append(fI)
+
+# Run the analysis
+tbcv.runViscoAnalysis(mainDir, SCALE, Rb, Mag_dX0, D2F_func, filesInfo, 
+                      saveDir, expLabel, saveResults, savePlots, 
+                      low_cut = 0.75, high_cut = 1.25)
 
 # %%% M2 HPMA-100mM I2959-25mM  
 
