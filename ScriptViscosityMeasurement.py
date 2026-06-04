@@ -16,8 +16,9 @@ import matplotlib.pyplot as pl
 import Libs.PlotMaker as pm
 import Libs.UrchinPaths as up
 import Libs.UtilityFunctions as ufun
-import Libs.MagnetsCalibrationsConstants as mcc
 import Libs.ToolboxCalibVisco as tbcv
+import Libs.MagnetsCalibrationsConstants as mcc
+
 
 
 # %% 2. Run an analysis
@@ -61,7 +62,7 @@ fI['CropX'], fI['CropY'] = 0, 0
 filesInfo.append(fI)
 
 #### Run the analysis
-tbcv.runViscoAnalysis(mainDir, SCALE, Rb, Mag_dX0, D2F_func, filesInfo, 
+tbcv.runSimpleViscoAnalysis(mainDir, SCALE, Rb, Mag_dX0, D2F_func, filesInfo, 
                       saveDir, expLabel, saveResults, savePlots)
 
 # %% ------
@@ -118,7 +119,7 @@ filesInfo.append(fI)
 # fI = {}
 # fI['fileName'] = '26-05-21_M1_Gly80p_HPMA-200mM_I2959-25mM_UV-none_P3_Tracks.xml'
 # fI['FPS'] = 2
-# fI['MagX'], fI['MagY'], fI['MagR'] = 506, 518, 140 * 0.5
+# fI['MagX'], fI['MagY'], fI['MagR'] = 407, 504, 140 * 0.5
 # fI['CropX'], fI['CropY'] = 0, 0 
 # filesInfo.append(fI)
 
@@ -130,7 +131,7 @@ filesInfo.append(fI)
 # filesInfo.append(fI)
 
 # Run the analysis
-tbcv.runViscoAnalysis(mainDir, SCALE, Rb, Mag_dX0, D2F_func, filesInfo, 
+tbcv.runSimpleViscoAnalysis(mainDir, SCALE, Rb, Mag_dX0, D2F_func, filesInfo, 
                       saveDir, expLabel, saveResults, savePlots, 
                       low_cut = 0.75, high_cut = 1.25)
 
@@ -156,7 +157,7 @@ filesInfo.append(fI)
 # filesInfo.append(fI)
 
 # Run the analysis
-tbcv.runViscoAnalysis(mainDir, SCALE, Rb, Mag_dX0, D2F_func, filesInfo, 
+tbcv.runSimpleViscoAnalysis(mainDir, SCALE, Rb, Mag_dX0, D2F_func, filesInfo, 
                       saveDir, expLabel, saveResults, savePlots, 
                       low_cut = 0.75, high_cut = 1.25)
 
@@ -182,7 +183,7 @@ filesInfo.append(fI)
 # filesInfo.append(fI)
 
 # Run the analysis
-tbcv.runViscoAnalysis(mainDir, SCALE, Rb, Mag_dX0, D2F_func, filesInfo, 
+tbcv.runSimpleViscoAnalysis(mainDir, SCALE, Rb, Mag_dX0, D2F_func, filesInfo, 
                       saveDir, expLabel, saveResults, savePlots, 
                       low_cut = 0.75, high_cut = 1.25)
 
@@ -227,7 +228,7 @@ fI['CropX'], fI['CropY'] = 0, 0
 filesInfo.append(fI)
 
 # Run the analysis
-tbcv.runViscoAnalysis(mainDir, SCALE, Rb, Mag_dX0, D2F_func, filesInfo, 
+tbcv.runSimpleViscoAnalysis(mainDir, SCALE, Rb, Mag_dX0, D2F_func, filesInfo, 
                       saveDir, expLabel, saveResults, savePlots, 
                       low_cut = 0.75, high_cut = 1.25)
 
@@ -253,7 +254,7 @@ fI['CropX'], fI['CropY'] = 0, 0
 filesInfo.append(fI)
 
 # Run the analysis
-tbcv.runViscoAnalysis(mainDir, SCALE, Rb, Mag_dX0, D2F_func, filesInfo, 
+tbcv.runSimpleViscoAnalysis(mainDir, SCALE, Rb, Mag_dX0, D2F_func, filesInfo, 
                       saveDir, expLabel, saveResults, savePlots, 
                       low_cut = 0.75, high_cut = 1.25)
 
@@ -279,7 +280,7 @@ fI['CropX'], fI['CropY'] = 0, 0
 filesInfo.append(fI)
 
 # Run the analysis
-tbcv.runViscoAnalysis(mainDir, SCALE, Rb, Mag_dX0, D2F_func, filesInfo, 
+tbcv.runSimpleViscoAnalysis(mainDir, SCALE, Rb, Mag_dX0, D2F_func, filesInfo, 
                       saveDir, expLabel, saveResults, savePlots, 
                       low_cut = 0.75, high_cut = 1.25)
 
@@ -323,7 +324,7 @@ fI['CropX'], fI['CropY'] = 0, 0
 filesInfo.append(fI)
 
 # Run the analysis
-tbcv.runViscoAnalysis(mainDir, SCALE, Rb, Mag_dX0, D2F_func, filesInfo, 
+tbcv.runSimpleViscoAnalysis(mainDir, SCALE, Rb, Mag_dX0, D2F_func, filesInfo, 
                       saveDir, expLabel, saveResults, savePlots)
 
 
@@ -348,7 +349,7 @@ fI['CropX'], fI['CropY'] = 0, 0
 filesInfo.append(fI)
 
 # Run the analysis
-tbcv.runViscoAnalysis(mainDir, SCALE, Rb, Mag_dX0, D2F_func, filesInfo, 
+tbcv.runSimpleViscoAnalysis(mainDir, SCALE, Rb, Mag_dX0, D2F_func, filesInfo, 
                       saveDir, expLabel, saveResults, savePlots)
 
 
@@ -425,7 +426,7 @@ filesInfo.append(fI)
 # filesInfo.append(fI)
 
 # Run the analysis
-tbcv.runViscoAnalysis(mainDir, SCALE, Rb, Mag_dX0, D2F_func, filesInfo, 
+tbcv.runSimpleViscoAnalysis(mainDir, SCALE, Rb, Mag_dX0, D2F_func, filesInfo, 
                       saveDir, expLabel, saveResults, savePlots)
 
 #### UV 0.2A 5min
@@ -443,7 +444,7 @@ fI['CropX'], fI['CropY'] = 0, 0
 filesInfo.append(fI)
 
 # Run the analysis
-tbcv.runViscoAnalysis(mainDir, SCALE, Rb, Mag_dX0, D2F_func, filesInfo, 
+tbcv.runSimpleViscoAnalysis(mainDir, SCALE, Rb, Mag_dX0, D2F_func, filesInfo, 
                       saveDir, expLabel, saveResults, savePlots,
                       low_cut = 0.65, high_cut = 1.20)
 
@@ -462,7 +463,7 @@ fI['CropX'], fI['CropY'] = 0, 0
 filesInfo.append(fI)
 
 # Run the analysis
-tbcv.runViscoAnalysis(mainDir, SCALE, Rb, Mag_dX0, D2F_func, filesInfo, 
+tbcv.runSimpleViscoAnalysis(mainDir, SCALE, Rb, Mag_dX0, D2F_func, filesInfo, 
                       saveDir, expLabel, saveResults, savePlots, 
                       low_cut = 0.55, high_cut = 1.75)
 
@@ -506,7 +507,7 @@ fI['CropX'], fI['CropY'] = 0, 0
 filesInfo.append(fI)
 
 # Run the analysis
-tbcv.runViscoAnalysis(mainDir, SCALE, Rb, Mag_dX0, D2F_func, filesInfo, 
+tbcv.runSimpleViscoAnalysis(mainDir, SCALE, Rb, Mag_dX0, D2F_func, filesInfo, 
                       saveDir, expLabel, saveResults, savePlots)
 
 
@@ -533,7 +534,7 @@ fI['CropX'], fI['CropY'] = 0, 0
 filesInfo.append(fI)
 
 # Run the analysis
-tbcv.runViscoAnalysis(mainDir, SCALE, Rb, Mag_dX0, D2F_func, filesInfo, 
+tbcv.runSimpleViscoAnalysis(mainDir, SCALE, Rb, Mag_dX0, D2F_func, filesInfo, 
                       saveDir, expLabel, saveResults, savePlots)
 
 
@@ -552,7 +553,7 @@ fI['CropX'], fI['CropY'] = 0, 0
 filesInfo.append(fI)
 
 # Run the analysis
-tbcv.runViscoAnalysis(mainDir, SCALE, Rb, Mag_dX0, D2F_func, filesInfo, 
+tbcv.runSimpleViscoAnalysis(mainDir, SCALE, Rb, Mag_dX0, D2F_func, filesInfo, 
                       saveDir, expLabel, saveResults, savePlots)
 
 
@@ -600,7 +601,7 @@ fI['CropX'], fI['CropY'] = 0, 0
 filesInfo.append(fI)
 
 # Run the analysis
-tbcv.runViscoAnalysis(mainDir, SCALE, Rb, Mag_dX0, D2F_func, filesInfo, 
+tbcv.runSimpleViscoAnalysis(mainDir, SCALE, Rb, Mag_dX0, D2F_func, filesInfo, 
                       saveDir, expLabel, saveResults, savePlots)
 
 
@@ -618,7 +619,7 @@ fI['CropX'], fI['CropY'] = 0, 0
 filesInfo.append(fI)
 
 # Run the analysis
-tbcv.runViscoAnalysis(mainDir, SCALE, Rb, Mag_dX0, D2F_func, filesInfo, 
+tbcv.runSimpleViscoAnalysis(mainDir, SCALE, Rb, Mag_dX0, D2F_func, filesInfo, 
                       saveDir, expLabel, saveResults, savePlots)
 
 
@@ -636,7 +637,7 @@ fI['CropX'], fI['CropY'] = 0, 0
 filesInfo.append(fI)
 
 # Run the analysis
-tbcv.runViscoAnalysis(mainDir, SCALE, Rb, Mag_dX0, D2F_func, filesInfo, 
+tbcv.runSimpleViscoAnalysis(mainDir, SCALE, Rb, Mag_dX0, D2F_func, filesInfo, 
                       saveDir, expLabel, saveResults, savePlots)
 
 
@@ -682,7 +683,7 @@ filesInfo.append(fI)
 # filesInfo.append(fI)
 
 # Run the analysis
-tbcv.runViscoAnalysis(mainDir, SCALE, Rb, Mag_dX0, D2F_func, filesInfo, 
+tbcv.runSimpleViscoAnalysis(mainDir, SCALE, Rb, Mag_dX0, D2F_func, filesInfo, 
                       saveDir, expLabel, saveResults, savePlots,
                       low_cut = 0.65, high_cut = 1.15)
 
@@ -709,7 +710,7 @@ fI['CropX'], fI['CropY'] = 0, 0
 filesInfo.append(fI)
 
 # Run the analysis
-tbcv.runViscoAnalysis(mainDir, SCALE, Rb, Mag_dX0, D2F_func, filesInfo, 
+tbcv.runSimpleViscoAnalysis(mainDir, SCALE, Rb, Mag_dX0, D2F_func, filesInfo, 
                       saveDir, expLabel, saveResults, savePlots,
                       low_cut = 0.65, high_cut = 1.15)
 
@@ -736,7 +737,7 @@ fI['CropX'], fI['CropY'] = 0, 0
 filesInfo.append(fI)
 
 # Run the analysis
-tbcv.runViscoAnalysis(mainDir, SCALE, Rb, Mag_dX0, D2F_func, filesInfo, 
+tbcv.runSimpleViscoAnalysis(mainDir, SCALE, Rb, Mag_dX0, D2F_func, filesInfo, 
                       saveDir, expLabel, saveResults, savePlots,
                       low_cut = 0.65, high_cut = 1.15)
 
@@ -782,7 +783,7 @@ fI['CropX'], fI['CropY'] = 0, 0
 filesInfo.append(fI)
 
 # Run the analysis
-tbcv.runViscoAnalysis(mainDir, SCALE, Rb, Mag_dX0, D2F_func, filesInfo, 
+tbcv.runSimpleViscoAnalysis(mainDir, SCALE, Rb, Mag_dX0, D2F_func, filesInfo, 
                       saveDir, expLabel, saveResults, savePlots)
 
 
@@ -808,7 +809,7 @@ fI['CropX'], fI['CropY'] = 0, 0
 filesInfo.append(fI)
 
 # Run the analysis
-tbcv.runViscoAnalysis(mainDir, SCALE, Rb, Mag_dX0, D2F_func, filesInfo, 
+tbcv.runSimpleViscoAnalysis(mainDir, SCALE, Rb, Mag_dX0, D2F_func, filesInfo, 
                       saveDir, expLabel, saveResults, savePlots)
 
 #### UV 0.4A 1min
@@ -826,7 +827,7 @@ fI['CropX'], fI['CropY'] = 0, 0
 filesInfo.append(fI)
 
 # Run the analysis
-tbcv.runViscoAnalysis(mainDir, SCALE, Rb, Mag_dX0, D2F_func, filesInfo, 
+tbcv.runSimpleViscoAnalysis(mainDir, SCALE, Rb, Mag_dX0, D2F_func, filesInfo, 
                       saveDir, expLabel, saveResults, savePlots)
 
 
@@ -867,7 +868,7 @@ filesInfo.append(fI)
 
 #### Run the analysis
 
-tbcv.runViscoAnalysis(mainDir, SCALE, Rb, Mag_dX0, D2F_func, filesInfo, 
+tbcv.runSimpleViscoAnalysis(mainDir, SCALE, Rb, Mag_dX0, D2F_func, filesInfo, 
                       saveDir, expLabel, saveResults, savePlots)
 
 # %%% M3 - noUV
@@ -905,7 +906,7 @@ filesInfo.append(fI)
 
 #### Run the analysis
 
-tbcv.runViscoAnalysis(mainDir, SCALE, Rb, Mag_dX0, D2F_func, filesInfo, 
+tbcv.runSimpleViscoAnalysis(mainDir, SCALE, Rb, Mag_dX0, D2F_func, filesInfo, 
                       saveDir, expLabel, saveResults, savePlots)
 
 # %%% M3 - UV 0.2A 5min
@@ -935,7 +936,7 @@ filesInfo.append(fI)
 
 #### Run the analysis
 
-tbcv.runViscoAnalysis(mainDir, SCALE, Rb, Mag_dX0, D2F_func, filesInfo, 
+tbcv.runSimpleViscoAnalysis(mainDir, SCALE, Rb, Mag_dX0, D2F_func, filesInfo, 
                       saveDir, expLabel, saveResults, savePlots)
 
 # %%% M3 - UV 0.2A 10min
@@ -965,7 +966,7 @@ filesInfo.append(fI)
 
 #### Run the analysis
 
-tbcv.runViscoAnalysis(mainDir, SCALE, Rb, Mag_dX0, D2F_func, filesInfo, 
+tbcv.runSimpleViscoAnalysis(mainDir, SCALE, Rb, Mag_dX0, D2F_func, filesInfo, 
                       saveDir, expLabel, saveResults, savePlots)
 
 
@@ -989,7 +990,7 @@ filesInfo.append(fI)
 
 #### Run the analysis
 
-tbcv.runViscoAnalysis(mainDir, SCALE, Rb, Mag_dX0, D2F_func, filesInfo, 
+tbcv.runSimpleViscoAnalysis(mainDir, SCALE, Rb, Mag_dX0, D2F_func, filesInfo, 
                       saveDir, expLabel, saveResults, savePlots)
 
 # %%% M4 - noUV
@@ -1020,7 +1021,7 @@ filesInfo.append(fI)
 
 #### Run the analysis
 
-tbcv.runViscoAnalysis(mainDir, SCALE, Rb, Mag_dX0, D2F_func, filesInfo, 
+tbcv.runSimpleViscoAnalysis(mainDir, SCALE, Rb, Mag_dX0, D2F_func, filesInfo, 
                       saveDir, expLabel, saveResults, savePlots)
 
 
@@ -1051,7 +1052,7 @@ filesInfo.append(fI)
 
 #### Run the analysis
 
-tbcv.runViscoAnalysis(mainDir, SCALE, Rb, Mag_dX0, D2F_func, filesInfo, 
+tbcv.runSimpleViscoAnalysis(mainDir, SCALE, Rb, Mag_dX0, D2F_func, filesInfo, 
                       saveDir, expLabel, saveResults, savePlots)
 
 
@@ -1091,7 +1092,7 @@ filesInfo.append(fI)
 
 #### Run the analysis
 
-tbcv.runViscoAnalysis(mainDir, SCALE, Rb, Mag_dX0, D2F_func, filesInfo, 
+tbcv.runSimpleViscoAnalysis(mainDir, SCALE, Rb, Mag_dX0, D2F_func, filesInfo, 
                       saveDir, expLabel, saveResults, savePlots)
 
 
@@ -1115,7 +1116,7 @@ filesInfo.append(fI)
 
 #### Run the analysis
 
-tbcv.runViscoAnalysis(mainDir, SCALE, Rb, Mag_dX0, D2F_func, filesInfo, 
+tbcv.runSimpleViscoAnalysis(mainDir, SCALE, Rb, Mag_dX0, D2F_func, filesInfo, 
                       saveDir, expLabel, saveResults, savePlots)
 
 # %%% Film 3
@@ -1138,7 +1139,7 @@ filesInfo.append(fI)
 
 #### Run the analysis
 
-tbcv.runViscoAnalysis(mainDir, SCALE, Rb, Mag_dX0, D2F_func, filesInfo, 
+tbcv.runSimpleViscoAnalysis(mainDir, SCALE, Rb, Mag_dX0, D2F_func, filesInfo, 
                       saveDir, expLabel, saveResults, savePlots)
 
 # %%% Film 4
@@ -1162,7 +1163,7 @@ filesInfo.append(fI)
 
 #### Run the analysis
 
-tbcv.runViscoAnalysis(mainDir, SCALE, Rb, Mag_dX0, D2F_func, filesInfo, 
+tbcv.runSimpleViscoAnalysis(mainDir, SCALE, Rb, Mag_dX0, D2F_func, filesInfo, 
                       saveDir, expLabel, saveResults, savePlots)
 
 # %% 26-04-09
@@ -1211,9 +1212,9 @@ filesInfo.append(fI)
 
 
 #### Run the analysis
-# tbcv.runViscoAnalysis(mainDir, SCALE, Rb, Mag_dX0, D2F_func, filesInfo, 
+# tbcv.runSimpleViscoAnalysis(mainDir, SCALE, Rb, Mag_dX0, D2F_func, filesInfo, 
 #                saveDir, expLabel, saveResults, savePlots)
-tbcv.runViscoAnalysis(mainDir, SCALE, Rb, Mag_dX0, D2F_func, filesInfo, 
+tbcv.runSimpleViscoAnalysis(mainDir, SCALE, Rb, Mag_dX0, D2F_func, filesInfo, 
                       saveDir, expLabel, saveResults, savePlots)
 
 # %%% Capillary 1 UV 0.03A 5min
@@ -1244,7 +1245,7 @@ filesInfo.append(fI)
 
 
 #### Run the analysis
-tbcv.runViscoAnalysis(mainDir, SCALE, Rb, Mag_dX0, D2F_func, filesInfo, 
+tbcv.runSimpleViscoAnalysis(mainDir, SCALE, Rb, Mag_dX0, D2F_func, filesInfo, 
                saveDir, expLabel, saveResults, savePlots)
 
 # %%% Capillary 1 UV 0.1A 5min
@@ -1276,7 +1277,7 @@ filesInfo.append(fI)
 
 
 #### Run the analysis
-tbcv.runViscoAnalysis(mainDir, SCALE, Rb, Mag_dX0, D2F_func, filesInfo, 
+tbcv.runSimpleViscoAnalysis(mainDir, SCALE, Rb, Mag_dX0, D2F_func, filesInfo, 
                saveDir, expLabel, saveResults, savePlots)
 
 
@@ -1307,7 +1308,7 @@ fI['CropX'], fI['CropY'] = 0, 0
 filesInfo.append(fI)
 
 #### Run the analysis
-tbcv.runViscoAnalysis(mainDir, SCALE, Rb, Mag_dX0, D2F_func, filesInfo, 
+tbcv.runSimpleViscoAnalysis(mainDir, SCALE, Rb, Mag_dX0, D2F_func, filesInfo, 
                saveDir, expLabel, saveResults, savePlots)
 
 
@@ -1379,7 +1380,7 @@ filesInfo.append(fI)
 
 
 #### Run the analysis
-tbcv.runViscoAnalysis(mainDir, SCALE, Rb, Mag_dX0, D2F_func, filesInfo, 
+tbcv.runSimpleViscoAnalysis(mainDir, SCALE, Rb, Mag_dX0, D2F_func, filesInfo, 
                saveDir, expLabel, saveResults, savePlots)
 
 # %%%% Capillary 1 UV 600mW 1min
@@ -1410,7 +1411,7 @@ fI['CropX'], fI['CropY'] = 0, 0
 filesInfo.append(fI)
 
 #### Run the analysis
-tbcv.runViscoAnalysis(mainDir, SCALE, Rb, Mag_dX0, D2F_func, filesInfo, 
+tbcv.runSimpleViscoAnalysis(mainDir, SCALE, Rb, Mag_dX0, D2F_func, filesInfo, 
                saveDir, expLabel, saveResults, savePlots)
 
 
@@ -1452,7 +1453,7 @@ filesInfo.append(fI)
 
 
 #### Run the analysis
-tbcv.runViscoAnalysis(mainDir, SCALE, Rb, Mag_dX0, D2F_func, filesInfo, 
+tbcv.runSimpleViscoAnalysis(mainDir, SCALE, Rb, Mag_dX0, D2F_func, filesInfo, 
                saveDir, expLabel, saveResults, savePlots)
 
 # %%%% Capillary 2 UV 120mW 5min
@@ -1475,7 +1476,7 @@ fI['CropX'], fI['CropY'] = 0, 0
 filesInfo.append(fI)
 
 #### Run the analysis
-tbcv.runViscoAnalysis(mainDir, SCALE, Rb, Mag_dX0, D2F_func, filesInfo, 
+tbcv.runSimpleViscoAnalysis(mainDir, SCALE, Rb, Mag_dX0, D2F_func, filesInfo, 
                saveDir, expLabel, saveResults, savePlots)
 
 
@@ -1499,7 +1500,7 @@ filesInfo.append(fI)
 
 
 #### Run the analysis
-tbcv.runViscoAnalysis(mainDir, SCALE, Rb, Mag_dX0, D2F_func, filesInfo, 
+tbcv.runSimpleViscoAnalysis(mainDir, SCALE, Rb, Mag_dX0, D2F_func, filesInfo, 
                saveDir, expLabel, saveResults, savePlots)
 
 
@@ -1551,7 +1552,7 @@ fI['CropX'], fI['CropY'] = 0, 0
 filesInfo.append(fI)
 
 #### Run the analysis
-tbcv.runViscoAnalysis(mainDir, SCALE, Rb, Mag_dX0, D2F_func, filesInfo, 
+tbcv.runSimpleViscoAnalysis(mainDir, SCALE, Rb, Mag_dX0, D2F_func, filesInfo, 
                saveDir, expLabel, saveResults, savePlots)
 
 # %%%% UV 1A 10 min
@@ -1581,7 +1582,7 @@ fI['CropX'], fI['CropY'] = 0, 0
 filesInfo.append(fI)
 
 #### Run the analysis
-tbcv.runViscoAnalysis(mainDir, SCALE, Rb, Mag_dX0, D2F_func, filesInfo, 
+tbcv.runSimpleViscoAnalysis(mainDir, SCALE, Rb, Mag_dX0, D2F_func, filesInfo, 
                saveDir, expLabel, saveResults, savePlots)
 
 

@@ -17,7 +17,9 @@ import matplotlib.pyplot as plt
 from scipy import interpolate, optimize
 
 import Libs.PlotMaker as pm
+import Libs.UrchinPaths as up
 import Libs.UtilityFunctions as ufun
+import Libs.MagnetsCalibrationsConstants as mcc
 
 
 
@@ -749,11 +751,45 @@ def runCalibration(mainDir, SCALE, Rb, Mag_dX0, visco, filesInfo,
                        MagR=np.mean(list_MagR), Mag_dX0=Mag_dX0)
 
 
-def runViscoAnalysis(mainDir, SCALE, Rb, Mag_dX0, D2F_func, filesInfo, 
+
+def runSimpleViscoAnalysis(mainDir, SCALE, Rb, Mag_dX0, D2F_func, filesInfo, 
                      saveDir, expLabel, saveResults, savePlots, 
                      low_cut = 0.75, high_cut = 1.25):
     
     pm.setGraphicOptions(mode = 'screen', colorList = pm.colorListMpl)
+    
+    tracks_data = [];
+    Nfiles = len(filesInfo)
+
+    # 1. Import all the files data & run the pretreatment
+    for i in range(Nfiles):
+        fI = filesInfo[i]
+        fileName = fI['fileName']
+        filePath = os.path.join(mainDir, fileName)
+        FPS = fI['FPS']
+        MagX, MagY, MagR = fI['MagX'], fI['MagY'], fI['MagR']
+        CropX, CropY = fI['CropX'], fI['CropY']
+        all_tracks = ufun.importTrackMateTracks(filePath)
+        tracks_data += rawTracks_pretreatment(all_tracks, SCALE, FPS, 
+                            MagX, MagY, MagR, Rb, CropX, CropY, Mag_dX0,
+                            mode = 'measureVisco', D2F_func = D2F_func)
+    # 2. Run analysis
+    tracks_calcViscosity(tracks_data, Rb, expLabel, 
+                         saveResults, savePlots, saveDir, 
+                         low_cut = low_cut, high_cut = high_cut)
+    
+    
+    
+def runViscoAnalysis(mainDir, expInfo, filesInfo, 
+                     saveDir, expLabel, saveResults, savePlots,
+                     mode = 'fromScratch', fileName = 'MecaData_Physics_V4bis', 
+                     save = True, PLOT = False,):
+    
+    pm.setGraphicOptions(mode = 'screen', colorList = pm.colorListMpl)
+    
+    magnet, beads, funcType = expInfo['magnet'], expInfo['beads'], expInfo['funcType']
+    D2F_func = mcc.getMagnet_D2F(magnet, beads, funcType)
+    Mag_dX0 = mcc.getMagnet_dX0(magnet, beads)
     
     tracks_data = [];
     Nfiles = len(filesInfo)

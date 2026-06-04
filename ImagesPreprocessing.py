@@ -38,9 +38,9 @@ import skimage as skm
 import scipy.ndimage as ndi
 import matplotlib.pyplot as plt
 
-import PlotMaker as pm
-import UrchinPaths as up
-import UtilityFunctions as ufun
+import Libs.PlotMaker as pm
+import Libs.UrchinPaths as up
+import Libs.UtilityFunctions as ufun
 
 # Unused imports
 
@@ -315,9 +315,14 @@ def get_magnet_loc(img, magnet_gray_lv):
     cmX, cmY = contour_magnet[:,1], contour_magnet[:,0]
     
     #### Define circle arc and fit
-    selected_points = (np.abs(cmY-(np.median(cmY))) < ((np.max(cmY)-np.min(cmY))/5))
+    selected_points = (np.abs(cmY-(np.median(cmY))) < ((np.max(cmY)-np.min(cmY))/4))
     arc_magnet = contour_magnet[selected_points, :]
-    mag_center, mag_R = ufun.fitCircle(arc_magnet, loss = 'huber')
+    # mag_center, mag_R = ufun.fitCircle(arc_magnet, loss = 'huber')
+    
+    #### Modifs for new magnet
+    R_set = 156
+    mag_center, mag_R = ufun.fitCircle_withFixedR(arc_magnet, R_set, loss = 'huber')
+    
     # mag_center in YX format
     return(mag_center, mag_R) #, arc_magnet)
 
@@ -546,14 +551,17 @@ def crop_and_copy(DirSrc, DirDst, allRefPoints, allStackPaths,
 # DirDst = 'C:/Users/Joseph/Desktop/AnalysisPulls/26-03-04_UVonCytoplasmAndBeads/Pulls'
 # DirDst_bins = ''
 
-DirSrc = up.Path_LeicaData + '/26-03-20_UVonCytoplasmAndBeads_CalibMagnetJN/M2_MagnetJN_40X_MyOne_HPMA-20p_I2959-200mM_UV'
-DirDst = up.Path_AnalysisPulls + '/26-03-20_UVonCytoplasmAndBeads_CalibMagnetJN/Pulls/M2_40X_MyOne_HPMA-20p_I2959-200mM_UV_MagnetJN'
+# DirSrc = up.Path_LeicaData + '/26-03-20_UVonCytoplasmAndBeads_CalibMagnetJN/M2_MagnetJN_40X_MyOne_HPMA-20p_I2959-200mM_UV'
+# DirDst = up.Path_AnalysisPulls + '/26-03-20_UVonCytoplasmAndBeads_CalibMagnetJN/Pulls/M2_40X_MyOne_HPMA-20p_I2959-200mM_UV_MagnetJN'
 
 # DirSrc = up.Path_LeicaData + "/26-03-04/Pulls"
 # DirDst = up.Path_AnalysisPulls + "/26-03-04_UVonCytoplasmAndBeads/Pulls"
 
-DirSrc = 'C:/Users/josep/Desktop/Seafile/DownloadedFromSeafile/26-04-10/26-04-10_M1_IncubedCells_HPMA-100mM_I2959-20mM_AOTCRh'
-DirDst = up.Path_AnalysisPulls + "/26-04-10_CellsIncubatedwithMix/Pulls"
+# DirSrc = 'C:/Users/josep/Desktop/Seafile/DownloadedFromSeafile/26-04-10/26-04-10_M1_IncubedCells_HPMA-100mM_I2959-20mM_AOTCRh'
+# DirDst = up.Path_AnalysisPulls + "/26-04-10_CellsIncubatedwithMix/Pulls"
+
+DirSrc = "C:/Users/josep/Desktop/Seafile/26-06-02_NaSSIncubatedCells/26-06-02_M3_NaSS-200mM_I2959-25mM"
+DirDst = "C:/Users/josep/Desktop/Seafile/26-06-02_NaSSIncubatedCells/Crops"
 
 microscope = 'Leica'
 source_format = 'single file' # 'image collection'
@@ -664,7 +672,7 @@ instructionText += "\n\nLet's gooooo !\n"
 
 #Change below the number of stacks you want to crop at once. Run the code again to crop the remaining files. 
 # !! WARNING: Sometimes choosing too many can make your computer bug !!
-limiter = 30
+limiter = 32
 
 print(pm.YELLOW + instructionText + pm.NORMAL)
 

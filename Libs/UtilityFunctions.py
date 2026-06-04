@@ -1122,6 +1122,51 @@ def fitCircle(contour, loss = 'huber'):
     return(center, R)
 
 
+def fitCircle_withFixedR(contour, R_set, loss = 'huber'):
+    """
+    Find the best fitting circle to a an array of points in 2D.
+    The contour doesn't have to be the whole circle, it can be simply an arc.
+
+    Parameters
+    ----------
+    contour : Array-like
+        Shape (N, 2). Format RC (Row-Column), which means YX.
+        contour = [[Y1, X1], [Y2, X2], [Y3, X3], ...] = [[R1, C1], [R2, C2], [R3, C3], ...]
+    loss : string, optional
+        Type of loss function applied by least_squares. The default is 'huber', for a robust fit. For a normal least square fit, use 'linear'.
+        See documentation on https://docs.scipy.org/doc/scipy/reference/generated/scipy.optimize.least_squares.html
+
+    Returns
+    -------
+    center : tuple (Y, X), center of the circle
+    R : float, radius of the circle
+
+    """
+    # Contour = [[Y, X], [Y, X], [Y, X], ...] 
+    x, y = contour[:,1], contour[:,0]
+    x_m = np.mean(x)
+    y_m = np.mean(y)
+    
+    def calc_R(xc, yc):
+        """ calculate the distance of each 2D points from the center (xc, yc) """
+        return(((x-xc)**2 + (y-yc)**2)**0.5)
+
+
+    def f_2(c):
+        """ calculate the algebraic distance between the 2D points and the mean circle centered at c=(xc, yc) """
+        Ri = calc_R(*c)
+        return(R_set - np.mean(Ri))
+
+    center_estimate = x_m, y_m
+    result = least_squares(f_2, center_estimate, loss=loss) # Functions from the scipy.optimize library
+    center = result.x
+    # R = np.mean(calc_R(*center))
+    R = R_set
+    center = (center[1], center[0])
+    
+    return(center, R)
+
+
 def contour_to_mask(shape, contour):
     """
     Adapted from https://stackoverflow.com/questions/3654289/scipy-create-2d-polygon-mask
