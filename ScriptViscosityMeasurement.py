@@ -486,23 +486,23 @@ expLabel = '26-05-11_Magnet-JV01_MyOne_Gly80%_M3_NaSS200mM-PI25mM-noUV'
 # The label for this condition - used as a prefix for saved data and plots
 
 fI = {}
-fI['fileName'] = '26-05-21_M3_Gly80p_NaSS-200mM_I2959-25mM_UV-none_P1_Tracks.xml'
+fI['fileName'] = '26-05-11_M3_Gly80p_NaSS-200mM_I2959-25mM_P1_Tracks.xml'
 fI['FPS'] = 2
-fI['MagX'], fI['MagY'], fI['MagR'] = 537, 504, 136 * 0.5
+fI['MagX'], fI['MagY'], fI['MagR'] = 510.5, 564.5, 143 * 0.5
 fI['CropX'], fI['CropY'] = 0, 0 
 filesInfo.append(fI)
 
 fI = {}
-fI['fileName'] = '26-05-21_M3_Gly80p_NaSS-200mM_I2959-25mM_UV-none_P2_Tracks.xml'
+fI['fileName'] = '26-05-11_M3_Gly80p_NaSS-200mM_I2959-25mM_P2_Tracks.xml'
 fI['FPS'] = 2
-fI['MagX'], fI['MagY'], fI['MagR'] = 537, 527, 142 * 0.5
+fI['MagX'], fI['MagY'], fI['MagR'] = 510.5, 562.5, 143 * 0.5
 fI['CropX'], fI['CropY'] = 0, 0 
 filesInfo.append(fI)
 
 fI = {}
-fI['fileName'] = '26-05-21_M3_Gly80p_NaSS-200mM_I2959-25mM_UV-none_P3_Tracks.xml'
+fI['fileName'] = '26-05-11_M3_Gly80p_NaSS-200mM_I2959-25mM_P5_Tracks.xml'
 fI['FPS'] = 2
-fI['MagX'], fI['MagY'], fI['MagR'] = 528, 521, 142 * 0.5
+fI['MagX'], fI['MagY'], fI['MagR'] = 405, 544, 148 * 0.5
 fI['CropX'], fI['CropY'] = 0, 0 
 filesInfo.append(fI)
 

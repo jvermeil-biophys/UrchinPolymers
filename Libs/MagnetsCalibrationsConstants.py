@@ -121,13 +121,14 @@ dict_allMagnets = {
 # %% Utility function
 
 def getMagnet_D2F(magnet, beads, funcType):
-    if funcType in ['power law', 'power-law', 'powerLaw', 'power_law', 'pl', 'pL', 'PL']:
+    if funcType.lower() in ['powerlaw', 'power law', 'power-law', 
+                            'power_law', 'pl']:
         funcType = "F_popt_pL"
         fun = powerLaw
-    elif funcType in ['2exp', '2Exp', '2_exp', '2_Exp', '2expo', '2Expo', 
-                      'double expo', 'double Expo', 'doubleExpo', 'double_expo', 'double-expo',
-                      'double exponential', 'double Exponential', 'doubleExponential', 
-                      'double_exponential', 'double-exponential',]:
+    elif funcType.lower() in ['2exp', '2_exp', '2expo',  
+                      'doubleexpo', 'double expo', 'double_expo', 'double-expo',
+                      'doubleexponential', 'double exponential', 
+                      'double_exponential', 'double-exponential']:
         funcType = "F_popt_2exp"
         fun = doubleExpo
     

@@ -560,8 +560,8 @@ def crop_and_copy(DirSrc, DirDst, allRefPoints, allStackPaths,
 # DirSrc = 'C:/Users/josep/Desktop/Seafile/DownloadedFromSeafile/26-04-10/26-04-10_M1_IncubedCells_HPMA-100mM_I2959-20mM_AOTCRh'
 # DirDst = up.Path_AnalysisPulls + "/26-04-10_CellsIncubatedwithMix/Pulls"
 
-DirSrc = "C:/Users/josep/Desktop/Seafile/26-06-02_NaSSIncubatedCells/26-06-02_M3_NaSS-200mM_I2959-25mM"
-DirDst = "C:/Users/josep/Desktop/Seafile/26-06-02_NaSSIncubatedCells/Crops"
+DirSrc = "C:/Users/josep/Desktop/Seafile/26-05-29_NaSSIncubatedCells/26-05-29_M1_NaSS-100mM_I2959-25mM"
+DirDst = "C:/Users/josep/Desktop/Seafile/26-05-29_NaSSIncubatedCells/Crops"
 
 microscope = 'Leica'
 source_format = 'single file' # 'image collection'

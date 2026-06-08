@@ -11,6 +11,7 @@ import os
 import numpy as np
 import pandas as pd
 import seaborn as sns
+import matplotlib as mpl
 import matplotlib.pyplot as plt
 
 
@@ -626,6 +627,7 @@ plt.show()
 # %%% Main Dataset
 
 mainDir = up.Path_AnalysisPulls
+mainDir = "C:/Users/josep/Desktop/Seafile/AnalysisPulls" # Ordi Perso
 
 resTableName = 'AllResults_BeadsPulling.csv'
 resTablePath = os.path.join(mainDir, resTableName)
@@ -659,6 +661,192 @@ df_Pulls['total energy'] = df_Pulls['irradiance'] * df_Pulls['duration'] / 1000
 
 EXCLUDED_CELLS = ['26-01-14_M1_C1',
                   '26-04-10_M1_C4']
+
+# %%% 26-06-02
+
+# %%%% Filter pulling dataset
+
+df = df_Pulls
+dates = ['26-05-29', '26-06-02'] # '26-01-14', '26-01-27', '26-02-11', '26-03-04', 
+
+df['Lc'] = 6*np.pi*df['bead radius']  
+df['J_modulus'] = df['J_k'] / df['Lc']
+df['J_visco1'] = df['J_gamma1'] / df['Lc']
+df['J_visco2'] = df['J_gamma2'] / df['Lc']
+
+Filters = [
+           (df['N_fit_error'] == False),
+           (df['J_k'] <= 1e3),
+           (df['J_gamma2'] <= 1e3),
+           (df['date'].apply(lambda x: x in dates)),
+           (df['Cell_textid'].apply(lambda x : x not in EXCLUDED_CELLS)),
+           ]
+GlobalFilter = np.ones_like(Filters[0]).astype(bool)
+for F in Filters:
+    GlobalFilter = GlobalFilter & F
+
+df_Pullsf = df[GlobalFilter]
+
+# %%%% All data
+
+dff = df_Pullsf
+
+metrics = ['J_k', 'J_gamma1', 'J_gamma2', 'N_viscosity', ]
+metric_names = ['$k_1$ (pN/µm)', '$\gamma_1$ (pN.s/µm)', '$\gamma_2$ (pN.s/µm)', '$\eta_N$ (Pa.s)']
+metric_dict = {m:mn for (m,mn) in zip(metrics, metric_names)}
+
+Pa_ids = dff['Pa_id'].unique()
+dict_conditions = {'26-06-02_M1':'Control',
+                   '26-05-29_M1':'NaSS-100mM_I2959-25mM_3h',
+                   '26-06-02_M2':'NaSS-200mM_I2959-25mM_SDS_30min',
+                   '26-06-02_M3':'NaSS-200mM_I2959-25mM_3.5h',
+                   }
+
+for manip in dff['Manip_textid'].unique():
+    dffm = dff[dff['Manip_textid'] == manip]
+    cond = dict_conditions[manip]
+
+    fig, axes = plt.subplots(2, 2, figsize=(5,5))
+    axes_f = axes.flatten()
+    fig.suptitle(cond)
+    
+    for k in range(4):
+        ax = axes_f[k]
+        metric = metrics[k]
+        
+        medians = [np.median(dffm.loc[dffm['Pa_id']==i, metric]) for i in Pa_ids]
+        
+        for i in range(len(Pa_ids)):
+            HW = 0.35
+            ax.plot([i-HW, i+HW], [medians[i], medians[i]], ls='--', lw=2, c='dimgrey')
+        
+        sns.swarmplot(data = dffm, ax=ax, 
+                      x = 'Pa_id', y = metric, hue = 'Cell_textid',
+                      size = 6)
+    
+        ax.set_xlim([-0.5, len(Pa_ids)-0.5])
+        xticks_labels = ['Ctrl'] + [f'+UV (Pa{str(k)})' for k in Pa_ids[1:]]
+        ax.set_xticks([k for k in range(len(Pa_ids))], xticks_labels, rotation=15)
+        ax.set_xlabel('')
+        ax.set_ylabel(metric_dict[metric])
+        yM = ax.get_ylim()[1]
+        ax.set_ylim([0, 1.25*yM])
+        ax.grid(axis='y')
+        
+        for i in range(len(Pa_ids)):
+            ax.text(i, 1.1*yM, f'{medians[i]:.2f}', ha='center', size = 10, style='italic', c='dimgrey')
+        
+        if k == 1:
+            ax.legend().set_visible(False)
+            # ax.legend(title='Cell IDs',
+            #           loc="upper left",
+            #           bbox_to_anchor=(1, 0, 0.5, 1))
+        else:
+            ax.legend().set_visible(False)
+    
+    fig.tight_layout()
+    plt.show()
+
+
+
+# %%%% By cells
+
+metrics = ['J_k', 'J_gamma1', 'J_gamma2', 'N_viscosity', ]
+group = df_Pullsf.groupby(['Cell_textid', 'Pa'])
+agg_dict = {m:'mean' for m in metrics}
+agg_dict.update({'Manip_textid':'first', })
+dfg = group.agg(agg_dict)
+dfg = dfg.reset_index()
+dfg = dfg[dfg['Cell_textid'] != '26-04-10_M1_C4']
+
+# list_cell_id = dfg['Cell_textid'].values
+# for metric in agg_dict.keys():
+#     A_norm = np.array([dfg.loc[((dfg['Pa']==0) & (dfg['Cell_textid']==cid)), metric] for cid in list_cell_id]).T
+#     A_norm = A_norm[0]
+#     dfg[metric + '_norm'] = dfg[metric] / A_norm
+
+metric_names = ['$k_1$ (pN/µm)', '$\gamma_1$ (pN.s/µm)', '$\gamma_2$ (pN.s/µm)', '$\eta_N$ (Pa.s)']
+metric_dict = {m:mn for (m,mn) in zip(metrics, metric_names)}
+
+
+
+Pa_ids = dff['Pa_id'].unique()
+dict_conditions = {'26-06-02_M1':'Control',
+                   '26-05-29_M1':'NaSS-100mM_I2959-25mM_3h',
+                   '26-06-02_M2':'NaSS-200mM_I2959-25mM_SDS_30min',
+                   '26-06-02_M3':'NaSS-200mM_I2959-25mM_3.5h',
+                   }
+
+for manip in dfg['Manip_textid'].unique():
+    dfgm = dfg[dfg['Manip_textid'] == manip]
+    cond = dict_conditions[manip]
+    
+    fig, axes = plt.subplots(2, 2)
+    axes_f = axes.flatten()
+    
+
+    for k in range(4):
+        ax = axes_f[k]
+        metric = metrics[k]
+        
+        try:
+            for cid, c in zip(dfgm['Cell_textid'].unique(), pm.colorList10):
+                val0 = dfgm.loc[((dfgm['Pa']==0) & (dfgm['Cell_textid']==cid)), metric].values[0]
+                val1 = dfgm.loc[((dfgm['Pa']==3) & (dfgm['Cell_textid']==cid)), metric].values[0]
+                ax.plot(0, val0, 'o', c=c, zorder = 5)
+                ax.plot(1, val1, 'o', c=c, zorder = 5)
+                ax.plot([0, 1], [val0, val1], ls='-', c='dimgray', zorder = 4)
+        except:
+            pass
+        
+        
+        ax.set_xlim([-0.5, 1.5])
+        ax.set_xticks([0, 1], ['Ctrl', '+UV'])
+        ax.set_xlabel('')
+        ax.set_ylabel(metric_dict[metric])
+        yM = ax.get_ylim()[1]
+        ax.set_ylim([0, 1.1*yM])
+        
+        ax.grid(axis='y')
+            
+    fig.suptitle(cond)
+    fig.tight_layout()
+    plt.show()
+        
+    # fig.savefig(savePath + '/res_avgByCell' + '.png', dpi=500)
+        
+        
+    # metric_names_2 = ['$k_1$ (ratio)', '$\gamma_1$ (ratio)', '$\gamma_2$ (ratio)', '$\eta_N$ (ratio)']
+    # metric_dict_2 = {m+'_norm':mn for (m,mn) in zip(metrics, metric_names_2)}
+    
+    # fig, axes = plt.subplots(2, 2)
+    # axes_f = axes.flatten()
+    
+    # for k in range(4):
+    #     ax = axes_f[k]
+    #     metric = metrics[k] + '_norm'
+        
+    #     for cid, c in zip(dfg['Cell_textid'].unique(), pm.colorList10):
+    #         val0 = dfg.loc[((dfg['Pa']==0) & (dfg['Cell_textid']==cid)), metric].values[0]
+    #         val1 = dfg.loc[((dfg['Pa']==1) & (dfg['Cell_textid']==cid)), metric].values[0]
+    #         ax.plot(0, val0, 'o', c=c, zorder = 5)
+    #         ax.plot(1, val1, 'o', c=c, zorder = 5)
+    #         ax.plot([0, 1], [val0, val1], ls='-', c='dimgray', zorder = 4)
+        
+    #     ax.set_xlim([-0.5, 1.5])
+    #     ax.set_xticks([0, 1], ['Ctrl', '+UV'])
+    #     ax.set_xlabel('')
+    #     ax.set_ylabel(metric_dict_2[metric])
+    #     yM = ax.get_ylim()[1]
+    #     ax.set_ylim([0, 1.1*yM])
+        
+    #     ax.grid(axis='y')
+    
+    # fig.tight_layout()
+    # plt.show()
+
+
+# %%% 26-05-29
 
 
 # %%% 26-04-10
@@ -1580,3 +1768,131 @@ plt.show()
     
 fig.savefig(savePath + '/res_avgByCell_norm' + specif + '.png', dpi=500)
     
+
+
+
+
+# %% 3.3 Capillary Visco Measurements
+
+srcDir = "C:/Users/josep/Desktop/Seafile/AnalysisPulls/Results_CapillaryViscosity"
+file = "26-05_Results_ViscoCapillary.csv"
+df = pd.read_csv(os.path.join(srcDir, file), sep = ';')
+df['full sol'] = df['base sol'] + '_' + df['monomer'] + '_' + df['photoinit']
+
+list_full_sol = df['full sol'].unique()
+dict_UVtoX = {'none':1,
+              'UV-0A2-5min':2,
+              'UV-0A4-1min':3}
+
+
+#### 1. NaSS V2
+
+df_f = df[df['monomer'].apply(lambda x : 'NaSS' in x)]
+list_full_sol = df_f['full sol'].unique()
+list_full_sol = np.sort(list_full_sol)
+N = len(list_full_sol)
+cmap = mpl.colormaps['GnBu']
+colors = cmap(np.linspace(0.3, 0.9, N))
+
+fig, ax = plt.subplots(1, 1)
+for i, sol in enumerate(list_full_sol[:-1]):
+    color = colors[i]
+    df_sol = df_f[df_f['full sol'] == sol]
+    df_sol['X'] = df_sol['UV'].apply(lambda x : dict_UVtoX[x])
+    ax.plot(df_sol['X'].values, df_sol['visco'], color=color, label=sol)
+
+ax.set_xlabel('UV exposure')
+ax.set_ylabel('Viscosity (mPa.s)')
+# ax.set_yscale('log')
+ax.set_xticks([1, 2, 3])
+ax.set_xticklabels(['No UV', 
+                    '0.2A 5min\n(450 mW/cm²\n130 J/cm²)', 
+                    '0.4A 1min\n(900 mW/cm²\n52 J/cm²)'])
+ax.grid()
+ax.legend(fontsize = 6)
+plt.show()
+
+#### 1. NaSS V3
+
+df_f = df[df['monomer'].apply(lambda x : 'NaSS' in x)]
+list_full_sol = df_f['full sol'].unique()
+list_full_sol = np.sort(list_full_sol)
+N = len(list_full_sol)
+cmap = mpl.colormaps['GnBu']
+colors = cmap(np.linspace(0.3, 0.9, N))
+
+fig, ax = plt.subplots(1, 1)
+for i, sol in enumerate(list_full_sol[:-1]):
+    color = colors[i]
+    df_sol = df_f[df_f['full sol'] == sol]
+    visco_ref = df_sol.loc[df_sol['UV'] == 'none', 'visco'].values[0]
+    df_sol['X'] = df_sol['UV'].apply(lambda x : dict_UVtoX[x])
+    ax.plot(df_sol['X'].values, df_sol['visco'].values/visco_ref, color=color, label=sol)
+
+ax.set_xlabel('UV exposure')
+ax.set_ylabel('Viscosity (Normalized)')
+# ax.set_yscale('log')
+ax.set_xticks([1, 2, 3])
+ax.set_xticklabels(['No UV', 
+                    '0.2A 5min\n(450 mW/cm²\n130 J/cm²)', 
+                    '0.4A 1min\n(900 mW/cm²\n52 J/cm²)'])
+ax.grid()
+ax.legend(fontsize = 6)
+plt.show()
+
+
+#### 1. HPMA V2
+
+df_f = df[df['monomer'].apply(lambda x : 'HPMA' in x)]
+list_full_sol = df_f['full sol'].unique()
+list_full_sol = np.sort(list_full_sol)
+N = len(list_full_sol)
+cmap = mpl.colormaps['YlOrRd']
+colors = cmap(np.linspace(0.3, 0.9, N))
+
+fig, ax = plt.subplots(1, 1)
+for i, sol in enumerate(list_full_sol):
+    color = colors[i]
+    df_sol = df_f[df_f['full sol'] == sol]
+    df_sol['X'] = df_sol['UV'].apply(lambda x : dict_UVtoX[x])
+    ax.plot(df_sol['X'].values, df_sol['visco'], color=color, label=sol)
+
+ax.set_xlabel('UV exposure')
+ax.set_ylabel('Viscosity (mPa.s)')
+# ax.set_yscale('log')
+ax.set_xticks([1, 2, 3])
+ax.set_xticklabels(['No UV', 
+                    '0.2A 5min\n(450 mW/cm²\n130 J/cm²)', 
+                    '0.4A 1min\n(900 mW/cm²\n52 J/cm²)'])
+ax.grid()
+ax.legend(fontsize = 6)
+plt.show()
+
+#### 1. HPMA V3
+
+df_f = df[df['monomer'].apply(lambda x : 'HPMA' in x)]
+list_full_sol = df_f['full sol'].unique()
+list_full_sol = np.sort(list_full_sol)
+N = len(list_full_sol)
+cmap = mpl.colormaps['YlOrRd']
+colors = cmap(np.linspace(0.3, 0.9, N))
+
+fig, ax = plt.subplots(1, 1)
+for i, sol in enumerate(list_full_sol):
+    color = colors[i]
+    df_sol = df_f[df_f['full sol'] == sol]
+    visco_ref = df_sol.loc[df_sol['UV'] == 'none', 'visco'].values[0]
+    df_sol['X'] = df_sol['UV'].apply(lambda x : dict_UVtoX[x])
+    ax.plot(df_sol['X'].values, df_sol['visco'].values/visco_ref, color=color, label=sol)
+
+ax.set_xlabel('UV exposure')
+ax.set_ylabel('Viscosity (Normalized)')
+# ax.set_yscale('log')
+ax.set_xticks([1, 2, 3])
+ax.set_xticklabels(['No UV', 
+                    '0.2A 5min\n(450 mW/cm²\n130 J/cm²)', 
+                    '0.4A 1min\n(900 mW/cm²\n52 J/cm²)'])
+ax.grid()
+ax.legend(fontsize = 6)
+plt.show()
+

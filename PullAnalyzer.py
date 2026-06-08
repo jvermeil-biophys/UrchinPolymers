@@ -23,8 +23,11 @@ from scipy.optimize import minimize, curve_fit
 from scipy.interpolate import make_splrep
 
 # Local imports
-import PlotMaker as pm
-import UtilityFunctions as ufun
+import Libs.PlotMaker as pm
+import Libs.UrchinPaths as up
+import Libs.UtilityFunctions as ufun
+import Libs.MagnetsCalibrationsConstants as mcc
+
 pm.setGraphicOptions(mode = 'screen', palette = 'Set2', colorList = pm.colorList10)
 
 
@@ -725,14 +728,9 @@ def pullAnalyzer_multiFiles(mainDir, date, prefix_id,
             results_dict['magnet'].append(magnet_id)
             
             case_mag = magnet_id + '_' + bead_type
-            if calibFuncType == 'PowerLaw':
-                parms_type = 'F_popt_pL'
-                parms = MagnetDict[case_mag][parms_type]
-                mag_d2f = (lambda x : powerLaw(x, *parms))
-            elif calibFuncType == 'DoubleExpo':
-                parms_type = 'F_popt_2exp'
-                parms = MagnetDict[case_mag][parms_type]
-                mag_d2f = (lambda x : doubleExpo(x, *parms))
+            
+            mag_d2f = mcc.getMagnet_D2F(magnet_id, bead_type, calibFuncType)
+            mag_dX0 = mcc.getMagnet_dX0(magnet_id, bead_type)
             
             Track_Rd = {}
             
@@ -741,14 +739,14 @@ def pullAnalyzer_multiFiles(mainDir, date, prefix_id,
                 T_PLOT = PLOT
 
             if 'jeffrey' in fits:
-                J_Rd, J_error = pullAnalyzer(track, T_id, dict_pull, mag_d2f,
+                J_Rd, J_error = pullAnalyzer(track, T_id, dict_pull, mag_d2f, mag_dX0,
                                              mode = 'jeffrey', 
                                              PLOT = T_PLOT, SHOW = SHOW, plotsDir = plotsDir)
                 Track_Rd.update(J_Rd)
                 T_PLOT = 1
                 
             if 'newton' in fits:
-                N_Rd, N_error = pullAnalyzer(track, T_id, dict_pull, mag_d2f,
+                N_Rd, N_error = pullAnalyzer(track, T_id, dict_pull, mag_d2f, mag_dX0,
                                              mode = 'newton', 
                                              PLOT = T_PLOT, SHOW = SHOW, plotsDir = plotsDir)
                 Track_Rd.update(N_Rd)
@@ -779,7 +777,7 @@ def pullAnalyzer_multiFiles(mainDir, date, prefix_id,
 
 
 
-def pullAnalyzer(track, track_id, dict_pull, mag_d2f,
+def pullAnalyzer(track, track_id, dict_pull, mag_d2f, mag_dX0,
                  mode = 'newton', 
                  PLOT = 1, SHOW = False, plotsDir = ''):
     if SHOW:
@@ -791,18 +789,21 @@ def pullAnalyzer(track, track_id, dict_pull, mag_d2f,
 
     #### 1. Parameters
     # track_id = track_id
-    pull_id = dict_pull['id']
-    frame_initMag = dict_pull['mag_fi']
-    frame_endMag = dict_pull['mag_ff']
-    pixel_size = dict_pull['film_pixel_size']  # µm
-    mag_x = dict_pull['mag_x']*pixel_size
-    mag_y = dict_pull['mag_y']*pixel_size
-    film_dt = dict_pull['film_dt']/1000      # s
-    mag_r = dict_pull['mag_r']*pixel_size # µm
-    b_r = dict_pull['b_r'] # µm
-    bounds_newton = [int(k) for k in dict_pull['bounds_newton'].split('_')]
-    bounds_jeffrey = [int(k) for k in dict_pull['bounds_jeffrey'].split('_')]
-    COMMENTS = ''
+    try:
+        pull_id = dict_pull['id']
+        frame_initMag = dict_pull['mag_fi']
+        frame_endMag = dict_pull['mag_ff']
+        pixel_size = dict_pull['film_pixel_size']  # µm
+        mag_x = dict_pull['mag_x']*pixel_size
+        mag_y = dict_pull['mag_y']*pixel_size
+        film_dt = dict_pull['film_dt']/1000      # s
+        mag_r = dict_pull['mag_r']*pixel_size # µm
+        b_r = dict_pull['b_r'] # µm
+        bounds_newton = [float(k) for k in dict_pull['bounds_newton'].split('_')]
+        bounds_jeffrey = [float(k) for k in dict_pull['bounds_jeffrey'].split('_')]
+        COMMENTS = ''
+    except:
+        print(dict_pull)
 
     #### 2. Initialize results
     resultsDict = {}
@@ -822,7 +823,7 @@ def pullAnalyzer(track, track_id, dict_pull, mag_d2f,
         idx_endPull = np.max(t_idx)
         print(pm.ORANGE + 'corrected index end pull' + pm.NORMAL)
     
-    X2 = np.array(X - mag_x)
+    X2 = np.array(X - (mag_x - mag_dX0))
     Y2 = np.array(Y - mag_y)
     d_proj = (X2**2 + Y2**2)**0.5 - mag_r
     
@@ -862,9 +863,9 @@ def pullAnalyzer(track, track_id, dict_pull, mag_d2f,
     
     #### 5. Filters
     if mode == 'newton':
-        Filter1 = ((bounds_newton[0] <= t_pulling) & (t_pulling < bounds_newton[1]))
+        Filter1 = ((bounds_newton[0] <= t_pulling) & (t_pulling <= bounds_newton[1]))
     elif mode == 'jeffrey':
-        Filter1 = ((bounds_jeffrey[0] <= t_pulling) & (t_pulling < bounds_jeffrey[1]))
+        Filter1 = ((bounds_jeffrey[0] <= t_pulling) & (t_pulling <= bounds_jeffrey[1]))
     # Filter2 = (np.abs(dx_pulling[0] - dx_pulling[:]) <= 100) # keep only first 100 µm of movement
     
     filterPull = Filter1
@@ -1443,6 +1444,60 @@ def pullAnalyzer_compareTracks(list_tracks, list_track_ids, list_dict_pull, list
 
 
 # %% 12. Run the functions
+
+
+# %%% 26-02-02_NaSSIncubatedCells
+
+# mainDir = os.path.join("E:/") # Ordi IJM
+mainDir = os.path.join("C:/Users/josep/Desktop/Seafile") # Ordi perso
+# mainDir = os.path.join("C:/Users/Joseph/Desktop/") # Ordi LJP
+date = '26-06-02'
+subfolder = date + '_NaSSIncubatedCells'
+
+
+analysisDir = os.path.join(mainDir, 'AnalysisPulls') # where the csv tables are
+tracksDir = os.path.join(analysisDir, subfolder, 'Tracks') # where the tracks are
+resultsDir = os.path.join(analysisDir, subfolder, 'Results')
+plotsDir = os.path.join(analysisDir, subfolder, 'Plots')
+
+# cell = '_M1_C1_Pa0_P3'
+
+# prefix_id = '26-02-11_M1_C1_Pa0_P1' # + cell # used to select a subset of the track files if needed
+prefix_id = '26-06-02' # + cell # used to select a subset of the track files if needed
+
+
+Results = pullAnalyzer_multiFiles(mainDir, date, prefix_id,
+                                  analysisDir, tracksDir, resultsDir, plotsDir,
+                                  fits = ['newton', 'jeffrey'], calibFuncType='PowerLaw',
+                                  resultsFileName = date + '_BeadsPulling',
+                                  Redo = True, PLOT = 2, SHOW = False)
+
+
+# %%% 26-05-29_NaSSIncubatedCells
+
+# mainDir = os.path.join("E:/") # Ordi IJM
+mainDir = os.path.join("C:/Users/josep/Desktop/Seafile") # Ordi perso
+# mainDir = os.path.join("C:/Users/Joseph/Desktop/") # Ordi LJP
+date = '26-05-29'
+subfolder = date + '_NaSSIncubatedCells'
+
+
+analysisDir = os.path.join(mainDir, 'AnalysisPulls') # where the csv tables are
+tracksDir = os.path.join(analysisDir, subfolder, 'Tracks') # where the tracks are
+resultsDir = os.path.join(analysisDir, subfolder, 'Results')
+plotsDir = os.path.join(analysisDir, subfolder, 'Plots')
+
+# cell = '_M1_C1_Pa0_P3'
+
+# prefix_id = '26-02-11_M1_C1_Pa0_P1' # + cell # used to select a subset of the track files if needed
+prefix_id = '26-05-29' # + cell # used to select a subset of the track files if needed
+
+
+Results = pullAnalyzer_multiFiles(mainDir, date, prefix_id,
+                                  analysisDir, tracksDir, resultsDir, plotsDir,
+                                  fits = ['newton', 'jeffrey'], calibFuncType='PowerLaw',
+                                  resultsFileName = date + '_BeadsPulling',
+                                  Redo = True, PLOT = 2, SHOW = False)
 
 # %%% 26-04-10_CellsIncubatedwithMix
 

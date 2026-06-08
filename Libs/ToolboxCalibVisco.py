@@ -527,8 +527,8 @@ def tracks_calibration(tracks_data, expLabel = '',
 
 
 def tracks_calcViscosity(tracks_data, Rb = 0.5, expLabel = '',
-                    saveResults = True, savePlots = True, saveDir = '',
-                    return_fig = 0, low_cut = 0.75, high_cut = 1.25):
+                        savePlots = True, saveDir = '',
+                        return_fig = 0, low_cut = 0.75, high_cut = 1.25):
     
     MagR = 60 # µm - Typical Diameter
     
@@ -612,7 +612,8 @@ def tracks_calcViscosity(tracks_data, Rb = 0.5, expLabel = '',
             tracks_data_f2.append(track)
         else:
             removed_tracks.append(track)
-            
+    
+    N_tracks_f2 = len(tracks_data_f2)
     all_D = np.concat([track['D'] for track in tracks_data_f2])
     all_V = np.concat([track['V'] for track in tracks_data_f2])
     all_F = np.concat([track['F'] for track in tracks_data_f2])
@@ -640,7 +641,7 @@ def tracks_calcViscosity(tracks_data, Rb = 0.5, expLabel = '',
     
     #### 3.1 Final fits
     # Global visco calculation
-    [a, b] = np.polyfit(all_V, all_F, 1)
+    # [a, b] = np.polyfit(all_V, all_F, 1)
     # visco_global = a / (6*np.pi*Rb)
     # visco_global_mPas = visco_global*1000
     # print(visco_global)
@@ -651,9 +652,8 @@ def tracks_calcViscosity(tracks_data, Rb = 0.5, expLabel = '',
     slope = parms[0]
     visco_global = slope / (6*np.pi*Rb)
     visco_global_mPas = visco_global*1000
-    print(visco_global)
-    
-    
+    raw_ci = results.conf_int(alpha=0.05)[0]
+    ci_mPas = [x*1000/(6*np.pi*Rb) for x in raw_ci]
     
     # Calculation per trajectory
     visco_list = []
@@ -661,18 +661,11 @@ def tracks_calcViscosity(tracks_data, Rb = 0.5, expLabel = '',
         tV = track['V']
         tF = track['F']
         
-        # [ta, tb] = np.polyfit(tV, tF, 1)
-        # visco = ta / (6*np.pi*Rb)
-        # visco_mPas = visco*1000
-        # visco_list.append(visco_mPas)
-        
-        # parms, results, wlm_results = ufun.fitLine(tV, tF, 
-        #                                    with_wlm_results = True, 
-        #                                    with_intercept = False)
         parms, results = ufun.fitLine(tV, tF, with_intercept = False)
         t_slope = parms[0]
         visco = t_slope / (6*np.pi*Rb)
         visco_mPas = visco*1000
+
         R2 = results.rsquared
         if R2 > 0.95 and visco_mPas > 0:
             visco_list.append(visco_mPas)
@@ -707,20 +700,13 @@ def tracks_calcViscosity(tracks_data, Rb = 0.5, expLabel = '',
     plt.show()
     
     if savePlots:
+        print(saveDir, expLabel)
         fig1.savefig(os.path.join(saveDir, expLabel + '_Traj.png'), dpi=400)
         fig2.savefig(os.path.join(saveDir, expLabel + '_Fits.png'), dpi=400)
         
-    # if saveResults:
-    #     dictResults = {'V_popt_2exp':V_popt_2exp,
-    #                    'V_popt_pL':V_popt_pL,
-    #                    'F_popt_2exp':F_popt_2exp,
-    #                    'F_popt_pL':F_popt_pL,
-    #                    'all_D':all_D,
-    #                    'all_V':all_V,
-    #                    'all_F':all_F,
-    #                    }
-    #     ufun.listOfdict2json(tracks_data_f2, saveDir, expLabel+'_allTracksData')
-    #     ufun.dict2json(dictResults, saveDir, expLabel+'_fitData')
+    return((visco_global_mPas, ci_mPas, N_tracks_f2))
+        
+    
     
 # %% 4. Main functions
 
@@ -753,7 +739,7 @@ def runCalibration(mainDir, SCALE, Rb, Mag_dX0, visco, filesInfo,
 
 
 def runSimpleViscoAnalysis(mainDir, SCALE, Rb, Mag_dX0, D2F_func, filesInfo, 
-                     saveDir, expLabel, saveResults, savePlots, 
+                     saveDir, expLabel, savePlots, 
                      low_cut = 0.75, high_cut = 1.25):
     
     pm.setGraphicOptions(mode = 'screen', colorList = pm.colorListMpl)
@@ -774,42 +760,95 @@ def runSimpleViscoAnalysis(mainDir, SCALE, Rb, Mag_dX0, D2F_func, filesInfo,
                             MagX, MagY, MagR, Rb, CropX, CropY, Mag_dX0,
                             mode = 'measureVisco', D2F_func = D2F_func)
     # 2. Run analysis
-    tracks_calcViscosity(tracks_data, Rb, expLabel, 
-                         saveResults, savePlots, saveDir, 
-                         low_cut = low_cut, high_cut = high_cut)
+    Visco, CI, N = tracks_calcViscosity(tracks_data, Rb, expLabel, 
+                                     savePlots, saveDir, 
+                                     low_cut = low_cut, high_cut = high_cut)
+    return(Visco, CI, N)
     
     
     
-def runViscoAnalysis(mainDir, expInfo, filesInfo, 
-                     saveDir, expLabel, saveResults, savePlots,
-                     mode = 'fromScratch', fileName = 'MecaData_Physics_V4bis', 
-                     save = True, PLOT = False,):
+def runViscoAnalysis(mainDir, expInfo,  
+                     saveResults, savePlots, saveDir, 
+                     fileName = 'Results_ViscoCapillary', 
+                     # mode = 'fromScratch',
+                     ):
     
     pm.setGraphicOptions(mode = 'screen', colorList = pm.colorListMpl)
     
-    magnet, beads, funcType = expInfo['magnet'], expInfo['beads'], expInfo['funcType']
-    D2F_func = mcc.getMagnet_D2F(magnet, beads, funcType)
-    Mag_dX0 = mcc.getMagnet_dX0(magnet, beads)
-    
-    tracks_data = [];
-    Nfiles = len(filesInfo)
+    expInfo = expInfo[expInfo['valid']==True]
+    dates = expInfo['date'].unique()
+    dictSrcDir = {}
+    for d in dates:
+        for f in os.listdir(mainDir):
+            if f.startswith(d):
+                dictSrcDir.update({d: os.path.join(mainDir, f, 'Tracks')})
+                
+    resDict = {'date':[],
+               'manip':[],
+               'base sol':[],
+               'monomer':[],
+               'photoinit':[],
+               'UV':[],
+               'visco':[],
+               'visco_cihw':[],
+               'N':[],}
 
-    # 1. Import all the files data & run the pretreatment
-    for i in range(Nfiles):
-        fI = filesInfo[i]
-        fileName = fI['fileName']
-        filePath = os.path.join(mainDir, fileName)
-        FPS = fI['FPS']
-        MagX, MagY, MagR = fI['MagX'], fI['MagY'], fI['MagR']
-        CropX, CropY = fI['CropX'], fI['CropY']
-        all_tracks = ufun.importTrackMateTracks(filePath)
-        tracks_data += rawTracks_pretreatment(all_tracks, SCALE, FPS, 
-                            MagX, MagY, MagR, Rb, CropX, CropY, Mag_dX0,
-                            mode = 'measureVisco', D2F_func = D2F_func)
-    # 2. Run analysis
-    tracks_calcViscosity(tracks_data, Rb, expLabel, 
-                         saveResults, savePlots, saveDir, 
-                         low_cut = low_cut, high_cut = high_cut)
+    expInfo.loc[:,'Pid'] = expInfo.loc[:,'date'] + '_' + expInfo.loc[:,'manip'] + '_' + expInfo.loc[:,'pull']
+    expInfo.loc[:,'Cond'] = expInfo.loc[:,'date'] + '_' + expInfo.loc[:,'solution'] + '_' + expInfo.loc[:,'UV']
+    all_conds = expInfo['Cond'].unique()
+    for cond in all_conds:
+        expInfo_cond = expInfo[expInfo['Cond']==cond].reset_index()
+        Nfiles = len(expInfo_cond)
+        tracks_data = []
+        for k in range(Nfiles):
+            expInfo_f = expInfo_cond.loc[k, :]
+            date = expInfo_f['date']
+            srcDir = dictSrcDir[date]
+            file = expInfo_f['xml_file_name']
+            path = os.path.join(srcDir, file)
+
+            magnet = expInfo_f['magnet']
+            beads = expInfo_f['beads']
+            Rb = expInfo_f['Rb']
+            funcType = expInfo_f['funcType']
+            D2F_func = mcc.getMagnet_D2F(magnet, beads, funcType)
+            Mag_dX0 = mcc.getMagnet_dX0(magnet, beads)
+            SCALE = expInfo_f['scale']
+            FPS = expInfo_f['FPS']
+            MagX = expInfo_f['MagX']
+            MagY = expInfo_f['MagY']
+            MagR = expInfo_f['MagR']
+            low_cut = expInfo_f['low_cut']
+            high_cut = expInfo_f['high_cut']
+            CropX, CropY = 0, 0
+            all_tracks = ufun.importTrackMateTracks(path)
+            tracks_data += rawTracks_pretreatment(all_tracks, SCALE, FPS, 
+                                MagX, MagY, MagR, Rb, CropX, CropY, Mag_dX0,
+                                mode = 'measureVisco', D2F_func = D2F_func)
+        # 2. Run analysis
+        expLabel = cond
+        Visco, visco_CI, N = tracks_calcViscosity(tracks_data, Rb, expLabel, 
+                                                  savePlots, saveDir, 
+                                                  low_cut = low_cut, high_cut = high_cut)
+        visco_cihw = np.abs(visco_CI[0] - visco_CI[1])/2
+        date = expInfo_cond.loc[0, 'date']
+        manip = expInfo_cond.loc[0, 'manip']
+        Solution_str = expInfo_cond.loc[0, 'solution']
+        base_sol, monomer, photoinit = Solution_str.split('_')
+        UV_str = expInfo_cond.loc[0, 'UV']
+        resDict['date'].append(date)
+        resDict['manip'].append(manip)
+        resDict['base sol'].append(base_sol)
+        resDict['monomer'].append(monomer)
+        resDict['photoinit'].append(photoinit)
+        resDict['UV'].append(UV_str)
+        resDict['visco'].append(Visco)
+        resDict['visco_cihw'].append(visco_cihw)
+        resDict['N'].append(N)
+    
+    resDf = pd.DataFrame(resDict)
+    if saveResults:
+        resDf.to_csv(os.path.join(saveDir, fileName+'.csv'), index=False, sep=';')
 
 
 
@@ -956,5 +995,24 @@ def compareCalibrations(srcDir, labelList = [],
         fig2.savefig(os.path.join(saveDir, 'CompareF_' + saveTitle + '.png'), dpi=500)
         
 
+# %% Test the new function
 
+mainDir = "C:/Users/josep/Desktop/Seafile/AnalysisPulls"
+expInfo = pd.read_csv(os.path.join(mainDir, "ExperimentalConditions_CapillaryViscosity.csv"))
+saveResults = True
+savePlots = True
+saveDir = os.path.join(mainDir, "Results_CapillaryViscosity")
+
+runViscoAnalysis(mainDir, expInfo,  
+                     saveResults, savePlots, saveDir, 
+                     fileName = 'Results_ViscoCapillary')
+    
+    
+    
+    
+    
+    
+    
+    
+    
 
