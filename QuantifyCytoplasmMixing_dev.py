@@ -30,9 +30,9 @@ from trackpy.motion import msd, imsd, emsd
 from PIL import Image, ImageDraw
 from scipy import signal # stats #, optimize, interpolate, 
 
-import PlotMaker as pm
-import UrchinPaths as up
-import UtilityFunctions as ufun
+import Libs.PlotMaker as pm
+import Libs.UrchinPaths as up
+import Libs.UtilityFunctions as ufun
 
 #### Settings
 

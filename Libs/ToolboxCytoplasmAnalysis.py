@@ -58,9 +58,8 @@ SCALE_40X = 0.229
 FPS = 1
 
 
-# %% Functions
 
-#### Helper functions
+# %% Helper functions
 
 def importTrackMateTracks(filepath):
     """
@@ -127,7 +126,7 @@ def check_if_file_has_tracks(fileName, srcDir):
 
 
 
-#### Main functions
+# %% Main functions
 
 
 def compute_acor(image, mask, window_length, FPS, 
@@ -178,7 +177,8 @@ def compute_acor(image, mask, window_length, FPS,
         plt.show()
         
     return(total_acor, image_acor)
-        
+
+
 
 def analyse_white_blobs_MSD(trackPathList, df_Pa, SCALE, FPS,
                             PLOT = False):
@@ -186,10 +186,6 @@ def analyse_white_blobs_MSD(trackPathList, df_Pa, SCALE, FPS,
                 'id':[],
                 'pos_id':[],
                 'cell_id':[],
-                'Pa':[],
-                'Pa_total_power':[],
-                'Pa_irradiance':[],
-                'Pa_dt':[],
                 'D':[],
                 'k_nl':[],
                 'D_nl':[],
@@ -219,11 +215,6 @@ def analyse_white_blobs_MSD(trackPathList, df_Pa, SCALE, FPS,
         manip_id = '_'.join(fN.split('_')[:2])
         pos_id = get_numbers_following_text(fN, '_Pos')
         cell_id = get_numbers_following_text(fN, '_C')
-        Pa = get_numbers_following_text(fN, '_Pa')
-        Irr, DT, Pow = get_Pa_value(df_Pa, manip_id, Pa) # mW/cm2 ; mJ/cm2
-        str_irr = '_'.join(Irr.astype(str))
-        str_dt = '_'.join(DT.astype(str))
-        total_power = np.sum(Pow)/1000 # J/cm2
         
         # MSD
         Tracks = importTrackMateTracks(p)
@@ -266,10 +257,6 @@ def analyse_white_blobs_MSD(trackPathList, df_Pa, SCALE, FPS,
         res_dict['id'].append(full_id)
         res_dict['pos_id'].append(pos_id)
         res_dict['cell_id'].append(cell_id)
-        res_dict['Pa'].append(Pa)
-        res_dict['Pa_total_power'].append(total_power)
-        res_dict['Pa_irradiance'].append(str_irr)
-        res_dict['Pa_dt'].append(str_dt)
         res_dict['D'].append(D)
         res_dict['k_nl'].append(k_nl)
         res_dict['D_nl'].append(D_nl)
@@ -288,5 +275,52 @@ def analyse_white_blobs_MSD(trackPathList, df_Pa, SCALE, FPS,
     res_df = pd.DataFrame(res_dict)
         
     return(res_df, MSD_dict)
+
+
+
+def TrackSpotsInCell(tifPath, dstDir):
+    
+    EQUALIZE = True
+    N_ERODE = 25
+    
+    fig, axes = plt.subplots(2, 3, figsize=(12, 8))
+    axes = axes.flatten()
+    
+    # Get image and mask
+    shape, dtype = ufun.tiff_inspect(tifPath)
+    
+    image_raw = skm.io.imread(tifPath)
+    image = skm.util.img_as_float32(image_raw)
+    shape = image.shape
+
+    inner_cell_contour = get_reasonable_inner_cell_contour(image, PLOT = False)
+    mask = ufun.contour_to_mask([shape[1], shape[2]], inner_cell_contour)
+    mask = ndi.binary_erosion(mask, iterations = N_ERODE)
+    
+    if EQUALIZE:
+        for t in range(image.shape[0]):
+            p1, p99 = np.percentile(image[t].flatten()[mask.flatten()], (1, 99))
+            image[t] = skm.exposure.rescale_intensity(image[t], in_range=(p1, p99))
+
+    ax = axes[0]
+    ax.imshow(image[0], cmap='gray')
+    
+    ax = axes[1]
+    ax.imshow(mask * image[0], cmap='gray')
+    
+    
+
+
+    plt.show()
+    
+    
+
+tifPath = "F:/WorkingData/26-06-19_FastAcq/FilmBF_fastAcq_4000f_10Hz_C1.tif"
+dstDir = ""
+
+TrackSpotsInCell(tifPath, dstDir)
+
+
+
 
 
