@@ -35,13 +35,13 @@ import xml.etree.ElementTree as ET
 import os
 import re
 import json
-import time
+# import time
 import shutil
-import random
+# import random
 import numbers
 import tifffile
-import matplotlib
-import traceback
+# import matplotlib
+# import traceback
 
 from scipy import interpolate
 # from scipy import signal
@@ -926,6 +926,19 @@ def get_largest_object(img, mode = 'dark', out_type = 'contour'):
     return(output)
 
 
+
+def mask_to_contour(mask, keep_only_longest_contour = True):
+    FoundContours = skm.measure.find_contours(mask, 0.5)
+    if keep_only_longest_contour:
+        if len(FoundContours) == 1:
+            FoundContours = FoundContours[0]
+        else:
+            L = [len(c) for c in FoundContours]
+            im = np.argmax(L)
+            FoundContours = FoundContours[im]
+            
+    return(FoundContours)
+    
 
 def find_cell_inner_circle(img, 
                            binarize = False, k_th = 1.0,
