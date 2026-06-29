@@ -1,0 +1,5 @@
+list of modules
+python=3.14
+numpy scipy pandas statsmodels matplotlib seaborn spyder-kernels
+pyimagej openjdk=11
+opencv shapely pillow tifffile ome-types statannotations

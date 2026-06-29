@@ -48,6 +48,7 @@ from shapely.plotting import plot_polygon, plot_points # , plot_line
 # from trackpy.motion import msd, imsd, emsd
 from PIL import Image, ImageDraw
 from scipy import signal # stats #, optimize, interpolate, 
+from scipy.special import jv
 
 import trackpy as tp
 
@@ -749,8 +750,22 @@ Tracks = importTrackMateTracks(xmlPath)
 
 # %% Analyse tracks
 
+# tifPath = "F:\\WorkingData\\26-06-19_FastAcq\\FilmBF_fastAcq_4000f_10Hz_C1.tif"
+# tifPath = "C:\\Users\\josep\\Desktop\\Seafile\\AnalysisPulls\\" + \
+#           "26-06-19_FastAcq\\FilmBF_fastAcq_4000f_10Hz_C1.tif"
+srcDir = "C:\\Users\\josep\\Desktop\\Seafile\\AnalysisPulls\\" + \
+          "26-06-10_Test-NileBlueYolk\\M1_40x-WI\\"
+dstDir = srcDir
+
+tifName = "26-06-10_TestNileBlueYolk_C2_10fps_1min_L50p.tif"
+# tifName = "26-06-10_TestNileBlueYolk_C1_4fps_5min_L20p.tif"
+tifPath = os.path.join(srcDir, tifName)   
+
+xmlName = tifName.split('.')[0] + '_PyTracks.xml'
+xmlPath = os.path.join(srcDir, xmlName)
+
 SCALE = SCALE_40X
-FPS = 4
+FPS = 10
 
 Tracks = importTrackMateTracks(xmlPath)
 Np = len(Tracks)
@@ -766,6 +781,47 @@ for i, track in enumerate(Tracks):
 
 concat_tracks = np.concat(all_tracks, axis = 0)
 df = pd.DataFrame({column_names[k] : concat_tracks[:,k] for k in range(len(column_names))})
+
+# %%% Compute Self-ISF
+
+dt = 1
+q = 1
+
+def dr(track, t0, dt):
+    return(((track[t0,1]-track[t0+dt,1])**2 + (track[t0,2]-track[t0+dt,2])**2)**0.5)
+
+def Fs(q, dt, Tracks):
+    F = np.sum([np.sum([jv(0, q * dr(track, t0, dt)) for track in Tracks]) for t0 in range(31-dt)])
+    return(F)
+
+Fs(q, dt, Tracks)
+
+DT = np.arange(20)
+
+Fs_05 = np.array([Fs(0.5, dt, Tracks) for dt in DT])
+Fs_1 = np.array([Fs(1, dt, Tracks) for dt in DT])
+Fs_2 = np.array([Fs(2, dt, Tracks) for dt in DT])
+Fs_4 = np.array([Fs(4, dt, Tracks) for dt in DT])
+# Fs_8 = np.array([Fs(8, dt, Tracks) for dt in DT])
+
+Fs_05 /= Fs_05[0]
+Fs_1 /= Fs_1[0]
+Fs_2 /= Fs_2[0]
+Fs_4 /= Fs_4[0]
+
+fig, ax = plt.subplots(1, 1)
+# ax.set_xscale('log')
+# ax.set_yscale('log')
+ax.plot((0.5**2)*DT/FPS, Fs_05, label = 'q = 0.5')
+ax.plot((1**2)*DT/FPS, Fs_1, label = 'q = 1')
+ax.plot((2**2)*DT/FPS, Fs_2, label = 'q = 2')
+ax.plot((4**2)*DT/FPS, Fs_4, label = 'q = 4')
+# ax.plot(DT/FPS, Fs_8, label = 'q = 8')
+# ax.set_xlim([1e-2, 5e0])
+ax.grid()
+ax.legend()
+plt.show()
+
 
 # %%%
 #### Run msd
