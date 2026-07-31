@@ -22,19 +22,11 @@ import matplotlib.pyplot as plt
 from scipy.interpolate import splrep, splev
 from matplotlib.pylab import imread, imshow, subplot
 from matplotlib.colors import LogNorm
+from scipy.optimize import curve_fit
 # from IPython.display import display
 
 import Libs.UtilityFunctions as ufun
 
-
-# %% Pattern convention
-
-# DDM is based on the analysis of a video, i.e. a stack of N images stored on the disk. 
-# Here we suppose that the filenames follow a pattern like `'mydir/myfile_t{:03d}.tif'`
-# so we can obtain the file name at time `t` by doing:
-
-pattern = 'mydir/myfile_t{:03d}.tif'
-print(pattern.format(15))
 
 
 # %% Define ImageStack class
@@ -126,8 +118,9 @@ class ImageStack(object):
 # "26-03-02_M1_Pos2_Pa0_C2_Film5min_Dt1sec_crop"
 # stack = ImageStack(u'' + srcDir + fileName + '/' + fileName + '_t{:03d}.tif', 300, t0=0)
 
-srcDir = "F://IntraCellTracking//26-06-19_FastAcq"
-fileName = "FilmBF_fastAcq_4000f_200Hz_C3.tif"
+# srcDir = "F://IntraCellTracking//26-06-19_FastAcq"
+srcDir = "F://IntraCellTracking//26-07-29_FastAcq_Fecondation//Crops"
+fileName = "26-07-29_PostF_2min_Pos11_10fps_Texp100ms1_CSU642_crop.tif"
 filePath = os.path.join(srcDir, fileName)
 
 stack = ImageStack(filePath)
@@ -153,19 +146,32 @@ def spectrumDiff(im0, im1):
 # %% Test spectrumDiff()
 # Show resulting spectra for $\Delta t=$ X s, Y s, Z s.
 
-plt.figure(figsize=(15,5))
-I_0_40 = np.fft.fftshift(spectrumDiff(stack[0], stack[40-1]))
-I_0_400 = np.fft.fftshift(spectrumDiff(stack[0], stack[400-1]))
-I_0_4000 = np.fft.fftshift(spectrumDiff(stack[0], stack[4000-1]))
-print(f"{np.percentile(I_0_40, 99):.2e}")
-print(f"{np.percentile(I_0_400, 99):.2e}")
-print(f"{np.percentile(I_0_4000, 99):.2e}")
-V1, V2, V3 = np.percentile(I_0_40, 99), np.percentile(I_0_400, 99), np.percentile(I_0_4000, 99)
-vmax=3.1e11
-subplot(1,3,1).imshow(I_0_40, 'hot', vmin=0, vmax=V1)
-subplot(1,3,2).imshow(I_0_400, 'hot', vmin=0, vmax=V2)
-subplot(1,3,3).imshow(I_0_4000, 'hot', vmin=0, vmax=V3)
+# plt.figure(figsize=(15,5))
+# I_0_40 = np.fft.fftshift(spectrumDiff(stack[0], stack[40-1]))
+# I_0_400 = np.fft.fftshift(spectrumDiff(stack[0], stack[400-1]))
+# I_0_4000 = np.fft.fftshift(spectrumDiff(stack[0], stack[4000-1]))
+# print(f"{np.percentile(I_0_40, 99):.2e}")
+# print(f"{np.percentile(I_0_400, 99):.2e}")
+# print(f"{np.percentile(I_0_4000, 99):.2e}")
+# V1, V2, V3 = np.percentile(I_0_40, 99), np.percentile(I_0_400, 99), np.percentile(I_0_4000, 99)
+# vmax=3.1e11
+# subplot(1,3,1).imshow(I_0_40, 'hot', vmin=0, vmax=V1)
+# subplot(1,3,2).imshow(I_0_400, 'hot', vmin=0, vmax=V2)
+# subplot(1,3,3).imshow(I_0_4000, 'hot', vmin=0, vmax=V3)
 
+
+plt.figure(figsize=(15,5))
+I_0_20 = np.fft.fftshift(spectrumDiff(stack[0], stack[20-1]))
+I_0_200 = np.fft.fftshift(spectrumDiff(stack[0], stack[200-1]))
+I_0_2000 = np.fft.fftshift(spectrumDiff(stack[0], stack[2000-1]))
+print(f"{np.percentile(I_0_20, 99):.2e}")
+print(f"{np.percentile(I_0_200, 99):.2e}")
+print(f"{np.percentile(I_0_2000, 99):.2e}")
+V1, V2, V3 = np.percentile(I_0_20, 99), np.percentile(I_0_200, 99), np.percentile(I_0_2000, 99)
+vmax=3.1e11
+subplot(1,3,1).imshow(I_0_20, 'hot', vmin=0, vmax=V1)
+subplot(1,3,2).imshow(I_0_200, 'hot', vmin=0, vmax=V2)
+subplot(1,3,3).imshow(I_0_2000, 'hot', vmin=0, vmax=V3)
 
 # %% DDM step 2 - timeAveraged()
 
@@ -234,7 +240,7 @@ class RadialAverager(object):
         self.dists = np.sqrt(np.fft.fftfreq(shape[0])[:,None]**2 +  np.fft.fftfreq(shape[1])[None,:]**2)
         #dump the cross
         self.dists[0] = 0
-        self.dists[:,0] = 0
+        self.dists[:, 0] = 0
         #discretize distances into bins
         self.bins = np.arange(max(shape)/2 + 1)/float(max(shape))
         #number of pixels at each distance
@@ -280,21 +286,22 @@ def logSpaced(L, pointsPerDecade=15):
 
 # Since this can be a long operation, we add a counter
 
-def ddm(stack, idts, maxNCouples=1000):
+def ddm(stack, idts, maxNCouples=100):
     """Perform time averaged and radial averaged DDM for given time intervals.
     Returns DDM"""
     ra = RadialAverager(stack.shape[1:])
     DDM = np.zeros((len(idts), len(ra.hd)))
     N = len(idts)
-    progress_step = N/20
+    progress_step = N/100
     for i, idt in enumerate(idts):
         DDM[i] = ra(timeAveraged(stack, idt, maxNCouples))
         if i//progress_step > (i-1)//progress_step:
             j = int(i//progress_step)
             sys.stdout.write('\r')
-            sys.stdout.write("[%-20s] %d%%" % ('='*j, 5*j))
+            sys.stdout.write("[%-20s] %d%%" % ('='*(j//5), j))
             sys.stdout.flush()
-            
+    sys.stdout.write('\r')
+    sys.stdout.write("[%-20s] %d%%" % ('='*20, 100))
     return(DDM)
 
 
@@ -310,14 +317,17 @@ def ddm(stack, idts, maxNCouples=1000):
 
 srcDir = "F://IntraCellTracking//26-06-19_FastAcq"
 fileNames = ["FilmBF_fastAcq_4000f_200Hz_C3.tif", "FilmBF_fastAcq_4000f_10Hz_C3_ROI.tif"]
+srcDir = "F://IntraCellTracking//26-07-29_FastAcq_Fecondation//Crops"
+fileNames = ["26-07-29_PostF_2min_Pos11_10fps_Texp100ms1_CSU642_crop.tif"]
+
 # filePath = os.path.join(srcDir, fileName)
 
 paths = [os.path.join(srcDir, fN) for fN in fileNames]
-frequencies = [200, 10]
-nbimages = 4000
+frequencies = [10] #[200, 10]
+nbimages = 2000 # 4000
 #pixelSize = 6450/10. #in nanometre
 pointsPerDecade = 15
-maxNCouples = 100 #10 for fast evaluation, 300 for accurate analysis
+maxNCouples = 30 #10 for fast evaluation, 300 for accurate analysis
 idts = logSpaced(nbimages, pointsPerDecade)
 dts = [idts/float(freq) for freq in frequencies]
 
@@ -329,15 +339,21 @@ dts = [idts/float(freq) for freq in frequencies]
 
 DDMs = []
 for p in paths:
-    print(f'Analyzing {os.path.split(p)}...\n')
+    print(f'\n\nAnalyzing {os.path.split(p)}...')
     DDM = ddm(ImageStack(p), idts, maxNCouples)
     DDMs.append(DDM)
     
 for f, d in zip(frequencies, DDMs):
-    np.save('DDM{:d}_fastAcq_C3.npy'.format(f),d)
+    np.save('DDM{:d}_fastAcq_PostF-2min_Ncouples10.npy'.format(f),d)
 
 
 # %%% 2. Merge
+
+srcDir = "F://IntraCellTracking//26-06-19_FastAcq//DDM_C3_300Nc"
+fileNames = ["DDM200_fastAcq_C3.npy", "DDM10_fastAcq_C3.npy"]
+
+frequencies = [200, 10]
+DDMs = [np.load(os.path.join(srcDir, fN)) for fN in fileNames]
 
 # Then we merge the two sets of data by scaling the data at 4 Hz so that both values 
 # at 0.25 s are equal. Finally, we average the values of the curves at 4 Hz and 400 Hz 
@@ -365,22 +381,31 @@ transition = (1-x) * DDMs[0][boundary:boundary+overlap0] + x * interpolated
 dtMerge = np.concatenate([dts[0][:boundary+overlap0], dts[1][overlap1:]])
 DDMMerge = np.concatenate([DDMs[0][:boundary], transition, DDMs[1][overlap1:]], axis=0)
 
+# %%% 3. Plot
+
+DDM_plot = DDMs[0]
+dt_plot = dts[0]
 
 # Test the merging for `q=100`
 SCALE_40X_Leica = 4.3725
 PixPerUm_40X_Leica = 1/SCALE_40X_Leica
 
-L = 256*PixPerUm_40X_Leica
-dq = 2*np.pi / L
-QQ = np.arange(1, 1+len(DDMMerge[0,:]))*dq
-Qs = [10, 30, 100]
+SCALE_60X_W1 = 9.26
+PixPerUm_60X_W1 = 1/SCALE_60X_W1
 
-# for q in Qs:
+N_pix = 512
+L_um = N_pix*PixPerUm_60X_W1
+dq = 2*np.pi / L_um
+qmax = 11.7
+QQ = np.arange(1, 1+len(DDM_plot[0,:]))*dq
+Q_plot = [10, 30, 100]
+
+# for q in Q_plot:
 #     fig, ax = plt.subplots(1, 1, figsize=(5, 4))
 #     ax.plot(dts[0], DDMs[0][:,q],'o', label='200 Hz')
 #     ax.plot(dts[1], DDMs[1][:,q],'s', label='10 Hz')
-#     ax.plot(dtMerge, DDMMerge[:,q], label='Merged')
-#     # ax.plot(dtMerge, DDMMerge[:,100]*2, 'o', label='Shifted merged')
+#     ax.plot(dtMerge, DDM_plot[:,q], label='Merged')
+#     # ax.plot(dtMerge, DDM_plot[:,100]*2, 'o', label='Shifted merged')
 #     ax.set_xscale('log')
 #     ax.set_yscale('log')
 #     ax.set_ylabel(r'$\mathcal{D}$')
@@ -392,7 +417,7 @@ Qs = [10, 30, 100]
 #     ax.set_title(f'q = {q:.0f}')
 #     plt.show()
 
-(Ndt, Nq) = DDMMerge.shape
+(Ndt, Nq) = DDM_plot.shape
 fig, axes = plt.subplots(2, 1, figsize = (5, 8))
 ax = axes[0]
 ax.set_xscale('log')
@@ -400,10 +425,12 @@ ax.set_yscale('log')
 ax.set_xlabel('$q\ (\mu m^{-1})$')
 ax.set_ylabel('$D$')
 for i in range(0, Ndt, 10):
-    ax.plot(QQ, DDMMerge[i,:], marker='.', ls='',
+    ax.plot(QQ, DDM_plot[i,:], marker='.', ls='',
             color = mpl.cm.autumn(i/Ndt))
+    ax.axvline(dq, color='gray', ls='-', alpha=0.7)
+    ax.axvline(qmax, color='gray', ls='-', alpha=0.7)
     
-fig.colorbar(plt.cm.ScalarMappable(norm=mpl.colors.LogNorm(vmin=np.min(dtMerge), vmax=np.max(dtMerge)), 
+fig.colorbar(plt.cm.ScalarMappable(norm=mpl.colors.LogNorm(vmin=np.min(dt_plot), vmax=np.max(dt_plot)), 
                                    cmap="autumn"),
              ax=ax, label="$\Delta t$")
     
@@ -413,8 +440,8 @@ ax.set_xscale('log')
 ax.set_yscale('log')
 ax.set_xlabel('$\Delta t\ (s)$')
 ax.set_ylabel('$D$')
-for j in range(0, Nq, 10):
-    ax.plot(dtMerge, DDMMerge[:,j], marker='.', ls='',
+for j in range(0, Nq, 25):
+    ax.plot(dt_plot, DDM_plot[:,j], marker='.', ls='',
             color = mpl.cm.winter(j/Nq))
     
 fig.colorbar(plt.cm.ScalarMappable(norm=mpl.colors.LogNorm(vmin=np.min(QQ), vmax=np.max(QQ)), 
@@ -425,21 +452,176 @@ plt.show()
 
 # Now we can export the merged results (adapt to the folder you want to save to)
 
-# np.save('DDM_fastAcq_C3.npy', DDMMerge)
+# np.save('DDM_fastAcq_C3.npy', DDM_plot)
 # np.save('dt_fastAcq_C3.npy', dtMerge)
 
-ApB_est = np.median(DDMMerge[-4:,:], axis=0)
-B_est = np.median(DDMMerge[:4,:], axis=0)
-
-# fig, axes = plt.subplots(1, 2, figsize=(8, 4))
-# ax = axes[0]
-# ax.plot(np.arange(len(ApB_est)), ApB_est, 'r.')
-# ax = axes[1]
-# ax.plot(np.arange(len(B_est)), B_est,'k.')
-
-# plt.show()
-
+ApB_est = np.median(DDM_plot[-4:,:], axis=0)
+B_est = np.median(DDM_plot[:6,:], axis=0)
 B_best = 4.1e10
 
+fig, axes = plt.subplots(1, 3, figsize=(10, 3), sharey=True)
+for ax in axes:
+    ax.set_xscale('log')
+    ax.set_yscale('log')
+ax = axes[0]
+ax.plot(QQ, ApB_est, 'r.')
+ax.axvline(dq, color='gray', ls='-', alpha=0.7)
+ax.axvline(qmax, color='gray', ls='-', alpha=0.7)
+ax = axes[1]
+ax.plot(QQ, B_est,'k.')
+ax.axvline(dq, color='gray', ls='-', alpha=0.7)
+ax.axvline(qmax, color='gray', ls='-', alpha=0.7)
+ax = axes[2]
+ax.plot(QQ, ApB_est-B_est,'b.')
+ax.plot(QQ, ApB_est-B_best,'g.')
+ax.axvline(dq, color='gray', ls='-', alpha=0.7)
+ax.axvline(qmax, color='gray', ls='-', alpha=0.7)
+
+plt.show()
+
+# %%% 4. Use a model to fit A, B and get f (Brownian case)
+
+DDM_fit = DDMs[0]
+dt_fit = dts[0]
+
+# Test the merging for `q=100`
+SCALE_40X_Leica = 4.3725
+PixPerUm_40X_Leica = 1/SCALE_40X_Leica
+
+SCALE_60X_W1 = 9.26
+PixPerUm_60X_W1 = 1/SCALE_60X_W1
+
+N_pix = 512
+L_um = N_pix*PixPerUm_60X_W1
+dq = 2*np.pi / L_um
+qmin = 1.5
+qmax = 10 # 11.7
+QQ = np.arange(1, 1+len(DDM_plot[0,:]))*dq
+
+
+def simple_brownian_model(dt, A, B, G):
+    D = A * (1 - np.exp(-G*dt)) + B
+    return(D)
+
+valid_iQ, valid_Q = [], []
+list_A, list_B, list_G = [], [], []
+
+for iq in range(len(QQ)):
+    q = QQ[iq]
+    if q >= qmin and q < qmax:
+        valid_Q.append(q)
+        valid_iQ.append(iq)
+        
+        D = DDM[:,iq]
+        dt = dt_fit
+        
+        # some initial parameter values - must be within bounds
+        initB = np.median(DDM_fit[:3,iq], axis=0)/10
+        initA = np.median(DDM_fit[-4:,iq], axis=0) - initB
+        initG = 1
+        
+        print(f'{initB:.2e}')
+        
+        initialParameters = [initA, initB, initG]
+        
+        # bounds on parameters - initial parameters must be within these
+        lowerBounds = (0, 0, 0)
+        upperBounds = (np.inf, np.inf, np.inf)
+        parameterBounds = [lowerBounds, upperBounds]
+        
+        params, covM = curve_fit(simple_brownian_model, dt, D, 
+                                 p0=initialParameters, bounds = parameterBounds)
+        
+        print(f'>> {params[1]:.2e}')
+        if params[1] < 1e8:
+            params[1] = initB
+        
+        list_A.append(params[0])
+        list_B.append(params[1])
+        list_G.append(params[2])
+        
+        
+X, Y = np.log(valid_Q), np.log(list_G)
+params, results = ufun.fitLineHuber(X, Y)
+    
+
+# %%% Plot the fit
+
+DDM_fit = DDMs[0]
+dt_fit = dts[0]
+
+fig, ax = plt.subplots(1, 1, figsize=(10, 8))
+
+ax = ax
+ax.set_xscale('log')
+ax.set_yscale('log')
+cmap = mpl.cm.plasma
+
+idx = slice(0, len(valid_iQ), 10)
+k = 0
+
+for iq, A, B, G in zip(valid_iQ[idx], list_A[idx], list_B[idx], list_G[idx]):
+    q = QQ[iq]
+    D = DDM_fit[:, iq]
+    color = cmap(k/len(valid_iQ[idx]))
+    k += 1
+    ax.plot(dt, D, ls='', marker='o', color = color, label=f'q = {q:.3f}')
+    
+    D_fit = simple_brownian_model(dt, A, B, G)
+    ax.plot(dt, D_fit, ls='-', marker='', color = color, label=f'fit, B = {B:.1e}')
+
+ax.legend()
+ax.grid()
+plt.show()
+
+
+fig, axes = plt.subplots(1, 2, figsize=(12, 6))
+
+
+    
+cmap = mpl.cm.viridis
+
+idx = slice(0, len(valid_iQ), 10)
+k = 0
+
+for iq, A, B, G in zip(valid_iQ[idx], list_A[idx], list_B[idx], list_G[idx]):
+    q = QQ[iq]
+    D = DDM_fit[:, iq]
+    color = cmap(k/len(valid_iQ[idx]))
+    k += 1
+    fR = 1 - ((D-B)/A)
+    fR_fit = np.exp(-G*dt)
+    
+    ax = axes[0]
+    ax.plot(dt, fR, ls='', marker='o', color = color, label=f'q = {q:.3f}')
+    ax.plot(dt, fR_fit, ls='-', marker='', color = color, label=f'fit, G = {G:.1e}')
+    
+    ax = axes[1]
+    ax.plot(dt*q*q, fR, ls='', marker='o', color = color, label=f'q = {q:.3f}')
+    ax.plot(dt*q*q, fR_fit, ls='-', marker='', color = color, label=f'fit, G = {G:.1e}')
+
+for ax in axes:
+    ax.set_xscale('log')
+    ax.legend()
+    ax.grid()
+    
+plt.show()
+
+
+fig, axes = plt.subplots(1, 2, figsize=(10,4))
+
+ax = axes[0]
+ax.set_xscale('log')
+ax.set_yscale('log')
+ax.plot(valid_Q, list_G, ls='', marker='o')
+ax.grid()
+
+ax = axes[1]
+ax.set_xscale('log')
+ax.set_yscale('log')
+ax.plot(valid_Q, list_A, ls='', marker='o')
+ax.plot(valid_Q, list_B, ls='', marker='o')
+
+plt.show()
 
 
