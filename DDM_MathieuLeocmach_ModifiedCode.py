@@ -20,6 +20,7 @@ import matplotlib as mpl
 import matplotlib.pyplot as plt 
 
 from scipy.interpolate import splrep, splev
+from scipy.special import factorial
 from matplotlib.pylab import imread, imshow, subplot
 from matplotlib.colors import LogNorm
 from scipy.optimize import curve_fit
@@ -595,6 +596,22 @@ list_G = smoothG
         
 X, Y = np.log(valid_Q), np.log(list_G)
 params, results = ufun.fitLineHuber(X, Y)
+
+# %%% Velocity distribution
+
+def Schulz_dist(v, v_moy, Z = 2):
+    Z = int(Z)
+    P = ((v**Z)/factorial(Z)) * ((Z+1)/v_moy) * np.exp(-(Z+1) * v/v_moy)
+    return(P)
+
+vv = np.linspace(0, 0.5, 500)
+v_moy = 150e-3
+
+PP = Schulz_dist(vv, v_moy, Z = 2)
+
+fig, ax = plt.subplots(1, 1)
+ax.plot(vv, PP)
+plt.show()
     
 
 # %%% Plot the fit
