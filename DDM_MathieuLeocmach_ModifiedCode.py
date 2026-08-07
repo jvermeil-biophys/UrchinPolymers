@@ -28,7 +28,7 @@ from scipy.signal import savgol_filter
 # from IPython.display import display
 
 import Libs.UtilityFunctions as ufun
-
+import Libs.CalibrationData as cd
 
 
 # %% Define ImageStack class
@@ -309,7 +309,7 @@ def ddm(stack, idts, maxNCouples=100):
 
 # %% A typical DDM analysis
 
-# %%% 1. Compute
+# %%% 1. Settings
 
 # To cover a wide range of time scales, we have acquired a first stack of 
 # 4000 images at 400 Hz and a second similar stack at 4 Hz. 
@@ -317,13 +317,18 @@ def ddm(stack, idts, maxNCouples=100):
 # but we have to merge the results.
 # First, we perform DDM on both stacks. **It will take something like 10 min**
 
+PixPerUm_40X_Leica = cd.PixPerUm_40X_Leica
+PixPerUm_60X_W1 = cd.PixPerUm_60X_W1
+
+PixPerUm = PixPerUm_60X_W1
+
 # srcDir = "G://IntraCellTracking//26-06-19_FastAcq"
 # fileNames = ["FilmBF_fastAcq_4000f_200Hz_C3.tif", "FilmBF_fastAcq_4000f_10Hz_C3_ROI.tif"]
-mainDir = "G://IntraCellTracking//26-07-29_FastAcq_NBYolk-Fecondation"
+mainDir = "C://Users//Joseph//Desktop//IntraCellTracking//26-07-29_FastAcq_NBYolk-Fecondation"
 srcDir = os.path.join(mainDir, "Crops")
 dstDir = os.path.join(mainDir, "DDM_results")
-# fileNames = ["26-07-29_PostF_2min_Pos11_10fps_Texp100ms1_CSU642_crop.tif"]
-fileNames = os.listdir(srcDir)
+fileNames = ["26-07-29_PostF_2min_Pos11_10fps_Texp100ms1_CSU642_8b_crop.tif"]
+# fileNames = os.listdir(srcDir)
 paths = [os.path.join(srcDir, fN) for fN in fileNames]
 
 # filePath = os.path.join(srcDir, fileName)
@@ -332,6 +337,11 @@ frequencies = [10]*len(fileNames) #[200, 10]
 nbimages = 2000 # 4000
 pointsPerDecade = 15
 maxNCouples = 100 #10 for fast evaluation, 300 for accurate analysis
+
+
+
+# %%% 1. Compute
+
 idts = logSpaced(nbimages, pointsPerDecade)
 dts = [idts/float(freq) for freq in frequencies]
 
@@ -342,8 +352,8 @@ for p in paths:
     DDMs.append(DDM)
     
 for fN, f, d, dt in zip(fileNames, frequencies, DDMs, dts):
-    ddmName = '_'.join(fN.split('_')[:-1]) + f'Nc{maxNCouples:.0f}_DDM.npy'
-    dtName = '_'.join(fN.split('_')[:-1]) + f'Nc{maxNCouples:.0f}_dt.npy'
+    ddmName = '_'.join(fN.split('_')[:-1]) + f'_Nc{maxNCouples:.0f}_DDM.npy'
+    dtName = '_'.join(fN.split('_')[:-1]) + f'_Nc{maxNCouples:.0f}_dt.npy'
 
     np.save(os.path.join(dstDir, ddmName), d)
     np.save(os.path.join(dstDir, dtName), dt)
@@ -390,14 +400,11 @@ DDMMerge, dtMerge = mergeDDM(DDMs, dts, frequencies)
 
 # %%% 3. Plot
 
-SCALE_40X_Leica = 4.3725
-PixPerUm_40X_Leica = 1/SCALE_40X_Leica
+# Test the merging for `q=100`
 
-SCALE_60X_W1 = 9.26
-PixPerUm_60X_W1 = 1/SCALE_60X_W1
 
 N_pix = 512
-L_um = N_pix*PixPerUm_60X_W1
+L_um = N_pix*PixPerUm
 dq = 2*np.pi / L_um
 qmax = 11.7
 
@@ -431,7 +438,7 @@ for k in range(len(DDMs)):
     ax = axes[0]
     ax.set_xscale('log')
     ax.set_yscale('log')
-    ax.set_xlabel('$q\ (\mu m^{-1})$')
+    ax.set_xlabel(r'$q\ (\mu m^{-1})$')
     ax.set_ylabel('$D$')
     for i in range(0, Ndt, 10):
         ax.plot(QQ, DDM_plot[i,:], marker='.', ls='',
@@ -441,13 +448,13 @@ for k in range(len(DDMs)):
         
     fig.colorbar(plt.cm.ScalarMappable(norm=mpl.colors.LogNorm(vmin=np.min(dt_plot), vmax=np.max(dt_plot)), 
                                        cmap="autumn"),
-                 ax=ax, label="$\Delta t$")
+                 ax=ax, label=r"$\Delta t$")
         
     
     ax = axes[1]
     ax.set_xscale('log')
     ax.set_yscale('log')
-    ax.set_xlabel('$\Delta t\ (s)$')
+    ax.set_xlabel(r'$\Delta t\ (s)$')
     ax.set_ylabel('$D$')
     for j in range(0, Nq, 25):
         ax.plot(dt_plot, DDM_plot[:,j], marker='.', ls='',
@@ -490,18 +497,11 @@ for k in range(len(DDMs)):
 
 # %%% 4. Use a model to fit A, B and get f (Brownian case)
 
-DDM_fit = DDMs[2]
-dt_fit = dts[2]
-
-# Test the merging for `q=100`
-SCALE_40X_Leica = 4.3725
-PixPerUm_40X_Leica = 1/SCALE_40X_Leica
-
-SCALE_60X_W1 = 9.26
-PixPerUm_60X_W1 = 1/SCALE_60X_W1
+DDM_fit = DDMs[0]
+dt_fit = dts[0]
 
 N_pix = 512
-L_um = N_pix*PixPerUm_60X_W1
+L_um = N_pix*PixPerUm
 dq = 2*np.pi / L_um
 qmin = 1.5
 qmax = 10 # 11.7
@@ -511,7 +511,6 @@ QQ = np.arange(1, 1+len(DDM_plot[0,:]))*dq
 def simple_brownian_model(dt, A, B, G):
     D = A * (1 - np.exp(-G*dt)) + B
     return(D)
-
 
 
 valid_iQ, valid_Q = [], []
@@ -597,27 +596,13 @@ list_G = smoothG
 X, Y = np.log(valid_Q), np.log(list_G)
 params, results = ufun.fitLineHuber(X, Y)
 
-# %%% Velocity distribution
 
-def Schulz_dist(v, v_moy, Z = 2):
-    Z = int(Z)
-    P = ((v**Z)/factorial(Z)) * ((Z+1)/v_moy) * np.exp(-(Z+1) * v/v_moy)
-    return(P)
-
-vv = np.linspace(0, 0.5, 500)
-v_moy = 150e-3
-
-PP = Schulz_dist(vv, v_moy, Z = 2)
-
-fig, ax = plt.subplots(1, 1)
-ax.plot(vv, PP)
-plt.show()
     
 
 # %%% Plot the fit
 
-DDM_fit = DDMs[2]
-dt_fit = dts[2]
+DDM_fit = DDMs[0]
+dt_fit = dts[0]
 
 fig, ax = plt.subplots(1, 1, figsize=(10, 8))
 
@@ -644,10 +629,10 @@ ax.grid()
 plt.show()
 
 
+
+
 fig, axes = plt.subplots(1, 2, figsize=(12, 6))
-
-
-    
+   
 cmap = mpl.cm.viridis
 
 idx = slice(0, len(valid_iQ), 10)
@@ -691,6 +676,80 @@ ax.set_yscale('log')
 ax.plot(valid_Q, list_A, ls='', marker='o')
 ax.plot(valid_Q, list_B, ls='', marker='o')
 
+plt.show()
+
+
+
+
+fig, axes = plt.subplots(1, 2, figsize=(10, 5))
+
+for ax in axes:
+    ax.set_xscale('log')
+    ax.set_yscale('log')
+    
+cmap = mpl.cm.plasma
+
+# idx = slice(0, len(valid_iQ), 10)
+k = 0
+
+list_MSD_exp = []
+list_MSD_fit = []
+
+for iq, A, B, G in zip(valid_iQ, list_A, list_B, list_G):
+    q = QQ[iq]
+    D = DDM_fit[:, iq]
+    color = cmap(k/(len(valid_iQ)))
+    
+    fR = 1 - ((D-B)/A)
+    fR_fit = np.exp(-G*dt)
+    
+    MSD_exp = -(4/q**2) * np.log(fR)
+    MSD_fit = -(4/q**2) * np.log(fR_fit)
+    
+    list_MSD_exp.append(MSD_exp)
+    list_MSD_fit.append(MSD_fit)
+    
+    if k%10==0:
+        ax = axes[0]
+        ax.plot(dt, MSD_exp, ls='', marker='o', color = color)
+        ax.plot(dt, MSD_fit, ls='-', marker='', color = color)
+    
+    k += 1
+    
+list_MSD_exp = np.array(list_MSD_exp)
+list_MSD_fit = np.array(list_MSD_fit)
+
+avg_MSD_exp = np.nanmean(list_MSD_exp, axis=0)
+avg_MSD_fit = np.nanmean(list_MSD_fit, axis=0)
+
+ax = axes[1]
+ax.plot(dt, avg_MSD_exp, ls='', marker='o', color = 'k')
+ax.plot(dt, avg_MSD_fit, ls='-', marker='', color = 'k')
+
+for ax in axes:
+    ax.legend()
+    ax.grid()
+    
+
+plt.show()
+
+
+
+
+# %%% Velocity distribution
+
+def Schulz_dist(v, v_moy, Z = 2):
+    Z = int(Z)
+    P = ((v**Z)/factorial(Z)) * ((Z+1)/v_moy) * np.exp(-(Z+1) * v/v_moy)
+    return(P)
+
+vv = np.linspace(0, 0.5, 500)
+v_moy = 150e-3
+
+PP = Schulz_dist(vv, v_moy, Z = 2)
+
+fig, ax = plt.subplots(1, 1)
+ax.plot(vv, PP)
 plt.show()
 
 # %%% 6. Use a model to fit A, B and get f (Adv-diff case)

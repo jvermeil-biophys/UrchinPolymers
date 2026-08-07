@@ -19,7 +19,7 @@ from scipy import interpolate, optimize
 import Libs.PlotMaker as pm
 import Libs.UrchinPaths as up
 import Libs.UtilityFunctions as ufun
-import Libs.MagnetsCalibrationsConstants as mcc
+import Libs.CalibrationData as cd
 
 
 
@@ -811,8 +811,8 @@ def runViscoAnalysis(mainDir, expInfo,
             beads = expInfo_f['beads']
             Rb = expInfo_f['Rb']
             funcType = expInfo_f['funcType']
-            D2F_func = mcc.getMagnet_D2F(magnet, beads, funcType)
-            Mag_dX0 = mcc.getMagnet_dX0(magnet, beads)
+            D2F_func = cd.getMagnet_D2F(magnet, beads, funcType)
+            Mag_dX0 = cd.getMagnet_dX0(magnet, beads)
             SCALE = expInfo_f['scale']
             FPS = expInfo_f['FPS']
             MagX = expInfo_f['MagX']

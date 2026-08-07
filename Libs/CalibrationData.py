@@ -5,11 +5,27 @@ Created on Tue May  5 12:10:16 2026
 @author: Utilisateur
 """
 
-# %% Import
+# %% Imports
+
 import numpy as np
 
 
-# %% Fitting functions
+# %% Microscope scales
+
+SCALE_20X_Leica = 2.169
+PixPerUm_20X_Leica = 1/SCALE_20X_Leica
+
+SCALE_40X_Leica = 4.3725
+PixPerUm_40X_Leica = 1/SCALE_40X_Leica
+
+SCALE_60X_W1 = 9.26
+PixPerUm_60X_W1 = 1/SCALE_60X_W1
+
+
+# %% Magnet calibration
+
+
+# %%% Fitting functions
 
 def doubleExpo(x, A, k1, B, k2):
     return(A*np.exp(-x/k1) + B*np.exp(-x/k2))
@@ -18,7 +34,7 @@ def powerLaw(x, A, k):
     return(A*(x**k))
 
 
-# %% Constants per magnets
+# %%% Constants per magnets
 
 dict_magnet_MA = {
     'MyOne':{
@@ -118,7 +134,7 @@ dict_allMagnets = {
 }
 
 
-# %% Utility function
+# %%% Utility functions
 
 def getMagnet_D2F(magnet, beads, funcType):
     if funcType.lower() in ['powerlaw', 'power law', 'power-law', 

@@ -731,7 +731,7 @@ def pretreatAndTrack(tifPath, dstDir):
 def pretreatAndTrack2(tifPath, dstDir):
     srcDir, tifName = os.path.split(tifPath)
     xmlName = tifName.split('.')[0] + '_PyTracks.xml'
-    xmlPath = os.path.join(dstDir, xmlName)
+    xmlPath = os.path.join(srcDir, xmlName)
     
     shape, dtype = ufun.tiff_inspect(tifPath)
     nT = shape[0]    
@@ -768,62 +768,12 @@ def pretreatAndTrack2(tifPath, dstDir):
         track = Tracks[k]
         color = CL[k%len(CL)]
         ax.plot(track[:,1], track[:,2], ls='-', color=color, lw=0.25)
-
+    
+    
     plt.show()
     
-    dstDir
     
     return(Tracks)
-
-
-
-
     
 
-# %% A class to analyze images... TBD
 
-class ImageStack(object):
-    """
-    A stack of images on disk from a .tif file'
-    """
-    
-    def __init__(self, path):
-        self.path = path
-        self.t0 = 0
-        self.shape, self.type = ufun.tiff_inspect(path)
-        self.Nbimages = self.shape[0]
-        
-            
-    def __len__(self):
-        return(self.Nbimages)
-            
-    def __getitem__(self, t):
-        """
-        returns the image at time t
-        """
-        
-        if t<0: 
-            t = len(self)+t
-            
-        assert t-self.t0 < self.Nbimages
-        
-        im = ufun.load_stack_region(self.path, time_indices=[t])[0]
-        
-        return(im)
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
