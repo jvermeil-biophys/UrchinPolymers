@@ -14,6 +14,7 @@ Created on Mon Jul 27 11:14:19 2026
 
 import os
 import sys
+import time
 
 import numpy as np
 import matplotlib as mpl
@@ -291,12 +292,16 @@ def logSpaced(L, pointsPerDecade=15):
 def ddm(stack, idts, maxNCouples=100):
     """Perform time averaged and radial averaged DDM for given time intervals.
     Returns DDM"""
+    T0 = time.time()
     ra = RadialAverager(stack.shape[1:])
+    print(time.time()-T0)
     DDM = np.zeros((len(idts), len(ra.hd)))
+    print(time.time()-T0)
     N = len(idts)
     progress_step = N/100
     for i, idt in enumerate(idts):
         DDM[i] = ra(timeAveraged(stack, idt, maxNCouples))
+        print(time.time()-T0)
         if i//progress_step > (i-1)//progress_step:
             j = int(i//progress_step)
             sys.stdout.write('\r')
@@ -371,7 +376,7 @@ def mergeDDM(DDMs, dts, frequencies):
     # Rescale the value of radial average at 4 Hz according to the value at t=boundary for 400Hz
     DDMs[1] *= DDMs[0][boundary] / DDMs[1][0]
     # find the first third of their overlap
-    overlap0 = (len(DDMs[0])-1 - boundary)
+    overlap0 = (len(DDMs[0])-1 - boundary)//3
     overlap1 = np.argmin(np.abs(dts[1] - dts[0][boundary+overlap0]))
     # interpolate on this first third the DDM at 4Hz on the times at 400Hz
     interpolated = np.transpose([
@@ -951,3 +956,49 @@ ax.plot(valid_Q, list_A, ls='', marker='o')
 ax.plot(valid_Q, list_B, ls='', marker='o')
 
 plt.show()
+
+
+
+# %% Film BF
+
+mainDir = 'C://Users//josep//Desktop//Seafile//DownloadedFromSeafile//IntraCellTracking//26-06-19_FastAcq_BF'
+
+# %%% 1. DDM 
+
+# %%%% 1.1 Settings
+
+mainDir = 'C://Users//josep//Desktop//Seafile//DownloadedFromSeafile//IntraCellTracking//26-06-19_FastAcq_BF'
+srcDir = os.path.join(mainDir, 'Crops')
+tifNames = ['FilmBF_fastAcq_4000f_200Hz_C3_Crop.tif', 'FilmBF_fastAcq_4000f_10Hz_C3_Crop.tif']
+tifPaths = [os.path.join(srcDir, tifName) for tifName in tifNames]
+
+dstDir = os.path.join(mainDir, 'DDM_results')
+
+PixPerUm = cd.PixPerUm_40X_Leica
+frequencies = [200, 10]
+nbimages = 4000
+pointsPerDecade = 15
+maxNCouples = 100 #10 for fast evaluation, 300 for accurate analysis
+
+ddmFileNames = []
+dtFileNames = []
+for fN, f in zip(tifNames, frequencies):
+    ddmFileNames.append('_'.join(fN.split('_')[:-1]) + f'_Nc{maxNCouples:.0f}_DDM.npy')
+    dtFileNames.append('_'.join(fN.split('_')[:-1]) + f'_Nc{maxNCouples:.0f}_dt.npy')
+
+
+# %%%% 1.2 Compute
+
+idts = logSpaced(nbimages, pointsPerDecade)
+dts = [idts/float(freq) for freq in frequencies]
+
+DDMs = []
+for p in tifPaths:
+    print(f'\n\nAnalyzing {os.path.split(p)}...')
+    DDM = ddm(ImageStack(p), idts, maxNCouples)
+    DDMs.append(DDM)
+    
+for ddmN, dtN, D, dt in zip(ddmFileNames, dtFileNames, DDMs, dts):
+    np.save(os.path.join(dstDir, ddmN), D)
+    np.save(os.path.join(dstDir, dtN), dt)
+

@@ -22,7 +22,7 @@ if COMPUTERNAME == 'PROCYON-PC': # Ordi Perso
     Path_AnalysisPulls = "C:\\Users\\josep\\Desktop\\Seafile\\DownloadedFromSeafile\\"
     Path_WorkingData = "E:\\WorkingData\\"
     Path_Fiji = "C:\\Users\\josep\\Desktop\\Fiji.app\\"
-    Path_JAVA_HOME = "C:\\Users\\josep\\mambaforge\\envs\\pyimagej-env\\Library\\lib\\jvm"
+    Path_JAVA_HOME = "C:\\Users\\josep\\miniforge3\\envs\\pyimagej-env\\Library\\lib\\jvm"
     
 elif COMPUTERNAME == 'MINC05': # IJM
     Path_AnalysisPulls = "E:\\AnalysisPulls\\"

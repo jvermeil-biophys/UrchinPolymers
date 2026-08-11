@@ -33,6 +33,7 @@ import pandas as pd
 import trackpy as tp
 import skimage as skm
 import seaborn as sns
+import matplotlib as mpl
 import scipy.ndimage as ndi
 import matplotlib.pyplot as plt
 import xml.etree.ElementTree as ET
@@ -51,6 +52,157 @@ import Libs.UtilityFunctions as ufun
 import Libs.ToolboxCytoplasmAnalysis as tbca
 
 
+# %% Film BF
+
+mainDir = 'C://Users//josep//Desktop//Seafile//DownloadedFromSeafile//IntraCellTracking//26-06-19_FastAcq_BF'
+
+# %%% 1. DDM 
+
+# %%%% 1.1 Settings
+
+mainDir = 'C://Users//josep//Desktop//Seafile//DownloadedFromSeafile//IntraCellTracking//26-06-19_FastAcq_BF'
+srcDir = os.path.join(mainDir, 'Crops')
+tifNames = ['FilmBF_fastAcq_4000f_200Hz_C3_Crop.tif', 'FilmBF_fastAcq_4000f_10Hz_C3_Crop.tif']
+tifPaths = [os.path.join(srcDir, tifName) for tifName in tifNames]
+
+dstDir = os.path.join(mainDir, 'DDM_results')
+
+PixPerUm = cd.PixPerUm_40X_Leica
+frequencies = [200, 10]
+nbimages = 4000
+pointsPerDecade = 15
+maxNCouples = 100 #10 for fast evaluation, 300 for accurate analysis
+
+ddmFileNames = []
+dtFileNames = []
+for fN, f in zip(tifNames, frequencies):
+    ddmFileNames.append('_'.join(fN.split('_')[:-1]) + f'_Nc{maxNCouples:.0f}_DDM.npy')
+    dtFileNames.append('_'.join(fN.split('_')[:-1]) + f'_Nc{maxNCouples:.0f}_dt.npy')
+
+
+# %%%% 1.2 Compute
+
+idts = tbca.logSpaced(nbimages, pointsPerDecade)
+dts = [idts/float(freq) for freq in frequencies]
+
+DDMs = []
+for p in tifPaths:
+    print(f'\n\nAnalyzing {os.path.split(p)}...')
+    DDM = tbca.ddm(tbca.ImageStack(p), idts, maxNCouples)
+    DDMs.append(DDM)
+    
+for ddmN, dtN, D, dt in zip(ddmFileNames, dtFileNames, DDMs, dts):
+    np.save(os.path.join(dstDir, ddmN), D)
+    np.save(os.path.join(dstDir, dtN), dt)
+
+
+# %%%% 1.3 Merge
+
+srcDir = os.path.join(mainDir, 'DDM_results')
+DDMs = [np.load(os.path.join(srcDir, fN)) for fN in ddmFileNames]
+dts = [np.load(os.path.join(srcDir, fN)) for fN in dtFileNames]
+
+
+frequencies = [200, 10]
+
+DDMMerge, dtMerge = tbca.mergeDDM(DDMs, dts, frequencies)
+
+# %%%% 1.4 Plot
+
+
+N_pix = 256
+L_um = N_pix*PixPerUm
+dq = 2*np.pi / L_um
+qmax = 10
+
+
+for k in range(len(DDMs)):
+    DDM_plot = DDMs[k]
+    dt_plot = dts[k]
+    QQ = np.arange(1, 1+len(DDM_plot[0,:]))*dq
+
+    # Test the merging for `q=100`
+    Q_plot = [10, 30, 100]
+    for q in Q_plot:
+        fig, ax = plt.subplots(1, 1, figsize=(5, 4))
+        ax.plot(dts[0], DDMs[0][:,q],'o', label='200 Hz')
+        ax.plot(dts[1], DDMs[1][:,q],'s', label='10 Hz')
+        ax.plot(dtMerge, DDMMerge[:,q], label='Merged')
+        # ax.plot(dtMerge, DDM_plot[:,100]*2, 'o', label='Shifted merged')
+        ax.set_xscale('log')
+        ax.set_yscale('log')
+        ax.set_ylabel(r'$\mathcal{D}$')
+        ax.set_xlabel(r'$\Delta t\,(s)$')
+        # ax.axvline(dts[0][boundary], color='r')
+        # ax.axvline(dts[0][boundary+overlap0], color='b')
+        # ax.axvline(dts[1][overlap1], color='g')
+        ax.legend(loc='lower right')
+        ax.set_title(f'q = {q:.0f}')
+        plt.show()
+    
+    (Ndt, Nq) = DDM_plot.shape
+    fig, axes = plt.subplots(2, 1, figsize = (5, 8))
+    ax = axes[0]
+    ax.set_xscale('log')
+    ax.set_yscale('log')
+    ax.set_xlabel(r'$q\ (\mu m^{-1})$')
+    ax.set_ylabel('$D$')
+    for i in range(0, Ndt, 10):
+        ax.plot(QQ, DDM_plot[i,:], marker='.', ls='',
+                color = mpl.cm.autumn(i/Ndt))
+        ax.axvline(dq, color='gray', ls='-', alpha=0.7)
+        ax.axvline(qmax, color='gray', ls='-', alpha=0.7)
+        
+    fig.colorbar(plt.cm.ScalarMappable(norm=mpl.colors.LogNorm(vmin=np.min(dt_plot), vmax=np.max(dt_plot)), 
+                                       cmap="autumn"),
+                 ax=ax, label=r"$\Delta t$")
+        
+    
+    ax = axes[1]
+    ax.set_xscale('log')
+    ax.set_yscale('log')
+    ax.set_xlabel(r'$\Delta t\ (s)$')
+    ax.set_ylabel('$D$')
+    for j in range(0, Nq, 25):
+        ax.plot(dt_plot, DDM_plot[:,j], marker='.', ls='',
+                color = mpl.cm.winter(j/Nq))
+        
+    fig.colorbar(plt.cm.ScalarMappable(norm=mpl.colors.LogNorm(vmin=np.min(QQ), vmax=np.max(QQ)), 
+                                       cmap="winter"),
+                 ax=ax, label="$q$")
+    
+    plt.show()
+    
+    # Now we can export the merged results (adapt to the folder you want to save to)
+    
+    # np.save('DDM_fastAcq_C3.npy', DDM_plot)
+    # np.save('dt_fastAcq_C3.npy', dtMerge)
+    
+    ApB_est = np.median(DDM_plot[-4:,:], axis=0)
+    B_est = np.median(DDM_plot[:6,:], axis=0)
+    B_best = 4.1e10
+    
+    fig, axes = plt.subplots(1, 3, figsize=(10, 3), sharey=True)
+    for ax in axes:
+        ax.set_xscale('log')
+        ax.set_yscale('log')
+    ax = axes[0]
+    ax.plot(QQ, ApB_est, 'r.')
+    ax.axvline(dq, color='gray', ls='-', alpha=0.7)
+    ax.axvline(qmax, color='gray', ls='-', alpha=0.7)
+    ax = axes[1]
+    ax.plot(QQ, B_est,'k.')
+    ax.axvline(dq, color='gray', ls='-', alpha=0.7)
+    ax.axvline(qmax, color='gray', ls='-', alpha=0.7)
+    ax = axes[2]
+    ax.plot(QQ, ApB_est-B_est,'b.')
+    ax.plot(QQ, ApB_est-B_best,'g.')
+    ax.axvline(dq, color='gray', ls='-', alpha=0.7)
+    ax.axvline(qmax, color='gray', ls='-', alpha=0.7)
+    
+    plt.show()
+
+
 # %% New film
 
 mainDir = 'C:\\Users\\Joseph\\Desktop\\IntraCellTracking\\26-07-29_FastAcq_NBYolk-Fecondation'
@@ -65,8 +217,6 @@ dstDir = os.path.join(mainDir, 'SPT_results')
 
 tbca.pretreatAndTrack2(tifPath, dstDir)
 Tracks = tbca.importTrackMateTracks(xmlPath)
-
-
 
 # %%% Analyse tracks - Test pipeline
 
