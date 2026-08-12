@@ -25,25 +25,16 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 # %% Imports
 
 import os
-import re
-import time
 
 import numpy as np
 import pandas as pd
 import trackpy as tp
-import skimage as skm
 import seaborn as sns
 import matplotlib as mpl
-import scipy.ndimage as ndi
 import matplotlib.pyplot as plt
-import xml.etree.ElementTree as ET
 
-import shapely
-from shapely.ops import polylabel
-from shapely.plotting import plot_polygon, plot_points # , plot_line
-
-from PIL import Image, ImageDraw
-from scipy import signal # stats #, optimize, interpolate, 
+from scipy.signal import savgol_filter
+from scipy.optimize import curve_fit
 
 import Libs.PlotMaker as pm
 import Libs.UrchinPaths as up
@@ -54,13 +45,15 @@ import Libs.ToolboxCytoplasmAnalysis as tbca
 
 # %% Film BF
 
-mainDir = 'C://Users//josep//Desktop//Seafile//DownloadedFromSeafile//IntraCellTracking//26-06-19_FastAcq_BF'
+# mainDir = 'C://Users//josep//Desktop//Seafile//DownloadedFromSeafile//IntraCellTracking//26-06-19_FastAcq_BF'
+mainDir = os.path.join(up.Path_IntraCellTracking, '26-06-19_FastAcq_BF')
+
+
 
 # %%% 1. DDM 
 
 # %%%% 1.1 Settings
 
-mainDir = 'C://Users//josep//Desktop//Seafile//DownloadedFromSeafile//IntraCellTracking//26-06-19_FastAcq_BF'
 srcDir = os.path.join(mainDir, 'Crops')
 tifNames = ['FilmBF_fastAcq_4000f_200Hz_C3_Crop.tif', 'FilmBF_fastAcq_4000f_10Hz_C3_Crop.tif']
 tifPaths = [os.path.join(srcDir, tifName) for tifName in tifNames]
@@ -107,100 +100,414 @@ frequencies = [200, 10]
 
 DDMMerge, dtMerge = tbca.mergeDDM(DDMs, dts, frequencies)
 
-# %%%% 1.4 Plot
-
-
 N_pix = 256
 L_um = N_pix*PixPerUm
 dq = 2*np.pi / L_um
-qmax = 10
+qmin = 0.5
+qmax = 10 # 11.7
+QQ_raw = np.arange(1, 1+len(DDMMerge[0,:]))*dq
+
+valid_iQ, valid_Q = [], []
+for iq in range(len(QQ_raw)):
+    q = QQ_raw[iq]
+    if q >= qmin and q < qmax:
+        valid_Q.append(q)
+        valid_iQ.append(iq)
+
+QQ = np.array(valid_Q)
+iQ = np.array(valid_iQ)
+
+# %%%% 1.4 Plot the merge
 
 
-for k in range(len(DDMs)):
-    DDM_plot = DDMs[k]
-    dt_plot = dts[k]
-    QQ = np.arange(1, 1+len(DDM_plot[0,:]))*dq
+# Test the merging
+iQ_plot = [50]
+Q_plot = [QQ[i] for i in iQ_plot]
+for iq, q in zip(iQ_plot, Q_plot):
+    fig = plt.figure(figsize=(5, 4))
+    ax = fig.add_subplot(1, 1, 1)
+    ax.plot(dts[0], DDMs[0][:, iQ_plot],'o', label='200 Hz')
+    ax.plot(dts[1], DDMs[1][:, iQ_plot],'s', label='10 Hz')
+    ax.plot(dtMerge, DDMMerge[:, iQ_plot], label='Merged')
+    ax.plot(dtMerge, DDMMerge[:, iQ_plot]*5, 'o', label='Shifted merged')
+    ax.set_xscale('log')
+    ax.set_yscale('log')
+    ax.set_ylabel(r'$\mathcal{D}$')
+    ax.set_xlabel(r'$\Delta t\,(s)$')
+    ax.legend(loc='lower right')
+    ax.set_title(f'q = {q:.3f}')
+    
+plt.show()
 
-    # Test the merging for `q=100`
-    Q_plot = [10, 30, 100]
-    for q in Q_plot:
-        fig, ax = plt.subplots(1, 1, figsize=(5, 4))
-        ax.plot(dts[0], DDMs[0][:,q],'o', label='200 Hz')
-        ax.plot(dts[1], DDMs[1][:,q],'s', label='10 Hz')
-        ax.plot(dtMerge, DDMMerge[:,q], label='Merged')
-        # ax.plot(dtMerge, DDM_plot[:,100]*2, 'o', label='Shifted merged')
+# %%%% Plot the structure matrix D
+
+DDM_plot = DDMMerge
+dt_plot = dtMerge
+
+(Ndt, Nq) = DDM_plot.shape
+fig, axes = plt.subplots(2, 1, figsize = (5, 8))
+# QQ_plot = np.arange(1, 1+Nq)*dq
+ax = axes[0]
+ax.set_xscale('log')
+ax.set_yscale('log')
+ax.set_xlabel(r'$q\ (\mu m^{-1})$')
+ax.set_ylabel('$D$')
+for i in range(0, Ndt, 10):
+    ax.plot(QQ, DDM_plot[i,iQ], marker='.', ls='',
+            color = mpl.cm.autumn(i/Ndt))
+    ax.axvline(qmin, color='gray', ls='-', alpha=0.7)
+    ax.axvline(qmax, color='gray', ls='-', alpha=0.7)
+    
+fig.colorbar(plt.cm.ScalarMappable(norm=mpl.colors.LogNorm(vmin=np.min(dt_plot), vmax=np.max(dt_plot)), 
+                                   cmap="autumn"),
+             ax=ax, label=r"$\Delta t$")
+    
+
+ax = axes[1]
+ax.set_xscale('log')
+ax.set_yscale('log')
+ax.set_xlabel(r'$\Delta t\ (s)$')
+ax.set_ylabel('$D$')
+for j in iQ[::10]:
+    ax.plot(dt_plot, DDM_plot[:,j], marker='.', ls='',
+            color = mpl.cm.winter(j/Nq))
+    
+fig.colorbar(plt.cm.ScalarMappable(norm=mpl.colors.LogNorm(vmin=np.min(QQ), vmax=np.max(QQ)), 
+                                   cmap="winter"),
+             ax=ax, label="$q$")
+
+plt.show()
+
+# %%%% Plot estimates of A and B
+
+DDM_plot = DDMMerge[:, iQ]
+dt_plot = dtMerge
+
+ApB_est = np.median(DDM_plot[-4:,:], axis=0)
+B_est = np.median(DDM_plot[:6,:], axis=0)
+
+fig, axes = plt.subplots(1, 3, figsize=(10, 3), sharey=True)
+for ax in axes:
+    ax.set_xscale('log')
+    ax.set_yscale('log')
+ax = axes[0]
+ax.plot(QQ, ApB_est, 'r.')
+# ax.axvline(dq, color='gray', ls='-', alpha=0.7)
+ax.axvline(qmax, color='gray', ls='-', alpha=0.7)
+ax = axes[1]
+ax.plot(QQ, B_est,'k.')
+# ax.axvline(dq, color='gray', ls='-', alpha=0.7)
+ax.axvline(qmax, color='gray', ls='-', alpha=0.7)
+ax = axes[2]
+ax.plot(QQ, ApB_est-B_est,'b.')
+
+# ax.axvline(dq, color='gray', ls='-', alpha=0.7)
+ax.axvline(qmax, color='gray', ls='-', alpha=0.7)
+
+plt.show()
+
+
+# %%%% 1.5 Use a model to fit A, B and get f (Brownian case)
+
+DDM_fit = DDMMerge
+dt_fit = dtMerge
+
+def simple_brownian_model(dt, A, B, G):
+    D = A * (1 - np.exp(-G*dt)) + B
+    return(D)
+
+
+list_A, list_B, list_G = [], [], []
+
+FORCE_B = True
+forced_B = [np.percentile(B_est, 3)] * len(QQ)
+
+
+for iq in iQ:
+    jq = iq - min(iQ)
+    q = QQ[jq]        
+    D = DDM_fit[:,iq]
+    dt = dt_fit
+    
+    if not FORCE_B:
+        # some initial parameter values - must be within bounds
+        initB = np.median(DDM_fit[:3,iq], axis=0)
+        initA = np.median(DDM_fit[-4:,iq], axis=0) - initB
+        initG = 1
+        
+        initialParameters = [initA, initB, initG]
+        
+        # bounds on parameters - initial parameters must be within these
+        lowerBounds = (0, 1e8, 0)
+        upperBounds = (np.inf, np.inf, np.inf)
+        parameterBounds = [lowerBounds, upperBounds]
+        
+        params, covM = curve_fit(simple_brownian_model, dt, D, 
+                                 p0=initialParameters, bounds = parameterBounds)
+        
+        A, B, G = params[0], params[1], params[2]
+        list_A.append(A)
+        list_B.append(B)
+        list_G.append(G)
+    
+    else:
+        # some initial parameter values - must be within bounds
+        B_set = forced_B[jq]
+        def simple_brownian_model_forced_B(dt, A, G):
+            D = A * (1 - np.exp(-G*dt)) + B_set
+            return(D)
+        
+        initA = np.median(DDM_fit[-4:,iq], axis=0) - initB
+        initG = 1
+               
+        initialParameters = [initA, initG]
+        
+        # bounds on parameters - initial parameters must be within these
+        lowerBounds = (0, 0)
+        upperBounds = (np.inf, np.inf)
+        parameterBounds = [lowerBounds, upperBounds]
+        
+        params, covM = curve_fit(simple_brownian_model_forced_B, dt, D, 
+                                 p0=initialParameters, bounds = parameterBounds)
+        
+        A, B, G = params[0], B_set, params[1]
+        list_A.append(A)
+        list_B.append(B)
+        list_G.append(G)
+        
+        
+    if iq%10 == 0:
+        fig, ax = plt.subplots(1, 1)
         ax.set_xscale('log')
         ax.set_yscale('log')
-        ax.set_ylabel(r'$\mathcal{D}$')
-        ax.set_xlabel(r'$\Delta t\,(s)$')
-        # ax.axvline(dts[0][boundary], color='r')
-        # ax.axvline(dts[0][boundary+overlap0], color='b')
-        # ax.axvline(dts[1][overlap1], color='g')
-        ax.legend(loc='lower right')
-        ax.set_title(f'q = {q:.0f}')
+        D = DDM_fit[:, iq]
+        ax.plot(dt_fit, D, ls='', marker='o', label=f'q={q:.1f}')
+        
+        D_fit = simple_brownian_model(dt_fit, A, B, G)
+        ax.plot(dt_fit, D_fit, ls='-', marker='', label='fit')
         plt.show()
+        
+# smoothA = savgol_filter(list_A, 9, 3)
+# smoothB = savgol_filter(list_B, 19, 1)
+# coeffs = np.polyfit(valid_Q, list_B, 3)
+# smoothB = np.sum([coeffs[k]*np.array(valid_Q)**(len(coeffs)-k) for k in range(len(coeffs))], axis=0)
+
+# list_A = smoothA
+# list_B = smoothB
+
+# smoothG = []
+# for k, iq in enumerate(valid_iQ):
+#     q = QQ[iq]
+        
+#     D = DDM_fit[:, iq]
+#     dt = dt_fit
     
-    (Ndt, Nq) = DDM_plot.shape
-    fig, axes = plt.subplots(2, 1, figsize = (5, 8))
-    ax = axes[0]
+#     # some initial parameter values - must be within bounds
+#     setA = list_A[k]
+#     setB = list_B[k]
+#     initG = 1
+    
+#     def simple_brownian_model_setAB(dt, G):
+#         D = setA * (1 - np.exp(-G*dt)) + setB
+#         return(D)
+    
+#     initialParameters = [initG]
+    
+#     # bounds on parameters - initial parameters must be within these
+#     lowerBounds = (0)
+#     upperBounds = (np.inf)
+#     parameterBounds = [lowerBounds, upperBounds]
+    
+#     params, covM = curve_fit(simple_brownian_model_setAB, dt, D, 
+#                              p0=initialParameters, bounds = parameterBounds)
+    
+#     # if params[1] < 1e8:
+#     #     params[1] = initB
+    
+#     smoothG.append(params[0])
+
+# list_G = smoothG
+
+X, Y = np.log(QQ), np.log(list_G)
+params, results = ufun.fitLineHuber(X, Y)
+(p1, p2) = params
+k = p2
+A = np.exp(p1)
+
+  
+fig, axes = plt.subplots(1, 2, figsize = (8, 5))
+ax = axes[0]
+ax.set_xscale('log')
+ax.set_yscale('log')
+ax.plot(QQ, list_A, ls='', marker='.')
+ax.plot(QQ, list_B, ls='', marker='.')
+
+ax = axes[1]
+ax.set_xscale('log')
+ax.set_yscale('log')
+ax.plot(QQ, list_G, 'k.')
+ax.plot(QQ, A * QQ**k, 'r-')
+
+plt.show()
+
+    
+
+# %%%% 1.6 Plot the fit
+
+DDM_fit = DDMMerge
+dt_fit = dtMerge
+idx = slice(10, len(iQ), 10)
+
+fig, ax = plt.subplots(1, 1, figsize=(10, 8))
+ax = ax
+ax.set_xscale('log')
+ax.set_yscale('log')
+cmap = mpl.cm.plasma
+
+k = 0
+
+for iq in iQ[idx]:
+    jq = iq - min(iQ)
+    q = QQ[iq]
+    A = list_A[jq]
+    B = list_B[jq]
+    G = list_G[jq]
+    
+    D = DDM_fit[:, iq]
+    color = cmap(k/len(iQ[idx]))
+    k += 1
+    ax.plot(dt_fit, D, ls='', marker='o', color = color, label=f'q={q:.1f}')
+    
+    D_fit = simple_brownian_model(dt_fit, A, B, G)
+    ax.plot(dt_fit, D_fit, ls='-', marker='', color = color, label='fit')
+
+ax.legend()
+ax.grid()
+plt.show()
+
+
+
+
+fig, axes = plt.subplots(1, 2, figsize=(12, 6))
+for ax in axes:
     ax.set_xscale('log')
-    ax.set_yscale('log')
-    ax.set_xlabel(r'$q\ (\mu m^{-1})$')
-    ax.set_ylabel('$D$')
-    for i in range(0, Ndt, 10):
-        ax.plot(QQ, DDM_plot[i,:], marker='.', ls='',
-                color = mpl.cm.autumn(i/Ndt))
-        ax.axvline(dq, color='gray', ls='-', alpha=0.7)
-        ax.axvline(qmax, color='gray', ls='-', alpha=0.7)
-        
-    fig.colorbar(plt.cm.ScalarMappable(norm=mpl.colors.LogNorm(vmin=np.min(dt_plot), vmax=np.max(dt_plot)), 
-                                       cmap="autumn"),
-                 ax=ax, label=r"$\Delta t$")
-        
+    ax.legend()
+    ax.grid()
+cmap = mpl.cm.viridis
+
+k = 0
+
+for iq in iQ[idx]:
+    jq = iq - min(iQ)
+    q = QQ[iq]
+    A = list_A[jq]
+    B = list_B[jq]
+    G = list_G[jq]
+    
+    D = DDM_fit[:, iq]
+    color = cmap(k/len(iQ[idx]))
+    k += 1
+    fR = 1 - ((D-B)/A)
+    fR_fit = np.exp(-G*dt)
+    
+    ax = axes[0]
+    ax.plot(dt_fit, fR, ls='', marker='o', color = color, label=f'q = {q:.3f}')
+    ax.plot(dt_fit, fR_fit, ls='-', marker='', color = color, label=f'fit, G = {G:.1e}')
     
     ax = axes[1]
+    ax.plot(dt_fit*q*q, fR, ls='', marker='o', color = color, label=f'q = {q:.3f}')
+    ax.plot(dt_fit*q*q, fR_fit, ls='-', marker='', color = color, label=f'fit, G = {G:.1e}')
+
+
+    
+plt.show()
+
+
+
+
+
+
+
+fig, axes = plt.subplots(1, 2, figsize=(10, 5))
+
+for ax in axes:
     ax.set_xscale('log')
     ax.set_yscale('log')
-    ax.set_xlabel(r'$\Delta t\ (s)$')
-    ax.set_ylabel('$D$')
-    for j in range(0, Nq, 25):
-        ax.plot(dt_plot, DDM_plot[:,j], marker='.', ls='',
-                color = mpl.cm.winter(j/Nq))
-        
-    fig.colorbar(plt.cm.ScalarMappable(norm=mpl.colors.LogNorm(vmin=np.min(QQ), vmax=np.max(QQ)), 
-                                       cmap="winter"),
-                 ax=ax, label="$q$")
     
-    plt.show()
+cmap = mpl.cm.plasma
+
+# idx = slice(0, len(valid_iQ), 10)
+k = 0
+
+list_MSD_exp = []
+list_MSD_fit = []
+
+for iq in iQ[idx]:
+    jq = iq - min(iQ)
+    q = QQ[iq]
+    A = list_A[jq]
+    B = list_B[jq]
+    G = list_G[jq]
     
-    # Now we can export the merged results (adapt to the folder you want to save to)
+    D = DDM_fit[:, iq]
+    color = cmap(jq/(len(iQ)))
     
-    # np.save('DDM_fastAcq_C3.npy', DDM_plot)
-    # np.save('dt_fastAcq_C3.npy', dtMerge)
+    fR = 1 - ((D-B)/A)
+    fR_fit = np.exp(-G*dt)
     
-    ApB_est = np.median(DDM_plot[-4:,:], axis=0)
-    B_est = np.median(DDM_plot[:6,:], axis=0)
-    B_best = 4.1e10
+    MSD_exp = -(4/q**2) * np.log(fR)
+    MSD_fit = -(4/q**2) * np.log(fR_fit)
     
-    fig, axes = plt.subplots(1, 3, figsize=(10, 3), sharey=True)
-    for ax in axes:
-        ax.set_xscale('log')
-        ax.set_yscale('log')
-    ax = axes[0]
-    ax.plot(QQ, ApB_est, 'r.')
-    ax.axvline(dq, color='gray', ls='-', alpha=0.7)
-    ax.axvline(qmax, color='gray', ls='-', alpha=0.7)
-    ax = axes[1]
-    ax.plot(QQ, B_est,'k.')
-    ax.axvline(dq, color='gray', ls='-', alpha=0.7)
-    ax.axvline(qmax, color='gray', ls='-', alpha=0.7)
-    ax = axes[2]
-    ax.plot(QQ, ApB_est-B_est,'b.')
-    ax.plot(QQ, ApB_est-B_best,'g.')
-    ax.axvline(dq, color='gray', ls='-', alpha=0.7)
-    ax.axvline(qmax, color='gray', ls='-', alpha=0.7)
+    list_MSD_exp.append(MSD_exp)
+    list_MSD_fit.append(MSD_fit)
     
-    plt.show()
+    if jq%10==0:
+        ax = axes[0]
+        ax.plot(dt, MSD_exp, ls='', marker='o', color = color)
+        ax.plot(dt, MSD_fit, ls='-', marker='', color = color)
+    
+    k += 1
+    
+list_MSD_exp = np.array(list_MSD_exp)
+list_MSD_fit = np.array(list_MSD_fit)
+
+avg_MSD_exp = np.nanmean(list_MSD_exp, axis=0)
+avg_MSD_fit = np.nanmean(list_MSD_fit, axis=0)
+
+ax = axes[1]
+ax.plot(dt, avg_MSD_exp, ls='', marker='o', color = 'k')
+ax.plot(dt, avg_MSD_fit, ls='-', marker='', color = 'k')
+
+for ax in axes:
+    ax.legend()
+    ax.grid()
+    
+
+plt.show()
+
+
+
+
+
+
+
+# %%% 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+# %% -----------------------
+
 
 
 # %% New film
@@ -571,7 +878,8 @@ for p in range(1, Np+1):
 #     D_nl = np.exp(b)/4
 #     if D_nl < 0.2 and D_nl > 0 and k_nl > 0:
 #        list_k.append(k_nl)
-#        list_D.append(D_nl)
+#   
+# list_D.append(D_nl)
     
 # %%%
 

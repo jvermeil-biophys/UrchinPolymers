@@ -780,7 +780,9 @@ def pretreatAndTrack2(tifPath, dstDir):
 
 
 
-# %% Dynamic Differential Microscopy
+# %% II. Dynamic Differential Microscopy
+
+# %%% DDM Analysis
 
 class ImageStack(object):
     """
@@ -929,6 +931,8 @@ def ddm(stack, idts, maxNCouples=100):
     sys.stdout.write("[%-20s] %d%%" % ('='*20, 100))
     return(DDM)
 
+# %%% Post-treatment
+
 #### DDM step 6 - merge different freqs
 
 def mergeDDM(DDMs, dts, frequencies):
@@ -944,7 +948,7 @@ def mergeDDM(DDMs, dts, frequencies):
     overlap1 = np.argmin(np.abs(dts[1] - dts[0][boundary+overlap0]))
     
     # Rescale the value of radial average at 4 Hz according to the value at t=boundary for 400Hz
-    overlap_full_1 = (len(DDMs[0])-1 - boundary)//4
+    overlap_full_1 = (len(DDMs[0])-1 - boundary)//2
     overlap_full_2 = np.argmin(np.abs(dts[1] - dts[0][boundary+overlap_full_1]))
     DDMs[1] *= DDMs[0][boundary+overlap_full_1] / DDMs[1][overlap_full_2]
     

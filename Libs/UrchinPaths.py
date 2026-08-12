@@ -28,8 +28,10 @@ elif COMPUTERNAME == 'MINC05': # IJM
     Path_AnalysisPulls = "E:\\AnalysisPulls\\"
     Path_WorkingData = "E:\\WorkingData\\"
     
+    
 elif COMPUTERNAME == 'DESKTOP-9J5NPMO': # LJP
     Path_AnalysisPulls = "C:\\Users\\Joseph\\Desktop\\AnalysisPulls\\"
+    Path_IntraCellTracking = "C:\\Users\\Joseph\\Desktop\\IntraCellTracking\\"
     Path_WorkingData = "C:\\Users\\Joseph\\Desktop\\WorkingData\\"
     Path_Fiji = "C:\\Users\\Joseph\\Desktop\\Fiji_stable.app"
     Path_JAVA_HOME = "C:\\Users\\Joseph\\miniforge3\\envs\\spyder-env\\Library\\lib\\jvm"
