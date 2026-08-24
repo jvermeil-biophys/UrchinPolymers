@@ -55,7 +55,7 @@ mainDir = os.path.join(up.Path_IntraCellTracking, '26-06-19_FastAcq_BF')
 # %%%% 1.1 Settings
 
 srcDir = os.path.join(mainDir, 'Crops')
-tifNames = ['FilmBF_fastAcq_4000f_200Hz_C3_Crop.tif', 'FilmBF_fastAcq_4000f_10Hz_C3_Crop.tif']
+tifNames = ['FilmBF_fastAcq_4000f_200Hz_C3_crop.tif', 'FilmBF_fastAcq_4000f_10Hz_C3_crop.tif']
 tifPaths = [os.path.join(srcDir, tifName) for tifName in tifNames]
 
 dstDir = os.path.join(mainDir, 'DDM_results')
@@ -65,6 +65,12 @@ frequencies = [200, 10]
 nbimages = 4000
 pointsPerDecade = 15
 maxNCouples = 100 #10 for fast evaluation, 300 for accurate analysis
+
+N_pix = 256
+L_um = N_pix*PixPerUm
+dq = 2*np.pi / L_um
+qmin = 0.5
+qmax = 10 # 11.7
 
 ddmFileNames = []
 dtFileNames = []
@@ -89,7 +95,81 @@ for ddmN, dtN, D, dt in zip(ddmFileNames, dtFileNames, DDMs, dts):
     np.save(os.path.join(dstDir, dtN), dt)
 
 
-# %%%% 1.3 Merge
+# %%%% 1.2.x Plot typical images
+
+pm.setGraphicOptions(mode = 'screen')
+
+idts = tbca.logSpaced(nbimages, pointsPerDecade)
+dts = [idts/float(freq) for freq in frequencies]
+
+Nstep = 40
+
+DDMs = []
+for p in tifPaths:
+    print(f'\n\nPlotting for {os.path.split(p)}...')
+    fig, axes = plt.subplots(3, 4, figsize=(12, 9), layout='compressed')
+    
+    stack = tbca.ImageStack(p)
+    
+    ax = axes[0, 0]
+    i = 0
+    ax.imshow(stack[i], 'gray')
+    ax.set_title(f'Frame no {i+1:.0f}')
+    ax = axes[1, 0]
+    j = Nstep-1
+    ax.imshow(stack[j], 'gray')
+    ax.set_title(f'Frame no {j+1:.0f}')
+    ax = axes[2, 0]
+    ax.imshow(stack[j] - stack[i].astype(float), 'gray')
+    ax.set_title(r'$\Delta I$ for ' + f'F {j+1:.0f} and F {i+1:.0f}')
+    
+    I_0_N = np.fft.fftshift(tbca.spectrumDiff(stack[0], stack[Nstep-1]))
+    I_0_10N = np.fft.fftshift(tbca.spectrumDiff(stack[0], stack[Nstep*10-1]))
+    I_0_100N = np.fft.fftshift(tbca.spectrumDiff(stack[0], stack[Nstep*100-1]))
+    V1, V2, V3 = np.percentile(I_0_N, 99), np.percentile(I_0_10N, 99), np.percentile(I_0_100N, 99)
+    axes[0, 1].imshow(I_0_N, 'hot', vmin=0, vmax=V1)
+    axes[0, 1].set_title(f'Frame no {Nstep*1:.0f}')
+    axes[1, 1].imshow(I_0_10N, 'hot', vmin=0, vmax=V2)
+    axes[1, 1].set_title(f'Frame no {Nstep*10:.0f}')
+    axes[2, 1].imshow(I_0_100N, 'hot', vmin=0, vmax=V3)
+    axes[2, 1].set_title(f'Frame no {Nstep*100:.0f}')
+    # print(f"{np.percentile(I_0_N, 99):.2e}")
+    # print(f"{np.percentile(I_0_10N, 99):.2e}")
+    # print(f"{np.percentile(I_0_100N, 99):.2e}")
+    
+    J_0_4   = tbca.timeAveraged(stack, Nstep//10, maxNCouples=100)
+    J_0_40  = tbca.timeAveraged(stack, Nstep, maxNCouples=100)
+    J_0_400 = tbca.timeAveraged(stack, Nstep*10, maxNCouples=100)
+    V1, V2, V3 = np.percentile(J_0_4, 99), np.percentile(J_0_40, 99), np.percentile(J_0_400, 99)
+    axes[0, 2].imshow(np.fft.fftshift(J_0_4), 'hot', vmin=0, vmax=V1)
+    axes[0, 2].set_title(r'$TF[\Delta I]$ for $\Delta t$ = ' + f'{Nstep//10:.0f}f')
+    axes[1, 2].imshow(np.fft.fftshift(J_0_40), 'hot', vmin=0, vmax=V2)
+    axes[1, 2].set_title(r'$TF[\Delta I]$ for $\Delta t$ = ' + f'{Nstep*1:.0f}f')
+    axes[2, 2].imshow(np.fft.fftshift(J_0_400), 'hot', vmin=0, vmax=V3)
+    axes[2, 2].set_title(r'$TF[\Delta I]$ for $\Delta t$ = ' + f'{Nstep*10:.0f}f')
+    
+    ra = tbca.RadialAverager(stack.shape[1:])
+    for ax in axes[:, 3]:
+        ax.set_xscale('log')
+        ax.set_yscale('log')
+        ax.set_xlabel(r'q ($px^{-1}$)')
+        ax.set_ylabel(r'$D(q, \Delta t)$')
+        
+    axes[0, 3].plot(ra(J_0_4), 'b-')
+    axes[0, 3].set_title(r'$RA$ for $\Delta t$ = ' + f'{Nstep//10:.0f}f')
+    axes[1, 3].plot(ra(J_0_40), 'b-')
+    axes[1, 3].set_title(r'$RA$ for $\Delta t$ = ' + f'{Nstep*1:.0f}f')
+    axes[2, 3].plot(ra(J_0_400), 'b-')
+    axes[2, 3].set_title(r'$RA$ for $\Delta t$ = ' + f'{Nstep*10:.0f}f')
+    
+    figfile = f'{os.path.split(p)[-1]}'[:-4] + '_summary.png'
+    figpath = os.path.join(srcDir, figfile)
+    fig.suptitle(f'Plotting for {os.path.split(p)[-1]}')
+    fig.savefig(figpath, dpi=500, )
+    plt.show()
+
+
+# %%%% 1.3 Import & Merge
 
 srcDir = os.path.join(mainDir, 'DDM_results')
 DDMs = [np.load(os.path.join(srcDir, fN)) for fN in ddmFileNames]
@@ -216,12 +296,41 @@ def simple_brownian_model(dt, A, B, G):
     D = A * (1 - np.exp(-G*dt)) + B
     return(D)
 
+ApB_est = np.median(DDM_fit[-4:,:], axis=0)
+B_est = np.median(DDM_fit[:5,:], axis=0)
+A_est = ApB_est - B_est
+
+A_est = A_est[iQ]
+B_est = B_est[iQ]
+
 
 list_A, list_B, list_G = [], [], []
 
 FORCE_B = True
+
 forced_B = [np.percentile(B_est, 3)] * len(QQ)
 
+MB = np.median(B_est[:5])
+mB = np.median(B_est[-5:])
+MQ = np.max(QQ)
+mQ = np.min(QQ)
+k = (np.log(MB)-np.log(mB)) / (np.log(mQ)-np.log(MQ))
+A = mB / (MQ**k)
+forced_B = [A * q**k for q in QQ]
+
+logQQ = np.log(QQ)
+logBest = np.log(B_est)
+p_fitted = np.polynomial.Polynomial.fit(logQQ, logBest, deg=5)
+B_smooth = [np.exp(p_fitted(q)) for q in logQQ]
+forced_B = B_smooth
+
+# fig, ax = plt.subplots(1, 1, figsize=(4, 3), sharey=True)
+# ax.set_xscale('log')
+# ax.set_yscale('log')
+# ax = ax
+# ax.plot(QQ, B_est, 'r.')
+# ax.plot(QQ, forced_B, 'k--')
+# ax.axvline(qmax, color='gray', ls='-', alpha=0.7)
 
 for iq in iQ:
     jq = iq - min(iQ)
@@ -231,14 +340,14 @@ for iq in iQ:
     
     if not FORCE_B:
         # some initial parameter values - must be within bounds
-        initB = np.median(DDM_fit[:3,iq], axis=0)
+        initB = np.median(DDM_fit[:5,iq], axis=0)
         initA = np.median(DDM_fit[-4:,iq], axis=0) - initB
         initG = 1
         
         initialParameters = [initA, initB, initG]
         
         # bounds on parameters - initial parameters must be within these
-        lowerBounds = (0, 1e8, 0)
+        lowerBounds = (0, np.min(B_est), 0)
         upperBounds = (np.inf, np.inf, np.inf)
         parameterBounds = [lowerBounds, upperBounds]
         
@@ -257,7 +366,7 @@ for iq in iQ:
             D = A * (1 - np.exp(-G*dt)) + B_set
             return(D)
         
-        initA = np.median(DDM_fit[-4:,iq], axis=0) - initB
+        initA = np.median(DDM_fit[-4:,iq], axis=0) - B_set
         initG = 1
                
         initialParameters = [initA, initG]
@@ -491,10 +600,1011 @@ plt.show()
 
 
 
+
+
+
+
+
+# %%%% 1.7 Use a model to fit A, B and get f (Brownian + Ballistic case)
+
+DDM_fit = DDMMerge
+dt_fit = dtMerge
+
+def brownian_plus_ballistic_model(dt, A, B, tD, tB, Z):
+    theta = dt/((Z+1) * tB)
+    F = np.exp(-dt/tD) * np.sin(Z*np.atan(theta))/(Z*theta * (1+theta**2)**(Z/2))
+    D = A * (1 - F) + B
+    return(D)
+
+def brownian_plus_ballistic_model_fixed_Z(dt, A, B, tD, tB):
+    Z = 2
+    theta = dt/((Z+1) * tB)
+    F = np.exp(-dt/tD) * np.sin(Z*np.atan(theta))/(Z*theta * (1+theta**2)**(Z/2))
+    D = A * (1 - F) + B
+    return(D)
+
+
+FORCE_B = False
+
+forced_B = [np.percentile(B_est, 3)] * len(QQ)
+
+MB = np.median(B_est[:5])
+mB = np.median(B_est[-5:])
+MQ = np.max(QQ)
+mQ = np.min(QQ)
+k = (np.log(MB)-np.log(mB)) / (np.log(mQ)-np.log(MQ))
+A = mB / (MQ**k)
+forced_B = [A * q**k for q in QQ]
+
+logQQ = np.log(QQ)
+logBest = np.log(B_est)
+p_fitted = np.polynomial.Polynomial.fit(logQQ, logBest, deg=5)
+B_smooth = [np.exp(p_fitted(q)) for q in logQQ]
+forced_B = B_smooth
+
+
+list_A, list_B, list_tD, list_tB, list_Z = [], [], [], [], []
+
+# FORCE_B = False
+# forced_B = [np.percentile(B_est, 3)] * len(QQ)
+
+
+for iq in iQ:
+    jq = iq - min(iQ)
+    q = QQ[jq]        
+    D = DDM_fit[:,iq]
+    dt = dt_fit
+    
+    if not FORCE_B:
+        # some initial parameter values - must be within bounds
+        initB = np.median(DDM_fit[:3,iq], axis=0)
+        initA = np.median(DDM_fit[-4:,iq], axis=0) - initB
+        inittD = 1/(0.01*q*q)
+        inittB = 1/(0.1*q)
+        initZ = 10
+        
+        initialParameters = [initA, initB, inittD, inittB, initZ]
+        
+        # bounds on parameters - initial parameters must be within these
+        lowerBounds = (0, 0, 0, 0, 0)
+        upperBounds = (np.inf, np.inf, np.inf, np.inf, np.inf)
+        parameterBounds = [lowerBounds, upperBounds]
+        
+        params, covM = curve_fit(brownian_plus_ballistic_model, dt, D, 
+                                 p0=initialParameters, bounds = parameterBounds)
+        
+        A, B, tD, tB, Z = params[0], params[1], params[2], params[3], params[4]
+        list_A.append(A)
+        list_B.append(B)
+        list_tD.append(tD)
+        list_tB.append(tB)
+        list_Z.append(Z)
+        
+    else:
+        # some initial parameter values - must be within bounds
+        # B_set = forced_B[jq]
+        # def model_forced_B(dt, A, tD, tB, Z):
+        #     B = B_set
+        #     return(brownian_plus_ballistic_model(dt, A, B, tD, tB, Z))
+        
+        # initA = np.median(DDM_fit[-4:,iq], axis=0) - initB
+        # inittD = 1/(0.01*q*q)
+        # inittB = 1/(0.1*q)
+        # initZ = 2
+        
+        # initialParameters = [initA, inittD, inittB, initZ]
+        
+        # # bounds on parameters - initial parameters must be within these
+        # lowerBounds = (0, 0, 0, 0)
+        # upperBounds = (np.inf, np.inf, np.inf, np.inf)
+        # parameterBounds = [lowerBounds, upperBounds]
+        
+        # params, covM = curve_fit(model_forced_B, dt, D, 
+        #                          p0=initialParameters, bounds = parameterBounds)
+        
+        # A, tD, tB, Z = params[0], params[1], params[2], params[3]
+        # list_A.append(A)
+        # list_B.append(B_set)
+        # list_tD.append(tD)
+        # list_tB.append(tB)
+        # list_Z.append(Z)
+        
+        B_set = forced_B[jq]
+        def model_forced_B(dt, A, tD, tB):
+            B = B_set
+            return(brownian_plus_ballistic_model_fixed_Z(dt, A, B, tD, tB))
+        
+        initA = np.median(DDM_fit[-4:,iq], axis=0) - initB
+        inittD = 1/(0.01*q*q)
+        inittB = 1/(0.1*q)
+        
+        initialParameters = [initA, inittD, inittB]
+        
+        # bounds on parameters - initial parameters must be within these
+        lowerBounds = (0, 0, 0)
+        upperBounds = (np.inf, np.inf, np.inf)
+        parameterBounds = [lowerBounds, upperBounds]
+        
+        params, covM = curve_fit(model_forced_B, dt, D, 
+                                 p0=initialParameters, bounds = parameterBounds)
+        
+        A, tD, tB = params[0], params[1], params[2]
+        list_A.append(A)
+        list_B.append(B_set)
+        list_tD.append(tD)
+        list_tB.append(tB)
+        list_Z.append(2)
+        
+        
+    if iq%10 == 0:
+        fig, ax = plt.subplots(1, 1)
+        ax.set_xscale('log')
+        ax.set_yscale('log')
+        D = DDM_fit[:, iq]
+        ax.plot(dt_fit, D, ls='', marker='o', label=f'q={q:.1f}')
+        
+        D_fit = simple_brownian_model(dt_fit, A, B, G)
+        ax.plot(dt_fit, D_fit, ls='-', marker='', label='fit')
+        plt.show()
+
+
+X, Y = np.log(QQ), np.log(list_tD)
+params, results = ufun.fitLineHuber(X, Y)
+(p1, p2) = params
+kD = p2
+AD = np.exp(p1)
+
+X, Y = np.log(QQ), np.log(list_tB)
+params, results = ufun.fitLineHuber(X, Y)
+(p1, p2) = params
+kB = p2
+AB = np.exp(p1)
+
+  
+fig, axes = plt.subplots(1, 2, figsize = (8, 5))
+ax = axes[0]
+ax.set_xscale('log')
+ax.set_yscale('log')
+ax.plot(QQ, list_A, ls='', marker='.')
+ax.plot(QQ, list_B, ls='', marker='.')
+
+ax = axes[1]
+ax.set_xscale('log')
+ax.set_yscale('log')
+ax.plot(QQ, list_tD, 'k.')
+ax.plot(QQ, AD * QQ**kD, 'r-')
+
+ax = axes[1]
+ax.set_xscale('log')
+ax.set_yscale('log')
+ax.plot(QQ, list_tB, 'b.')
+ax.plot(QQ, AB * QQ**kB, 'c-')
+
+plt.show()
+
+    
+# %%%% 1.8 Use a model to fit A, B and get f (Brownian + Ballistic Fraction case)
+
+DDM_fit = DDMMerge
+dt_fit = dtMerge
+
+def brownian_plus_ballisticFrac_model(dt, A, B, tD, tB, alpha, Z):
+    theta = dt/((Z+1) * tB)
+    P = np.sin(Z*np.atan(theta))/(Z*theta * (1+theta**2)**(Z/2))
+    F = np.exp(-dt/tD) * ((1-alpha) + alpha*P)
+    D = A * (1 - F) + B
+    return(D)
+
+# def brownian_plus_ballisticFrac_model(dt, A, B, tD, tB, Z):
+#     alpha = 0.1
+#     theta = dt/((Z+1) * tB)
+#     P = np.sin(Z*np.atan(theta))/(Z*theta * (1+theta**2)**(Z/2))
+#     F = np.exp(-dt/tD) * ((1-alpha) + alpha*P)
+#     D = A * (1 - F) + B
+#     return(D)
+
+
+
+
+# FORCE_B = False
+# forced_B = [np.percentile(B_est, 3)] * len(QQ)
+
+RERUN_WITH_FIXED_B = True
+
+
+
+list_A, list_B, list_tD, list_tB, list_alpha, list_Z = [], [], [], [], [], []
+
+for iq in iQ:
+    jq = iq - min(iQ)
+    q = QQ[jq]        
+    D = DDM_fit[:,iq]
+    dt = dt_fit
+    
+    # some initial parameter values - must be within bounds
+    initB = np.median(DDM_fit[:3,iq], axis=0)
+    initA = np.median(DDM_fit[-4:,iq], axis=0) - initB
+    inittD = 1/(0.005*q*q)
+    inittB = 1/(0.1*q)
+    initalpha = 0.1
+    initZ = 2
+    
+    initialParameters = [initA, initB, inittD, inittB, initalpha, initZ]
+    
+    # bounds on parameters - initial parameters must be within these
+    lowerBounds = (0, 0, 0, 0, 0, 0)
+    upperBounds = (np.inf, np.inf, np.inf, np.inf, 1, np.inf)
+    parameterBounds = [lowerBounds, upperBounds]
+    
+    params, covM = curve_fit(brownian_plus_ballisticFrac_model, dt, D, 
+                             p0=initialParameters, bounds = parameterBounds, maxfev = 140000)
+
+    
+    A, B, tD, tB, alpha, Z = params[0], params[1], params[2], params[3], params[4], params[5]
+    list_A.append(A)
+    list_B.append(B)
+    list_tD.append(tD)
+    list_tB.append(tB)
+    list_alpha.append(alpha)
+    list_Z.append(Z)
+        
+        
+        
+    if iq%10 == 0:
+        fig, ax = plt.subplots(1, 1)
+        ax.set_xscale('log')
+        ax.set_yscale('log')
+        D = DDM_fit[:, iq]
+        ax.plot(dt_fit, D, ls='', marker='o')
+        
+        D_fit = brownian_plus_ballisticFrac_model(dt, A, B, tD, tB, alpha, Z)
+        ax.plot(dt_fit, D_fit, ls='-', marker='', label='fit')
+        ax.set_title(f'q = {q:.1f}')
+        plt.show()
+
+X, Y = np.log(QQ), np.log(list_B)
+params, results = ufun.fitLineHuber(X, Y)
+(p1, p2) = params
+k_B = p2
+A_B = np.exp(p1)
+
+X, Y = np.log(QQ), np.log(list_tD)
+params, results = ufun.fitLineHuber(X, Y)
+(p1, p2) = params
+kD = p2
+AD = np.exp(p1)
+
+X, Y = np.log(QQ), np.log(list_tB)
+params, results = ufun.fitLineHuber(X, Y)
+(p1, p2) = params
+kB = p2
+AB = np.exp(p1)
+
+  
+fig, axes = plt.subplots(1, 2, figsize = (8, 5))
+ax = axes[0]
+ax.set_xscale('log')
+ax.set_yscale('log')
+ax.plot(QQ, list_A, ls='', marker='.')
+ax.plot(QQ, list_B, ls='', marker='.')
+ax.plot(QQ, A_B * QQ**k_B, ls='-')
+
+ax = axes[1]
+ax.set_xscale('log')
+ax.set_yscale('log')
+ax.plot(QQ, list_tD, 'k.')
+ax.plot(QQ, AD * QQ**kD, 'r-')
+
+ax = axes[1]
+ax.set_xscale('log')
+ax.set_yscale('log')
+ax.plot(QQ, list_tB, 'b.')
+ax.plot(QQ, AB * QQ**kB, 'c-')
+
+plt.show()
+
+
+
+# %%%% 1.9 Plot the fit
+
+DDM_fit = DDMMerge
+dt_fit = dtMerge
+idx = slice(10, len(iQ), 10)
+
+fig, ax = plt.subplots(1, 1, figsize=(10, 8))
+ax = ax
+ax.set_xscale('log')
+ax.set_yscale('log')
+cmap = mpl.cm.plasma
+
+k = 0
+
+for iq in iQ[idx]:
+    jq = iq - min(iQ)
+    q = QQ[iq]
+    A = list_A[jq]
+    B = list_B[jq]
+    tD = list_tD[jq]
+    tB = list_tB[jq]
+    alpha = list_alpha[jq]
+    Z = list_Z[jq]
+    
+    D = DDM_fit[:, iq]
+    color = cmap(k/len(iQ[idx]))
+    k += 1
+    ax.plot(dt_fit, D, ls='', marker='o', color = color, label=f'q={q:.1f}')
+    
+    D_fit = brownian_plus_ballisticFrac_model(dt, A, B, tD, tB, alpha, Z)
+    ax.plot(dt_fit, D_fit, ls='-', marker='', color = color, label='fit')
+
+ax.legend()
+ax.grid()
+plt.show()
+
+
+
+
+fig, axes = plt.subplots(1, 2, figsize=(12, 6))
+for ax in axes:
+    ax.set_xscale('log')
+    ax.legend()
+    ax.grid()
+cmap = mpl.cm.viridis
+
+k = 0
+
+for iq in iQ[idx]:
+    jq = iq - min(iQ)
+    q = QQ[iq]
+    A = list_A[jq]
+    B = list_B[jq]
+    G = list_G[jq]
+    
+    D = DDM_fit[:, iq]
+    color = cmap(k/len(iQ[idx]))
+    k += 1
+    fR = 1 - ((D-B)/A)
+    fR_fit = np.exp(-G*dt)
+    
+    ax = axes[0]
+    ax.plot(dt_fit, fR, ls='', marker='o', color = color, label=f'q = {q:.3f}')
+    ax.plot(dt_fit, fR_fit, ls='-', marker='', color = color, label=f'fit, G = {G:.1e}')
+    
+    ax = axes[1]
+    ax.plot(dt_fit*q*q, fR, ls='', marker='o', color = color, label=f'q = {q:.3f}')
+    ax.plot(dt_fit*q*q, fR_fit, ls='-', marker='', color = color, label=f'fit, G = {G:.1e}')
+
+
+    
+plt.show()
+
+
+
+
+
+
+
+fig, axes = plt.subplots(1, 2, figsize=(10, 5))
+
+for ax in axes:
+    ax.set_xscale('log')
+    ax.set_yscale('log')
+    
+cmap = mpl.cm.plasma
+
+# idx = slice(0, len(valid_iQ), 10)
+k = 0
+
+list_MSD_exp = []
+list_MSD_fit = []
+
+for iq in iQ[idx]:
+    jq = iq - min(iQ)
+    q = QQ[iq]
+    A = list_A[jq]
+    B = list_B[jq]
+    G = list_G[jq]
+    
+    D = DDM_fit[:, iq]
+    color = cmap(jq/(len(iQ)))
+    
+    fR = 1 - ((D-B)/A)
+    fR_fit = np.exp(-G*dt)
+    
+    MSD_exp = -(4/q**2) * np.log(fR)
+    MSD_fit = -(4/q**2) * np.log(fR_fit)
+    
+    list_MSD_exp.append(MSD_exp)
+    list_MSD_fit.append(MSD_fit)
+    
+    if jq%10==0:
+        ax = axes[0]
+        ax.plot(dt, MSD_exp, ls='', marker='o', color = color)
+        ax.plot(dt, MSD_fit, ls='-', marker='', color = color)
+    
+    k += 1
+    
+list_MSD_exp = np.array(list_MSD_exp)
+list_MSD_fit = np.array(list_MSD_fit)
+
+avg_MSD_exp = np.nanmean(list_MSD_exp, axis=0)
+avg_MSD_fit = np.nanmean(list_MSD_fit, axis=0)
+
+ax = axes[1]
+ax.plot(dt, avg_MSD_exp, ls='', marker='o', color = 'k')
+ax.plot(dt, avg_MSD_fit, ls='-', marker='', color = 'k')
+
+for ax in axes:
+    ax.legend()
+    ax.grid()
+    
+
+plt.show()
+
+
+
+
+
+
+
+
+
+
 # %%% 
 
 
 
+# %% -----------------------
+
+
+
+# %% Film NB-Yolk
+
+# mainDir = 'C://Users//josep//Desktop//Seafile//DownloadedFromSeafile//IntraCellTracking//26-06-19_FastAcq_BF'
+mainDir = os.path.join(up.Path_IntraCellTracking, '26-07-29_FastAcq_NBYolk-Fecondation')
+
+
+# %%% 1. DDM 
+
+# %%%% 1.1 Settings
+
+srcDir = os.path.join(mainDir, 'Crops')
+tifNames = ['26-07-29_PostF_2min_Pos11_10fps_Texp100ms_CSU642_crop.tif',
+            '26-07-29_PostF_6min30_Pos11_10fps_Texp100ms_CSU642_crop.tif',
+            '26-07-29_PostF_12min_Pos11_10fps_Texp100ms_CSU642_crop.tif',
+            '26-07-29_PostF_30min_Pos11_10fps_Texp100ms_CSU642_crop.tif',
+            '26-07-29_PostF_45min_Pos11_10fps_Texp100ms_CSU642_crop.tif',
+            '26-07-29_PostF_70min_Pos11_10fps_Texp100ms_CSU642_crop.tif',
+            '26-07-29_PostF_80min_Pos11_10fps_Texp100ms_CSU642_crop.tif',
+            '26-07-29_PostF_100min_Pos11_10fps_Texp100ms_CSU642_crop.tif',
+            '26-07-29_PostF_120min_Pos11_10fps_Texp100ms_CSU642_crop.tif',
+             ]
+
+tifNames = ['26-07-29_PostF_2min_Pos11_10fps_Texp100ms_CSU642_crop.tif',
+            # '26-07-29_PostF_6min30_Pos11_10fps_Texp100ms_CSU642_crop.tif',
+            # '26-07-29_PostF_12min_Pos11_10fps_Texp100ms_CSU642_crop.tif',
+            '26-07-29_PostF_30min_Pos11_10fps_Texp100ms_CSU642_crop.tif',
+            # '26-07-29_PostF_45min_Pos11_10fps_Texp100ms_CSU642_crop.tif',
+            '26-07-29_PostF_70min_Pos11_10fps_Texp100ms_CSU642_crop.tif',
+            # '26-07-29_PostF_80min_Pos11_10fps_Texp100ms_CSU642_crop.tif',
+            # '26-07-29_PostF_100min_Pos11_10fps_Texp100ms_CSU642_crop.tif',
+            # '26-07-29_PostF_120min_Pos11_10fps_Texp100ms_CSU642_crop.tif',
+             ]
+tifPaths = [os.path.join(srcDir, tifName) for tifName in tifNames]
+
+dstDir = os.path.join(mainDir, 'DDM_results')
+
+PixPerUm = cd.PixPerUm_60X_W1
+frequencies = [10] * len(tifNames)
+nbimages = 2000
+pointsPerDecade = 15
+maxNCouples = 100 #10 for fast evaluation, 300 for accurate analysis
+
+N_pix = 512
+L_um = N_pix*PixPerUm
+dq = 2*np.pi / L_um
+qmin = 3*dq
+qmax = 2*np.pi / PixPerUm  # 11.7
+
+ddmFileNames = []
+dtFileNames = []
+for fN, f in zip(tifNames, frequencies):
+    ddmFileNames.append('_'.join(fN.split('_')[:-1]) + f'_Nc{maxNCouples:.0f}_DDM.npy')
+    dtFileNames.append('_'.join(fN.split('_')[:-1]) + f'_Nc{maxNCouples:.0f}_dt.npy')
+
+
+# %%%% 1.2 Compute
+
+idts = tbca.logSpaced(nbimages, pointsPerDecade)
+dts = [idts/float(freq) for freq in frequencies]
+convert_to_8bits = True
+
+DDMs = []
+for p in tifPaths:
+    print(f'\n\nAnalyzing {os.path.split(p)}...')
+    DDM = tbca.ddm(tbca.ImageStack(p, convert_to_8bits = convert_to_8bits), idts, maxNCouples)
+    DDMs.append(DDM)
+    
+for ddmN, dtN, D, dt in zip(ddmFileNames, dtFileNames, DDMs, dts):
+    np.save(os.path.join(dstDir, ddmN), D)
+    np.save(os.path.join(dstDir, dtN), dt)
+
+
+
+
+
+# %%%% 1.3 Import
+
+srcDir = os.path.join(mainDir, 'DDM_results')
+DDMs = [np.load(os.path.join(srcDir, fN)) for fN in ddmFileNames]
+dts = [np.load(os.path.join(srcDir, fN)) for fN in dtFileNames]
+
+
+frequencies = [10] * len(DDMs)
+QQ_raw = np.arange(1, 1+len(DDMs[0]))*dq
+
+valid_iQ, valid_Q = [], []
+for iq in range(len(QQ_raw)):
+    q = QQ_raw[iq]
+    if q >= qmin and q < qmax:
+        valid_Q.append(q)
+        valid_iQ.append(iq)
+
+QQ = np.array(valid_Q)
+iQ = np.array(valid_iQ)
+
+
+# %%%% 1.3.x Plot typical images
+
+pm.setGraphicOptions(mode = 'screen')
+
+idts = tbca.logSpaced(nbimages, pointsPerDecade)
+dts = [idts/float(freq) for freq in frequencies]
+
+Nstep = 20
+
+
+for p in tifPaths:
+    print(f'\n\nPlotting for {os.path.split(p)}...')
+    fig, axes = plt.subplots(3, 4, figsize=(12, 9), layout='compressed')
+    
+    stack = tbca.ImageStack(p)
+    
+    ax = axes[0, 0]
+    i = 0
+    ax.imshow(stack[i], 'gray')
+    ax.set_title(f'Frame no {i+1:.0f}')
+    ax = axes[1, 0]
+    j = Nstep-1
+    ax.imshow(stack[j], 'gray')
+    ax.set_title(f'Frame no {j+1:.0f}')
+    ax = axes[2, 0]
+    ax.imshow(stack[j] - stack[i].astype(float), 'gray')
+    ax.set_title(r'$\Delta I$ for ' + f'F {j+1:.0f} and F {i+1:.0f}')
+    
+    I_0_N = np.fft.fftshift(tbca.spectrumDiff(stack[0], stack[Nstep-1]))
+    I_0_10N = np.fft.fftshift(tbca.spectrumDiff(stack[0], stack[Nstep*10-1]))
+    I_0_100N = np.fft.fftshift(tbca.spectrumDiff(stack[0], stack[Nstep*100-1]))
+    V1, V2, V3 = np.percentile(I_0_N, 99), np.percentile(I_0_10N, 99), np.percentile(I_0_100N, 99)
+    axes[0, 1].imshow(I_0_N, 'hot', vmin=0, vmax=V1)
+    axes[0, 1].set_title(f'Frame no {Nstep*1:.0f}')
+    axes[1, 1].imshow(I_0_10N, 'hot', vmin=0, vmax=V2)
+    axes[1, 1].set_title(f'Frame no {Nstep*10:.0f}')
+    axes[2, 1].imshow(I_0_100N, 'hot', vmin=0, vmax=V3)
+    axes[2, 1].set_title(f'Frame no {Nstep*100:.0f}')
+    # print(f"{np.percentile(I_0_N, 99):.2e}")
+    # print(f"{np.percentile(I_0_10N, 99):.2e}")
+    # print(f"{np.percentile(I_0_100N, 99):.2e}")
+    
+    J_0_4   = tbca.timeAveraged(stack, Nstep//10, maxNCouples=100)
+    J_0_40  = tbca.timeAveraged(stack, Nstep, maxNCouples=100)
+    J_0_400 = tbca.timeAveraged(stack, Nstep*10, maxNCouples=100)
+    V1, V2, V3 = np.percentile(J_0_4, 99), np.percentile(J_0_40, 99), np.percentile(J_0_400, 99)
+    axes[0, 2].imshow(np.fft.fftshift(J_0_4), 'hot', vmin=0, vmax=V1)
+    axes[0, 2].set_title(r'$TF[\Delta I]$ for $\Delta t$ = ' + f'{Nstep//10:.0f}f')
+    axes[1, 2].imshow(np.fft.fftshift(J_0_40), 'hot', vmin=0, vmax=V2)
+    axes[1, 2].set_title(r'$TF[\Delta I]$ for $\Delta t$ = ' + f'{Nstep*1:.0f}f')
+    axes[2, 2].imshow(np.fft.fftshift(J_0_400), 'hot', vmin=0, vmax=V3)
+    axes[2, 2].set_title(r'$TF[\Delta I]$ for $\Delta t$ = ' + f'{Nstep*10:.0f}f')
+    
+    ra = tbca.RadialAverager(stack.shape[1:])
+    for ax in axes[:, 3]:
+        ax.set_xscale('log')
+        ax.set_yscale('log')
+        ax.set_xlabel(r'q ($px^{-1}$)')
+        ax.set_ylabel(r'$D(q, \Delta t)$')
+        
+    axes[0, 3].plot(ra(J_0_4), 'b-')
+    axes[0, 3].set_title(r'$RA$ for $\Delta t$ = ' + f'{Nstep//10:.0f}f')
+    axes[1, 3].plot(ra(J_0_40), 'b-')
+    axes[1, 3].set_title(r'$RA$ for $\Delta t$ = ' + f'{Nstep*1:.0f}f')
+    axes[2, 3].plot(ra(J_0_400), 'b-')
+    axes[2, 3].set_title(r'$RA$ for $\Delta t$ = ' + f'{Nstep*10:.0f}f')
+    
+    figfile = f'{os.path.split(p)[-1]}'[:-4] + '_summary.png'
+    figpath = os.path.join(srcDir, figfile)
+    fig.suptitle(f'Plotting for {os.path.split(p)[-1]}')
+    fig.savefig(figpath, dpi=500, )
+    plt.show()
+
+
+# %%%% 1.4 Plot the structure matrix D
+
+DDM_plot = DDMs[0]
+dt_plot = dts[0]
+
+(Ndt, Nq) = DDM_plot.shape
+fig, axes = plt.subplots(2, 1, figsize = (5, 8))
+# QQ_plot = np.arange(1, 1+Nq)*dq
+ax = axes[0]
+ax.set_xscale('log')
+ax.set_yscale('log')
+ax.set_xlabel(r'$q\ (\mu m^{-1})$')
+ax.set_ylabel('$D$')
+for i in range(0, Ndt, 10):
+    ax.plot(QQ, DDM_plot[i,iQ], marker='.', ls='',
+            color = mpl.cm.autumn(i/Ndt))
+    ax.axvline(qmin, color='gray', ls='-', alpha=0.7)
+    ax.axvline(qmax, color='gray', ls='-', alpha=0.7)
+    
+fig.colorbar(plt.cm.ScalarMappable(norm=mpl.colors.LogNorm(vmin=np.min(dt_plot), 
+                                                           vmax=np.max(dt_plot)), 
+                                   cmap="autumn"),
+             ax=ax, label=r"$\Delta t$")
+    
+
+ax = axes[1]
+ax.set_xscale('log')
+ax.set_yscale('log')
+ax.set_xlabel(r'$\Delta t\ (s)$')
+ax.set_ylabel('$D$')
+for j in iQ[::10]:
+    ax.plot(dt_plot, DDM_plot[:,j], marker='.', ls='',
+            color = mpl.cm.winter(j/Nq))
+    
+fig.colorbar(plt.cm.ScalarMappable(norm=mpl.colors.LogNorm(vmin=np.min(QQ), vmax=np.max(QQ)), 
+                                   cmap="winter"),
+             ax=ax, label="$q$")
+
+plt.show()
+
+
+
+# %%%% Plot estimates of A and B
+
+DDM_plot = DDMMerge[:, iQ]
+dt_plot = dtMerge
+
+ApB_est = np.median(DDM_plot[-4:,:], axis=0)
+B_est = np.median(DDM_plot[:6,:], axis=0)
+
+fig, axes = plt.subplots(1, 3, figsize=(10, 3), sharey=True)
+for ax in axes:
+    ax.set_xscale('log')
+    ax.set_yscale('log')
+ax = axes[0]
+ax.plot(QQ, ApB_est, 'r.')
+# ax.axvline(dq, color='gray', ls='-', alpha=0.7)
+ax.axvline(qmax, color='gray', ls='-', alpha=0.7)
+ax = axes[1]
+ax.plot(QQ, B_est,'k.')
+# ax.axvline(dq, color='gray', ls='-', alpha=0.7)
+ax.axvline(qmax, color='gray', ls='-', alpha=0.7)
+ax = axes[2]
+ax.plot(QQ, ApB_est-B_est,'b.')
+
+# ax.axvline(dq, color='gray', ls='-', alpha=0.7)
+ax.axvline(qmax, color='gray', ls='-', alpha=0.7)
+
+plt.show()
+
+
+# %%%% 1.5 Use a model to fit A, B and get f (Brownian case)
+
+DDM_fit = DDMMerge
+dt_fit = dtMerge
+
+def simple_brownian_model(dt, A, B, G):
+    D = A * (1 - np.exp(-G*dt)) + B
+    return(D)
+
+ApB_est = np.median(DDM_fit[-4:,:], axis=0)
+B_est = np.median(DDM_fit[:5,:], axis=0)
+A_est = ApB_est - B_est
+
+A_est = A_est[iQ]
+B_est = B_est[iQ]
+
+
+list_A, list_B, list_G = [], [], []
+
+FORCE_B = True
+
+forced_B = [np.percentile(B_est, 3)] * len(QQ)
+
+MB = np.median(B_est[:5])
+mB = np.median(B_est[-5:])
+MQ = np.max(QQ)
+mQ = np.min(QQ)
+k = (np.log(MB)-np.log(mB)) / (np.log(mQ)-np.log(MQ))
+A = mB / (MQ**k)
+forced_B = [A * q**k for q in QQ]
+
+logQQ = np.log(QQ)
+logBest = np.log(B_est)
+p_fitted = np.polynomial.Polynomial.fit(logQQ, logBest, deg=5)
+B_smooth = [np.exp(p_fitted(q)) for q in logQQ]
+forced_B = B_smooth
+
+# fig, ax = plt.subplots(1, 1, figsize=(4, 3), sharey=True)
+# ax.set_xscale('log')
+# ax.set_yscale('log')
+# ax = ax
+# ax.plot(QQ, B_est, 'r.')
+# ax.plot(QQ, forced_B, 'k--')
+# ax.axvline(qmax, color='gray', ls='-', alpha=0.7)
+
+for iq in iQ:
+    jq = iq - min(iQ)
+    q = QQ[jq]        
+    D = DDM_fit[:,iq]
+    dt = dt_fit
+    
+    if not FORCE_B:
+        # some initial parameter values - must be within bounds
+        initB = np.median(DDM_fit[:5,iq], axis=0)
+        initA = np.median(DDM_fit[-4:,iq], axis=0) - initB
+        initG = 1
+        
+        initialParameters = [initA, initB, initG]
+        
+        # bounds on parameters - initial parameters must be within these
+        lowerBounds = (0, np.min(B_est), 0)
+        upperBounds = (np.inf, np.inf, np.inf)
+        parameterBounds = [lowerBounds, upperBounds]
+        
+        params, covM = curve_fit(simple_brownian_model, dt, D, 
+                                 p0=initialParameters, bounds = parameterBounds)
+        
+        A, B, G = params[0], params[1], params[2]
+        list_A.append(A)
+        list_B.append(B)
+        list_G.append(G)
+    
+    else:
+        # some initial parameter values - must be within bounds
+        B_set = forced_B[jq]
+        def simple_brownian_model_forced_B(dt, A, G):
+            D = A * (1 - np.exp(-G*dt)) + B_set
+            return(D)
+        
+        initA = np.median(DDM_fit[-4:,iq], axis=0) - B_set
+        initG = 1
+               
+        initialParameters = [initA, initG]
+        
+        # bounds on parameters - initial parameters must be within these
+        lowerBounds = (0, 0)
+        upperBounds = (np.inf, np.inf)
+        parameterBounds = [lowerBounds, upperBounds]
+        
+        params, covM = curve_fit(simple_brownian_model_forced_B, dt, D, 
+                                 p0=initialParameters, bounds = parameterBounds)
+        
+        A, B, G = params[0], B_set, params[1]
+        list_A.append(A)
+        list_B.append(B)
+        list_G.append(G)
+        
+        
+    if iq%10 == 0:
+        fig, ax = plt.subplots(1, 1)
+        ax.set_xscale('log')
+        ax.set_yscale('log')
+        D = DDM_fit[:, iq]
+        ax.plot(dt_fit, D, ls='', marker='o', label=f'q={q:.1f}')
+        
+        D_fit = simple_brownian_model(dt_fit, A, B, G)
+        ax.plot(dt_fit, D_fit, ls='-', marker='', label='fit')
+        plt.show()
+        
+# smoothA = savgol_filter(list_A, 9, 3)
+# smoothB = savgol_filter(list_B, 19, 1)
+# coeffs = np.polyfit(valid_Q, list_B, 3)
+# smoothB = np.sum([coeffs[k]*np.array(valid_Q)**(len(coeffs)-k) for k in range(len(coeffs))], axis=0)
+
+# list_A = smoothA
+# list_B = smoothB
+
+# smoothG = []
+# for k, iq in enumerate(valid_iQ):
+#     q = QQ[iq]
+        
+#     D = DDM_fit[:, iq]
+#     dt = dt_fit
+    
+#     # some initial parameter values - must be within bounds
+#     setA = list_A[k]
+#     setB = list_B[k]
+#     initG = 1
+    
+#     def simple_brownian_model_setAB(dt, G):
+#         D = setA * (1 - np.exp(-G*dt)) + setB
+#         return(D)
+    
+#     initialParameters = [initG]
+    
+#     # bounds on parameters - initial parameters must be within these
+#     lowerBounds = (0)
+#     upperBounds = (np.inf)
+#     parameterBounds = [lowerBounds, upperBounds]
+    
+#     params, covM = curve_fit(simple_brownian_model_setAB, dt, D, 
+#                              p0=initialParameters, bounds = parameterBounds)
+    
+#     # if params[1] < 1e8:
+#     #     params[1] = initB
+    
+#     smoothG.append(params[0])
+
+# list_G = smoothG
+
+X, Y = np.log(QQ), np.log(list_G)
+params, results = ufun.fitLineHuber(X, Y)
+(p1, p2) = params
+k = p2
+A = np.exp(p1)
+
+  
+fig, axes = plt.subplots(1, 2, figsize = (8, 5))
+ax = axes[0]
+ax.set_xscale('log')
+ax.set_yscale('log')
+ax.plot(QQ, list_A, ls='', marker='.')
+ax.plot(QQ, list_B, ls='', marker='.')
+
+ax = axes[1]
+ax.set_xscale('log')
+ax.set_yscale('log')
+ax.plot(QQ, list_G, 'k.')
+ax.plot(QQ, A * QQ**k, 'r-')
+
+plt.show()
+
+    
+
+# %%%% 1.6 Plot the fit
+
+DDM_fit = DDMMerge
+dt_fit = dtMerge
+idx = slice(10, len(iQ), 10)
+
+fig, ax = plt.subplots(1, 1, figsize=(10, 8))
+ax = ax
+ax.set_xscale('log')
+ax.set_yscale('log')
+cmap = mpl.cm.plasma
+
+k = 0
+
+for iq in iQ[idx]:
+    jq = iq - min(iQ)
+    q = QQ[iq]
+    A = list_A[jq]
+    B = list_B[jq]
+    G = list_G[jq]
+    
+    D = DDM_fit[:, iq]
+    color = cmap(k/len(iQ[idx]))
+    k += 1
+    ax.plot(dt_fit, D, ls='', marker='o', color = color, label=f'q={q:.1f}')
+    
+    D_fit = simple_brownian_model(dt_fit, A, B, G)
+    ax.plot(dt_fit, D_fit, ls='-', marker='', color = color, label='fit')
+
+ax.legend()
+ax.grid()
+plt.show()
+
+
+
+
+fig, axes = plt.subplots(1, 2, figsize=(12, 6))
+for ax in axes:
+    ax.set_xscale('log')
+    ax.legend()
+    ax.grid()
+cmap = mpl.cm.viridis
+
+k = 0
+
+for iq in iQ[idx]:
+    jq = iq - min(iQ)
+    q = QQ[iq]
+    A = list_A[jq]
+    B = list_B[jq]
+    G = list_G[jq]
+    
+    D = DDM_fit[:, iq]
+    color = cmap(k/len(iQ[idx]))
+    k += 1
+    fR = 1 - ((D-B)/A)
+    fR_fit = np.exp(-G*dt)
+    
+    ax = axes[0]
+    ax.plot(dt_fit, fR, ls='', marker='o', color = color, label=f'q = {q:.3f}')
+    ax.plot(dt_fit, fR_fit, ls='-', marker='', color = color, label=f'fit, G = {G:.1e}')
+    
+    ax = axes[1]
+    ax.plot(dt_fit*q*q, fR, ls='', marker='o', color = color, label=f'q = {q:.3f}')
+    ax.plot(dt_fit*q*q, fR_fit, ls='-', marker='', color = color, label=f'fit, G = {G:.1e}')
+
+
+    
+plt.show()
+
+
+
+
+
+
+
+fig, axes = plt.subplots(1, 2, figsize=(10, 5))
+
+for ax in axes:
+    ax.set_xscale('log')
+    ax.set_yscale('log')
+    
+cmap = mpl.cm.plasma
+
+# idx = slice(0, len(valid_iQ), 10)
+k = 0
+
+list_MSD_exp = []
+list_MSD_fit = []
+
+for iq in iQ[idx]:
+    jq = iq - min(iQ)
+    q = QQ[iq]
+    A = list_A[jq]
+    B = list_B[jq]
+    G = list_G[jq]
+    
+    D = DDM_fit[:, iq]
+    color = cmap(jq/(len(iQ)))
+    
+    fR = 1 - ((D-B)/A)
+    fR_fit = np.exp(-G*dt)
+    
+    MSD_exp = -(4/q**2) * np.log(fR)
+    MSD_fit = -(4/q**2) * np.log(fR_fit)
+    
+    list_MSD_exp.append(MSD_exp)
+    list_MSD_fit.append(MSD_fit)
+    
+    if jq%10==0:
+        ax = axes[0]
+        ax.plot(dt, MSD_exp, ls='', marker='o', color = color)
+        ax.plot(dt, MSD_fit, ls='-', marker='', color = color)
+    
+    k += 1
+    
+list_MSD_exp = np.array(list_MSD_exp)
+list_MSD_fit = np.array(list_MSD_fit)
+
+avg_MSD_exp = np.nanmean(list_MSD_exp, axis=0)
+avg_MSD_fit = np.nanmean(list_MSD_fit, axis=0)
+
+ax = axes[1]
+ax.plot(dt, avg_MSD_exp, ls='', marker='o', color = 'k')
+ax.plot(dt, avg_MSD_fit, ls='-', marker='', color = 'k')
+
+for ax in axes:
+    ax.legend()
+    ax.grid()
+    
+
+plt.show()
 
 
 
@@ -503,10 +1613,462 @@ plt.show()
 
 
 
+
+
+
+
+# %%%% 1.7 Use a model to fit A, B and get f (Brownian + Ballistic case)
+
+DDM_fit = DDMMerge
+dt_fit = dtMerge
+
+def brownian_plus_ballistic_model(dt, A, B, tD, tB, Z):
+    theta = dt/((Z+1) * tB)
+    F = np.exp(-dt/tD) * np.sin(Z*np.atan(theta))/(Z*theta * (1+theta**2)**(Z/2))
+    D = A * (1 - F) + B
+    return(D)
+
+def brownian_plus_ballistic_model_fixed_Z(dt, A, B, tD, tB):
+    Z = 2
+    theta = dt/((Z+1) * tB)
+    F = np.exp(-dt/tD) * np.sin(Z*np.atan(theta))/(Z*theta * (1+theta**2)**(Z/2))
+    D = A * (1 - F) + B
+    return(D)
+
+
+FORCE_B = False
+
+forced_B = [np.percentile(B_est, 3)] * len(QQ)
+
+MB = np.median(B_est[:5])
+mB = np.median(B_est[-5:])
+MQ = np.max(QQ)
+mQ = np.min(QQ)
+k = (np.log(MB)-np.log(mB)) / (np.log(mQ)-np.log(MQ))
+A = mB / (MQ**k)
+forced_B = [A * q**k for q in QQ]
+
+logQQ = np.log(QQ)
+logBest = np.log(B_est)
+p_fitted = np.polynomial.Polynomial.fit(logQQ, logBest, deg=5)
+B_smooth = [np.exp(p_fitted(q)) for q in logQQ]
+forced_B = B_smooth
+
+
+list_A, list_B, list_tD, list_tB, list_Z = [], [], [], [], []
+
+# FORCE_B = False
+# forced_B = [np.percentile(B_est, 3)] * len(QQ)
+
+
+for iq in iQ:
+    jq = iq - min(iQ)
+    q = QQ[jq]        
+    D = DDM_fit[:,iq]
+    dt = dt_fit
+    
+    if not FORCE_B:
+        # some initial parameter values - must be within bounds
+        initB = np.median(DDM_fit[:3,iq], axis=0)
+        initA = np.median(DDM_fit[-4:,iq], axis=0) - initB
+        inittD = 1/(0.01*q*q)
+        inittB = 1/(0.1*q)
+        initZ = 10
+        
+        initialParameters = [initA, initB, inittD, inittB, initZ]
+        
+        # bounds on parameters - initial parameters must be within these
+        lowerBounds = (0, 0, 0, 0, 0)
+        upperBounds = (np.inf, np.inf, np.inf, np.inf, np.inf)
+        parameterBounds = [lowerBounds, upperBounds]
+        
+        params, covM = curve_fit(brownian_plus_ballistic_model, dt, D, 
+                                 p0=initialParameters, bounds = parameterBounds)
+        
+        A, B, tD, tB, Z = params[0], params[1], params[2], params[3], params[4]
+        list_A.append(A)
+        list_B.append(B)
+        list_tD.append(tD)
+        list_tB.append(tB)
+        list_Z.append(Z)
+        
+    else:
+        # some initial parameter values - must be within bounds
+        # B_set = forced_B[jq]
+        # def model_forced_B(dt, A, tD, tB, Z):
+        #     B = B_set
+        #     return(brownian_plus_ballistic_model(dt, A, B, tD, tB, Z))
+        
+        # initA = np.median(DDM_fit[-4:,iq], axis=0) - initB
+        # inittD = 1/(0.01*q*q)
+        # inittB = 1/(0.1*q)
+        # initZ = 2
+        
+        # initialParameters = [initA, inittD, inittB, initZ]
+        
+        # # bounds on parameters - initial parameters must be within these
+        # lowerBounds = (0, 0, 0, 0)
+        # upperBounds = (np.inf, np.inf, np.inf, np.inf)
+        # parameterBounds = [lowerBounds, upperBounds]
+        
+        # params, covM = curve_fit(model_forced_B, dt, D, 
+        #                          p0=initialParameters, bounds = parameterBounds)
+        
+        # A, tD, tB, Z = params[0], params[1], params[2], params[3]
+        # list_A.append(A)
+        # list_B.append(B_set)
+        # list_tD.append(tD)
+        # list_tB.append(tB)
+        # list_Z.append(Z)
+        
+        B_set = forced_B[jq]
+        def model_forced_B(dt, A, tD, tB):
+            B = B_set
+            return(brownian_plus_ballistic_model_fixed_Z(dt, A, B, tD, tB))
+        
+        initA = np.median(DDM_fit[-4:,iq], axis=0) - initB
+        inittD = 1/(0.01*q*q)
+        inittB = 1/(0.1*q)
+        
+        initialParameters = [initA, inittD, inittB]
+        
+        # bounds on parameters - initial parameters must be within these
+        lowerBounds = (0, 0, 0)
+        upperBounds = (np.inf, np.inf, np.inf)
+        parameterBounds = [lowerBounds, upperBounds]
+        
+        params, covM = curve_fit(model_forced_B, dt, D, 
+                                 p0=initialParameters, bounds = parameterBounds)
+        
+        A, tD, tB = params[0], params[1], params[2]
+        list_A.append(A)
+        list_B.append(B_set)
+        list_tD.append(tD)
+        list_tB.append(tB)
+        list_Z.append(2)
+        
+        
+    if iq%10 == 0:
+        fig, ax = plt.subplots(1, 1)
+        ax.set_xscale('log')
+        ax.set_yscale('log')
+        D = DDM_fit[:, iq]
+        ax.plot(dt_fit, D, ls='', marker='o', label=f'q={q:.1f}')
+        
+        D_fit = simple_brownian_model(dt_fit, A, B, G)
+        ax.plot(dt_fit, D_fit, ls='-', marker='', label='fit')
+        plt.show()
+
+
+X, Y = np.log(QQ), np.log(list_tD)
+params, results = ufun.fitLineHuber(X, Y)
+(p1, p2) = params
+kD = p2
+AD = np.exp(p1)
+
+X, Y = np.log(QQ), np.log(list_tB)
+params, results = ufun.fitLineHuber(X, Y)
+(p1, p2) = params
+kB = p2
+AB = np.exp(p1)
+
+  
+fig, axes = plt.subplots(1, 2, figsize = (8, 5))
+ax = axes[0]
+ax.set_xscale('log')
+ax.set_yscale('log')
+ax.plot(QQ, list_A, ls='', marker='.')
+ax.plot(QQ, list_B, ls='', marker='.')
+
+ax = axes[1]
+ax.set_xscale('log')
+ax.set_yscale('log')
+ax.plot(QQ, list_tD, 'k.')
+ax.plot(QQ, AD * QQ**kD, 'r-')
+
+ax = axes[1]
+ax.set_xscale('log')
+ax.set_yscale('log')
+ax.plot(QQ, list_tB, 'b.')
+ax.plot(QQ, AB * QQ**kB, 'c-')
+
+plt.show()
+
+    
+# %%%% 1.8 Use a model to fit A, B and get f (Brownian + Ballistic Fraction case)
+
+DDM_fit = DDMMerge
+dt_fit = dtMerge
+
+def brownian_plus_ballisticFrac_model(dt, A, B, tD, tB, alpha, Z):
+    theta = dt/((Z+1) * tB)
+    P = np.sin(Z*np.atan(theta))/(Z*theta * (1+theta**2)**(Z/2))
+    F = np.exp(-dt/tD) * ((1-alpha) + alpha*P)
+    D = A * (1 - F) + B
+    return(D)
+
+# def brownian_plus_ballisticFrac_model(dt, A, B, tD, tB, Z):
+#     alpha = 0.1
+#     theta = dt/((Z+1) * tB)
+#     P = np.sin(Z*np.atan(theta))/(Z*theta * (1+theta**2)**(Z/2))
+#     F = np.exp(-dt/tD) * ((1-alpha) + alpha*P)
+#     D = A * (1 - F) + B
+#     return(D)
+
+
+
+
+# FORCE_B = False
+# forced_B = [np.percentile(B_est, 3)] * len(QQ)
+
+RERUN_WITH_FIXED_B = True
+
+
+
+list_A, list_B, list_tD, list_tB, list_alpha, list_Z = [], [], [], [], [], []
+
+for iq in iQ:
+    jq = iq - min(iQ)
+    q = QQ[jq]        
+    D = DDM_fit[:,iq]
+    dt = dt_fit
+    
+    # some initial parameter values - must be within bounds
+    initB = np.median(DDM_fit[:3,iq], axis=0)
+    initA = np.median(DDM_fit[-4:,iq], axis=0) - initB
+    inittD = 1/(0.005*q*q)
+    inittB = 1/(0.1*q)
+    initalpha = 0.1
+    initZ = 2
+    
+    initialParameters = [initA, initB, inittD, inittB, initalpha, initZ]
+    
+    # bounds on parameters - initial parameters must be within these
+    lowerBounds = (0, 0, 0, 0, 0, 0)
+    upperBounds = (np.inf, np.inf, np.inf, np.inf, 1, np.inf)
+    parameterBounds = [lowerBounds, upperBounds]
+    
+    params, covM = curve_fit(brownian_plus_ballisticFrac_model, dt, D, 
+                             p0=initialParameters, bounds = parameterBounds, maxfev = 140000)
+
+    
+    A, B, tD, tB, alpha, Z = params[0], params[1], params[2], params[3], params[4], params[5]
+    list_A.append(A)
+    list_B.append(B)
+    list_tD.append(tD)
+    list_tB.append(tB)
+    list_alpha.append(alpha)
+    list_Z.append(Z)
+        
+        
+        
+    if iq%10 == 0:
+        fig, ax = plt.subplots(1, 1)
+        ax.set_xscale('log')
+        ax.set_yscale('log')
+        D = DDM_fit[:, iq]
+        ax.plot(dt_fit, D, ls='', marker='o')
+        
+        D_fit = brownian_plus_ballisticFrac_model(dt, A, B, tD, tB, alpha, Z)
+        ax.plot(dt_fit, D_fit, ls='-', marker='', label='fit')
+        ax.set_title(f'q = {q:.1f}')
+        plt.show()
+
+X, Y = np.log(QQ), np.log(list_B)
+params, results = ufun.fitLineHuber(X, Y)
+(p1, p2) = params
+k_B = p2
+A_B = np.exp(p1)
+
+X, Y = np.log(QQ), np.log(list_tD)
+params, results = ufun.fitLineHuber(X, Y)
+(p1, p2) = params
+kD = p2
+AD = np.exp(p1)
+
+X, Y = np.log(QQ), np.log(list_tB)
+params, results = ufun.fitLineHuber(X, Y)
+(p1, p2) = params
+kB = p2
+AB = np.exp(p1)
+
+  
+fig, axes = plt.subplots(1, 2, figsize = (8, 5))
+ax = axes[0]
+ax.set_xscale('log')
+ax.set_yscale('log')
+ax.plot(QQ, list_A, ls='', marker='.')
+ax.plot(QQ, list_B, ls='', marker='.')
+ax.plot(QQ, A_B * QQ**k_B, ls='-')
+
+ax = axes[1]
+ax.set_xscale('log')
+ax.set_yscale('log')
+ax.plot(QQ, list_tD, 'k.')
+ax.plot(QQ, AD * QQ**kD, 'r-')
+
+ax = axes[1]
+ax.set_xscale('log')
+ax.set_yscale('log')
+ax.plot(QQ, list_tB, 'b.')
+ax.plot(QQ, AB * QQ**kB, 'c-')
+
+plt.show()
+
+
+
+# %%%% 1.9 Plot the fit
+
+DDM_fit = DDMMerge
+dt_fit = dtMerge
+idx = slice(10, len(iQ), 10)
+
+fig, ax = plt.subplots(1, 1, figsize=(10, 8))
+ax = ax
+ax.set_xscale('log')
+ax.set_yscale('log')
+cmap = mpl.cm.plasma
+
+k = 0
+
+for iq in iQ[idx]:
+    jq = iq - min(iQ)
+    q = QQ[iq]
+    A = list_A[jq]
+    B = list_B[jq]
+    tD = list_tD[jq]
+    tB = list_tB[jq]
+    alpha = list_alpha[jq]
+    Z = list_Z[jq]
+    
+    D = DDM_fit[:, iq]
+    color = cmap(k/len(iQ[idx]))
+    k += 1
+    ax.plot(dt_fit, D, ls='', marker='o', color = color, label=f'q={q:.1f}')
+    
+    D_fit = brownian_plus_ballisticFrac_model(dt, A, B, tD, tB, alpha, Z)
+    ax.plot(dt_fit, D_fit, ls='-', marker='', color = color, label='fit')
+
+ax.legend()
+ax.grid()
+plt.show()
+
+
+
+
+fig, axes = plt.subplots(1, 2, figsize=(12, 6))
+for ax in axes:
+    ax.set_xscale('log')
+    ax.legend()
+    ax.grid()
+cmap = mpl.cm.viridis
+
+k = 0
+
+for iq in iQ[idx]:
+    jq = iq - min(iQ)
+    q = QQ[iq]
+    A = list_A[jq]
+    B = list_B[jq]
+    G = list_G[jq]
+    
+    D = DDM_fit[:, iq]
+    color = cmap(k/len(iQ[idx]))
+    k += 1
+    fR = 1 - ((D-B)/A)
+    fR_fit = np.exp(-G*dt)
+    
+    ax = axes[0]
+    ax.plot(dt_fit, fR, ls='', marker='o', color = color, label=f'q = {q:.3f}')
+    ax.plot(dt_fit, fR_fit, ls='-', marker='', color = color, label=f'fit, G = {G:.1e}')
+    
+    ax = axes[1]
+    ax.plot(dt_fit*q*q, fR, ls='', marker='o', color = color, label=f'q = {q:.3f}')
+    ax.plot(dt_fit*q*q, fR_fit, ls='-', marker='', color = color, label=f'fit, G = {G:.1e}')
+
+
+    
+plt.show()
+
+
+
+
+
+
+
+fig, axes = plt.subplots(1, 2, figsize=(10, 5))
+
+for ax in axes:
+    ax.set_xscale('log')
+    ax.set_yscale('log')
+    
+cmap = mpl.cm.plasma
+
+# idx = slice(0, len(valid_iQ), 10)
+k = 0
+
+list_MSD_exp = []
+list_MSD_fit = []
+
+for iq in iQ[idx]:
+    jq = iq - min(iQ)
+    q = QQ[iq]
+    A = list_A[jq]
+    B = list_B[jq]
+    G = list_G[jq]
+    
+    D = DDM_fit[:, iq]
+    color = cmap(jq/(len(iQ)))
+    
+    fR = 1 - ((D-B)/A)
+    fR_fit = np.exp(-G*dt)
+    
+    MSD_exp = -(4/q**2) * np.log(fR)
+    MSD_fit = -(4/q**2) * np.log(fR_fit)
+    
+    list_MSD_exp.append(MSD_exp)
+    list_MSD_fit.append(MSD_fit)
+    
+    if jq%10==0:
+        ax = axes[0]
+        ax.plot(dt, MSD_exp, ls='', marker='o', color = color)
+        ax.plot(dt, MSD_fit, ls='-', marker='', color = color)
+    
+    k += 1
+    
+list_MSD_exp = np.array(list_MSD_exp)
+list_MSD_fit = np.array(list_MSD_fit)
+
+avg_MSD_exp = np.nanmean(list_MSD_exp, axis=0)
+avg_MSD_fit = np.nanmean(list_MSD_fit, axis=0)
+
+ax = axes[1]
+ax.plot(dt, avg_MSD_exp, ls='', marker='o', color = 'k')
+ax.plot(dt, avg_MSD_fit, ls='-', marker='', color = 'k')
+
+for ax in axes:
+    ax.legend()
+    ax.grid()
+    
+
+plt.show()
+
+
+
+
+
+
+
+
+
+
+# %%% 
 
 
 
 # %% -----------------------
+
+
 
 
 

@@ -208,7 +208,8 @@ def tiff_inspect(filepath):
     return(shape, dtype)
 
 
-def load_stack_region(filepath, time_indices=None, x_slice=None, y_slice=None):
+def load_stack_region(filepath, time_indices=None, x_slice=None, y_slice=None,
+                      convert_to_8bits = False):
     """
     Load a cropped region of a 3D TIFF (X, Y, time) with minimal memory usage.
 
@@ -244,7 +245,10 @@ def load_stack_region(filepath, time_indices=None, x_slice=None, y_slice=None):
         cropped_stack = []
         for i in time_indices:
             page = pages[i]
-            arr = page.asarray()[y_slice, x_slice]  # crop directly
+            if convert_to_8bits:
+                arr = page.asarray()[y_slice, x_slice].astype('uint8')
+            else:
+                arr = page.asarray()[y_slice, x_slice]  # crop directly
             cropped_stack.append(arr)
 
         return(np.stack(cropped_stack, axis=0))

@@ -789,13 +789,14 @@ class ImageStack(object):
     A stack of images on disk with a name pattern like 'mydir/myfile_t{:03d}.tif'
     """
     
-    def __init__(self, path):
+    def __init__(self, path, convert_to_8bits = False):
         """The numbering can start at 0 or 1"""
         self.path = path
         self.t0 = 0
         # get the images shape while checking that the last image do exist
         self.shape, self.type = ufun.tiff_inspect(path)
         self.Nbimages = self.shape[0]
+        self.convert_to_8bits = convert_to_8bits
         
         # #for some monochrome image format, imread makes 4 channels out of one
         # self.enforceMono = len(self.shape)>2
@@ -814,7 +815,8 @@ class ImageStack(object):
         assert t-self.t0 < self.Nbimages
         
         # im = imread(self.pattern.format(t + self.t0))
-        im = ufun.load_stack_region(self.path, time_indices=[t])[0]
+        im = ufun.load_stack_region(self.path, time_indices=[t], 
+                                    convert_to_8bits = self.convert_to_8bits)[0]
         # if self.enforceMono:
         #     im = im[...,0]
         return(im)

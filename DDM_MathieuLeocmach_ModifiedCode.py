@@ -190,7 +190,7 @@ def timeAveraged(stack, dt, maxNCouples=50):
     Separation within couple is dt.
     """
     
-    #Spread initial times over the available range
+    # Spread initial times over the available range
     increment = max([(len(stack)-dt)/maxNCouples, 1])
     # print(int(increment))
     initialTimes = np.arange(0, len(stack)-dt, increment, dtype=int)
