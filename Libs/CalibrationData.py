@@ -13,13 +13,13 @@ import numpy as np
 # %% Microscope scales
 
 SCALE_20X_Leica = 2.169
-PixPerUm_20X_Leica = 1/SCALE_20X_Leica
+UmPerPix_20X_Leica = 1/SCALE_20X_Leica
 
 SCALE_40X_Leica = 4.3725
-PixPerUm_40X_Leica = 1/SCALE_40X_Leica
+UmPerPix_40X_Leica = 1/SCALE_40X_Leica
 
 SCALE_60X_W1 = 9.26
-PixPerUm_60X_W1 = 1/SCALE_60X_W1
+UmPerPix_60X_W1 = 1/SCALE_60X_W1
 
 
 # %% Magnet calibration

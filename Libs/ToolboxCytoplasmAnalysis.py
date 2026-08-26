@@ -729,17 +729,16 @@ def pretreatAndTrack(tifPath, dstDir):
     return(Tracks)
     
 
-def pretreatAndTrack2(tifPath, dstDir):
+def pretreatAndTrack_CropedYolk(tifPath, xmlName, dstDir,
+                                PLOT = False, SAVEPLOT = False):
     srcDir, tifName = os.path.split(tifPath)
-    xmlName = tifName.split('.')[0] + '_PyTracks.xml'
+    # xmlName = tifName.split('.')[0] + '_PyTracks.xml'
     xmlPath = os.path.join(dstDir, xmlName)
     
     shape, dtype = ufun.tiff_inspect(tifPath)
     nT = shape[0]    
     image = ufun.load_stack_region(tifPath, time_indices=None, 
                                    x_slice=None, y_slice=None)
-    # image = skm.util.img_as_float32(image)  
-    # image = skm.util.img_as_ubyte(image)
     
     #### Pretreatments
     for t in range(nT):
@@ -748,31 +747,37 @@ def pretreatAndTrack2(tifPath, dstDir):
     
     
     tif_file = ij.py.to_java(image)
-    # tif_file = ij.io().open(srcDir + tifPtName)
     runTrackMate(tif_file, xmlPath)
     
-    Tracks = importTrackMateTracks(xmlPath)
     
-    I0 = ufun.load_stack_region(tifPath, time_indices=[0])[0]
-
-    fig, axes = plt.subplots(1, 3, figsize=(12, 4))
-    ax = axes[0]
-    ax.imshow(I0, cmap='gray')
+    if PLOT:
+        pm.setGraphicOptions(mode = 'screen')
+        Tracks = importTrackMateTracks(xmlPath)
+        I0 = ufun.load_stack_region(tifPath, time_indices=[0])[0]
+        
+        fig, axes = plt.subplots(1, 3, figsize=(12, 4))
+        fig.suptitle('_'.join(tifName.split('_')[:5]))
+        
+        ax = axes[0]
+        ax.imshow(I0, cmap='gray')
+        
+        ax = axes[1]
+        ax.imshow(image[0], cmap='gray')
+        
+        ax = axes[2]
+        ax.imshow(I0, cmap='gray')
+        CL = pm.cL_Set21
+        for k in range(len(Tracks)):
+            track = Tracks[k]
+            color = CL[k%len(CL)]
+            ax.plot(track[:,1], track[:,2], ls='-', color=color, lw=0.25)
     
-    ax = axes[1]
-    ax.imshow(image[0], cmap='gray')
-    
-    ax = axes[2]
-    ax.imshow(I0, cmap='gray')
-    CL = pm.cL_Set21
-    for k in range(len(Tracks)):
-        track = Tracks[k]
-        color = CL[k%len(CL)]
-        ax.plot(track[:,1], track[:,2], ls='-', color=color, lw=0.25)
-
-    plt.show()
-    
-    dstDir
+        plt.show()
+        
+        if SAVEPLOT:
+            figName = tifName.split('.')[0] + '_FigTracks.png'
+            figPath = os.path.join(dstDir, figName)
+            fig.savefig(figPath, dpi=500, )
     
     return(Tracks)
 
@@ -789,14 +794,13 @@ class ImageStack(object):
     A stack of images on disk with a name pattern like 'mydir/myfile_t{:03d}.tif'
     """
     
-    def __init__(self, path, convert_to_8bits = False):
+    def __init__(self, path):
         """The numbering can start at 0 or 1"""
         self.path = path
         self.t0 = 0
         # get the images shape while checking that the last image do exist
         self.shape, self.type = ufun.tiff_inspect(path)
         self.Nbimages = self.shape[0]
-        self.convert_to_8bits = convert_to_8bits
         
         # #for some monochrome image format, imread makes 4 channels out of one
         # self.enforceMono = len(self.shape)>2
@@ -815,8 +819,7 @@ class ImageStack(object):
         assert t-self.t0 < self.Nbimages
         
         # im = imread(self.pattern.format(t + self.t0))
-        im = ufun.load_stack_region(self.path, time_indices=[t], 
-                                    convert_to_8bits = self.convert_to_8bits)[0]
+        im = ufun.load_stack_region(self.path, time_indices=[t])[0]
         # if self.enforceMono:
         #     im = im[...,0]
         return(im)
@@ -831,7 +834,13 @@ def spectrumDiff(im0, im1):
     Compute the squared modulus of the 2D Fourier Transform of 
     the difference between im0 and im1
     """
+    # diff = im1-im0.astype(float)
+    # FT = np.abs(np.fft.fft2(diff))
+    # FT = skm.util.img_as_ubyte(FT)
+    # return(FT**2)
     return(np.abs(np.fft.fft2(im1-im0.astype(float)))**2)
+    
+
 
 
 #### DDM step 2 - timeAveraged()
@@ -856,8 +865,8 @@ def timeAveraged(stack, dt, maxNCouples=50):
     #perform the time average
     avgFFT = np.zeros(stack.shape[1:])
     for t in initialTimes:
-        # print(t+dt)
         avgFFT += spectrumDiff(stack[t], stack[t+dt])
+        
     return(avgFFT / len(initialTimes))
 
 
