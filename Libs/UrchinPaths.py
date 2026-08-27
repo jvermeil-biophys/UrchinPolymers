@@ -24,9 +24,13 @@ if COMPUTERNAME == 'PROCYON-PC': # Ordi Perso
     Path_Fiji = "C:\\Users\\josep\\Desktop\\Fiji.app\\"
     Path_JAVA_HOME = "C:\\Users\\josep\\miniforge3\\envs\\pyimagej-env\\Library\\lib\\jvm"
     
+    
 elif COMPUTERNAME == 'MINC05': # IJM
-    Path_AnalysisPulls = "E:\\AnalysisPulls\\"
-    Path_WorkingData = "E:\\WorkingData\\"
+    Path_AnalysisPulls = "F:\\AnalysisPulls\\"
+    Path_IntraCellTracking = "F:\\IntraCellTracking\\"
+    Path_WorkingData = "F:\\WorkingData\\"
+    Path_Fiji = "C:\\Users\\Utilisateur\\Desktop\\Fiji_stable.app"
+    Path_JAVA_HOME = "C:\\Users\\Utilisateur\\miniforge3\\envs\\pyimagej-env\\Library\\lib\\jvm"
     
     
 elif COMPUTERNAME == 'DESKTOP-9J5NPMO': # LJP
@@ -35,6 +39,7 @@ elif COMPUTERNAME == 'DESKTOP-9J5NPMO': # LJP
     Path_WorkingData = "C:\\Users\\Joseph\\Desktop\\WorkingData\\"
     Path_Fiji = "C:\\Users\\Joseph\\Desktop\\Fiji_stable.app"
     Path_JAVA_HOME = "C:\\Users\\Joseph\\miniforge3\\envs\\spyder-env\\Library\\lib\\jvm"
+    
     
 Path_LeicaData = os.path.join(Path_WorkingData, "LeicaData")
 Path_Nikon1Data = os.path.join(Path_WorkingData, "Nikon1Data_X1")

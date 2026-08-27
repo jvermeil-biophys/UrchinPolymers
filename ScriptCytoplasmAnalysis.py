@@ -41,6 +41,8 @@ import Libs.UrchinPaths as up
 import Libs.CalibrationData as cd
 import Libs.UtilityFunctions as ufun
 import Libs.ToolboxCytoplasmAnalysis as tbca
+import Libs.ToolboxStructureAnalysis as tbsa
+
 
 
 # %% Film BF
@@ -2412,7 +2414,7 @@ plt.show()
 
 # %%%% Settings
 
-mainDir = 'C:\\Users\\Joseph\\Desktop\\IntraCellTracking\\26-07-29_FastAcq_NBYolk-Fecondation'
+mainDir = os.path.join(up.Path_IntraCellTracking, '26-07-29_FastAcq_NBYolk-Fecondation')
 srcDir = os.path.join(mainDir, 'Crops')
 dstDir = os.path.join(mainDir, 'SPT_results')
 
@@ -2612,9 +2614,54 @@ ax.set_ylim([2e-3, 0.4e0])
 ax.set_ylabel('MSD (um²)')
 ax.set_xlabel('T (s)')
 plt.show()
+
+
+# %%%% Import tracks & run pcf2d
+
+
+for ii in range(1):
+    ii = 2
     
+    dfName = dfNames[ii]
+    df = pd.read_csv(os.path.join(dstDir, dfName), sep='\t')
     
-    
+    for jj in range(1, 2001, 200):
+        df_j = df[df['frame'] == jj]
+        XX, YY = df_j.x*UmPerPix, df_j.y*UmPerPix
+        XXYY = np.array([XX, YY]).T
+        
+        fig, ax = plt.subplots(1, 1)
+        ax.axis('equal')
+        ax.plot(XX, YY, ls='', marker='.')
+        plt.show()
+        
+        array_positions = XXYY
+        bins_distances = np.arange(0, 15, 0.2)
+        
+        out = tbsa.pcf2d(array_positions, bins_distances, 
+                  coord_border=None, coord_holes=None, fast_method=False,
+                  show_timing=False,plot=False,full_output=False)
+        
+        (g_of_r_normalized, radii) = out
+        N_of_r_normalized = 2*np.pi * np.array([np.sum(radii[:k]*g_of_r_normalized[:k]) for k in range(len(g_of_r_normalized))])
+        fig, ax = plt.subplots(1, 1)
+        ax.plot(radii, g_of_r_normalized)
+        
+        fig, ax = plt.subplots(1, 1)
+        ax.set_xscale('log')
+        ax.set_yscale('log')
+        idx_s = 30
+        ax.plot(radii[idx_s:], N_of_r_normalized[idx_s:])
+        xfit, yfit = np.log(radii[idx_s:]), np.log(N_of_r_normalized[idx_s:])
+        parms, res = ufun.fitLineHuber(xfit, yfit)
+        b, a = parms
+        k = a
+        print(k)
+        A = np.exp(b)
+        xx = np.array([3, 15])
+        ax.plot(xx, A*xx**k)
+        
+        
     
 # %%% Compare MSD for DDM and SPT
 

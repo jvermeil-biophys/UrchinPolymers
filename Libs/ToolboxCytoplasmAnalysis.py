@@ -71,7 +71,7 @@ import imagej
 import scyjava as sj
 
 # import random
-sj.config.add_options('-Xmx18g')
+sj.config.add_options('-Xmx8g')
 
 
 
