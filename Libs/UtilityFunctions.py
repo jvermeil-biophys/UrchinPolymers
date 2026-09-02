@@ -32,6 +32,8 @@ import statsmodels.api as sm
 import matplotlib.pyplot as plt
 import xml.etree.ElementTree as ET
 
+
+
 import os
 import re
 import json
@@ -48,6 +50,8 @@ from scipy import interpolate
 from scipy import odr
 # from scipy.signal import find_peaks, savgol_filter
 from scipy.optimize import least_squares # linear_sum_assignment, 
+
+from math import atan2
 
 from PIL import Image, ImageDraw
 from PIL.TiffTags import TAGS
@@ -884,6 +888,64 @@ def fitCircle_withFixedR(contour, R_set, loss = 'huber'):
     center = (center[1], center[0])
     
     return(center, R)
+
+
+def __fit_ellipse(x, y):
+    x, y = x[:, np.newaxis], y[:, np.newaxis]
+    D = np.hstack((x * x, x * y, y * y, x, y, np.ones_like(x)))
+    S, C = np.dot(D.T, D), np.zeros([6, 6])
+    C[0, 2], C[2, 0], C[1, 1] = 2, 2, -1
+    U, s, V = np.linalg.svd(np.dot(np.linalg.inv(S), C))
+    A = U[:, 0]
+    return(A)
+
+def ellipse_center(A):
+    b, c, d, f, g, A = A[1] / 2, A[2], A[3] / 2, A[4] / 2, A[5], A[0]
+    num = b * b - A * c
+    x0 = (c * d - b * f) / num
+    y0 = (A * f - b * d) / num
+    return(np.array([x0, y0]))
+
+def ellipse_axis_length(A):
+    b, c, d, f, g, A = A[1] / 2, A[2], A[3] / 2, A[4] / 2, A[5], A[0]
+    up = 2 * (A * f * f + c * d * d + g * b * b - 2 * b * d * f - A * c * g)
+    down1 = (b * b - A * c) * (
+        (c - A) * np.sqrt(1 + 4 * b * b / ((A - c) * (A - c))) - (c + A)
+    )
+    down2 = (b * b - A * c) * (
+        (A - c) * np.sqrt(1 + 4 * b * b / ((A - c) * (A - c))) - (c + A)
+    )
+    res1 = np.sqrt(up / down1)
+    res2 = np.sqrt(up / down2)
+    return(np.array([res1, res2]))
+
+def ellipse_angle_of_rotation(A):
+    b, c, d, f, g, A = A[1] / 2, A[2], A[3] / 2, A[4] / 2, A[5], A[0]
+    return(atan2(2 * b, (A - c)) / 2)
+
+def fitEllipse(x, y):
+    """@brief fit an ellipse to supplied data points: the 5 params
+        returned are:
+
+        M - major axis length
+        m - minor axis length
+        cx - ellipse centre (x coord.)
+        cy - ellipse centre (y coord.)
+        phi - rotation angle of ellipse bounding box
+
+    @param x first coordinate of points to fit (array)
+    @param y second coord. of points to fit (array)
+    """
+    A = __fit_ellipse(x, y)
+    centre = ellipse_center(A)
+    phi = ellipse_angle_of_rotation(A)
+    M, m = ellipse_axis_length(A)
+    # assert that the major axix M > minor axis m
+    if m > M:
+        M, m = m, M
+    # ensure the angle is betwen 0 and 2*pi
+    phi -= 2 * np.pi * int(phi / (2 * np.pi))
+    return([M, m, centre[0], centre[1], phi])
 
 
 def contour_to_mask(shape, contour):

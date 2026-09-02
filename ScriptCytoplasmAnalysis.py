@@ -35,6 +35,7 @@ import matplotlib.pyplot as plt
 
 from scipy.signal import savgol_filter
 from scipy.optimize import curve_fit
+from scipy.spatial import ConvexHull
 
 import Libs.PlotMaker as pm
 import Libs.UrchinPaths as up
@@ -44,6 +45,46 @@ import Libs.ToolboxCytoplasmAnalysis as tbca
 import Libs.ToolboxStructureAnalysis as tbsa
 
 
+# %% Test the proper TF
+
+t = np.linspace(0, 2 * np.pi, 1024)
+A = np.array([np.sin(10*t)]).T
+B = np.ones((1, 1024))
+# B = np.array([np.cos(10*t)])
+# data2d = np.sin(t)[:, np.newaxis] * np.cos(t)[np.newaxis, :]
+im = A @ B
+
+tf_im = np.fft.fft2(im)
+
+tf_im_shift = np.fft.fftshift(tf_im)
+
+fig, axes = plt.subplots(1, 3)
+ax = axes[0]
+ax.imshow(im, cmap='gray')
+
+ax = axes[1]
+ax.imshow(np.abs(tf_im), cmap='gray')
+
+ax = axes[2]
+ax.imshow(np.abs(tf_im_shift), cmap='gray')
+
+A = np.sin(10*t)
+
+tf_A = np.fft.fft(A)
+
+tf_A_shift = np.fft.fftshift(tf_A)
+
+fig, axes = plt.subplots(1, 3)
+ax = axes[0]
+ax.plot(t, A)
+
+ax = axes[1]
+ax.plot(np.arange(len(A)), np.abs(tf_A))
+
+ax = axes[2]
+ax.plot(np.arange(len(A)), np.abs(tf_A_shift))
+
+plt.show()
 
 # %% Film BF
 
@@ -55,7 +96,7 @@ mainDir = os.path.join(up.Path_IntraCellTracking, '26-06-19_FastAcq_BF')
 # %%% 1. DDM 
 
 # %%%% 1.1 Settings
-
+mainDir = os.path.join(up.Path_IntraCellTracking, '26-06-19_FastAcq_BF')
 srcDir = os.path.join(mainDir, 'Crops')
 tifNames = ['FilmBF_fastAcq_4000f_200Hz_C3_crop.tif', 'FilmBF_fastAcq_4000f_10Hz_C3_crop.tif']
 tifPaths = [os.path.join(srcDir, tifName) for tifName in tifNames]
@@ -321,6 +362,8 @@ k = (np.log(MB)-np.log(mB)) / (np.log(mQ)-np.log(MQ))
 A = mB / (MQ**k)
 forced_B = [A * q**k for q in QQ]
 
+# forced_B = B_est
+
 # logQQ = np.log(QQ)
 # logBest = np.log(B_est)
 # p_fitted = np.polynomial.Polynomial.fit(logQQ, logBest, deg=5)
@@ -334,6 +377,8 @@ forced_B = [A * q**k for q in QQ]
 # ax.plot(QQ, B_est, 'r.')
 # ax.plot(QQ, forced_B, 'k--')
 # ax.axvline(qmax, color='gray', ls='-', alpha=0.7)
+
+fig, axes = plt.subplots(1, 3, figsize = (12, 5))
 
 for iq in iQ:
     jq = iq - min(iQ)
@@ -389,14 +434,14 @@ for iq in iQ:
         
         
     if iq%10 == 0:
-        fig, ax = plt.subplots(1, 1)
+        ax = axes[0]
         ax.set_xscale('log')
         ax.set_yscale('log')
         D = DDM_fit[:, iq]
         ax.plot(dt_fit, D, ls='', marker='o', label=f'q={q:.1f}')
         
         D_fit = simple_brownian_model(dt_fit, A, B, G)
-        ax.plot(dt_fit, D_fit, ls='-', marker='', label='fit')
+        ax.plot(dt_fit, D_fit, ls='-', marker='', color='k')
         plt.show()
         
 # smoothA = savgol_filter(list_A, 9, 3)
@@ -440,28 +485,48 @@ for iq in iQ:
 
 # list_G = smoothG
 
-X, Y = np.log(QQ), np.log(list_G)
+list_A = np.array(list_A)
+list_B = np.array(list_B)
+list_G = np.array(list_G)
+
+valid = (QQ < 7) & (QQ > 3)
+
+X, Y = np.log(QQ[valid]), np.log(list_G[valid])
 params, results = ufun.fitLineHuber(X, Y)
 (p1, p2) = params
 k = p2
 A = np.exp(p1)
 
-  
-fig, axes = plt.subplots(1, 2, figsize = (8, 5))
 ax = axes[0]
-ax.set_xscale('log')
-ax.set_yscale('log')
-ax.plot(QQ, list_A, ls='', marker='.')
-ax.plot(QQ, list_B, ls='', marker='.')
+ax.set_ylim([1e8, 1e13])
+ax.legend(fontsize=8)
+  
 
 ax = axes[1]
 ax.set_xscale('log')
 ax.set_yscale('log')
-ax.plot(QQ, list_G, 'k.')
-ax.plot(QQ, A * QQ**k, 'r-')
+ax.plot(QQ, list_A, ls='', marker='.', label='A(q)')
+ax.plot(QQ, B_est, 'k.', alpha=0.4, label='B(q) - estimated')
+ax.plot(QQ, list_B, ls='', marker='.', label='B(q)')
+ax.set_ylim([1e8, 1e13])
+ax.legend(fontsize=8)
+
+ax = axes[2]
+ax.set_xscale('log')
+ax.set_yscale('log')
+ax.plot(QQ, list_G, 'k.', label=r'$\Gamma$(q)')
+ax.plot(QQ, A * QQ**k, 'r-', label=f'k = {k:.2f}')
+ax.set_ylim([1e-3, 1e0])
+ax.legend(fontsize=8)
+
+fig.suptitle('Bright Field DDM_merged')
+figName = '_'.join(fN.split('_')[:5])
+print(figName)
+figfile = f'{figName}' + '_BrownianFit.png'
+figpath = os.path.join(srcDir, figfile)
+fig.savefig(figpath, dpi=500, )
 
 plt.show()
-
     
 
 # %%%% 1.6 Plot the fit
@@ -627,7 +692,7 @@ def brownian_plus_ballistic_model_fixed_Z(dt, A, B, tD, tB):
     return(D)
 
 
-FORCE_B = False
+FORCE_B = True
 
 forced_B = [np.percentile(B_est, 3)] * len(QQ)
 
@@ -639,11 +704,11 @@ k = (np.log(MB)-np.log(mB)) / (np.log(mQ)-np.log(MQ))
 A = mB / (MQ**k)
 forced_B = [A * q**k for q in QQ]
 
-logQQ = np.log(QQ)
-logBest = np.log(B_est)
-p_fitted = np.polynomial.Polynomial.fit(logQQ, logBest, deg=5)
-B_smooth = [np.exp(p_fitted(q)) for q in logQQ]
-forced_B = B_smooth
+# logQQ = np.log(QQ)
+# logBest = np.log(B_est)
+# p_fitted = np.polynomial.Polynomial.fit(logQQ, logBest, deg=5)
+# B_smooth = [np.exp(p_fitted(q)) for q in logQQ]
+# forced_B = B_smooth
 
 
 list_A, list_B, list_tD, list_tB, list_Z = [], [], [], [], []
@@ -814,7 +879,7 @@ def brownian_plus_ballisticFrac_model(dt, A, B, tD, tB, alpha, Z):
 
 RERUN_WITH_FIXED_B = True
 
-
+fig, axes = plt.subplots(1, 4, figsize = (16, 5))
 
 list_A, list_B, list_tD, list_tB, list_alpha, list_Z = [], [], [], [], [], []
 
@@ -852,18 +917,20 @@ for iq in iQ:
     list_Z.append(Z)
         
         
+
         
     if iq%10 == 0:
-        fig, ax = plt.subplots(1, 1)
+        ax = axes[0]
         ax.set_xscale('log')
         ax.set_yscale('log')
         D = DDM_fit[:, iq]
-        ax.plot(dt_fit, D, ls='', marker='o')
+        ax.plot(dt_fit, D, ls='', marker='o', label=f'q={q:.1f}')
         
         D_fit = brownian_plus_ballisticFrac_model(dt, A, B, tD, tB, alpha, Z)
-        ax.plot(dt_fit, D_fit, ls='-', marker='', label='fit')
-        ax.set_title(f'q = {q:.1f}')
+        ax.plot(dt_fit, D_fit, ls='-', marker='', color='k')
         plt.show()
+
+
 
 X, Y = np.log(QQ), np.log(list_B)
 params, results = ufun.fitLineHuber(X, Y)
@@ -871,38 +938,59 @@ params, results = ufun.fitLineHuber(X, Y)
 k_B = p2
 A_B = np.exp(p1)
 
-X, Y = np.log(QQ), np.log(list_tD)
+valid = (QQ < 7) & (QQ > 3)
+
+X, Y = np.log(QQ[valid]), np.log(np.array(list_tD)[valid])
 params, results = ufun.fitLineHuber(X, Y)
 (p1, p2) = params
 kD = p2
 AD = np.exp(p1)
 
-X, Y = np.log(QQ), np.log(list_tB)
+X, Y = np.log(QQ[valid]), np.log(np.array(list_tB)[valid])
 params, results = ufun.fitLineHuber(X, Y)
 (p1, p2) = params
 kB = p2
 AB = np.exp(p1)
 
   
-fig, axes = plt.subplots(1, 2, figsize = (8, 5))
 ax = axes[0]
+ax.set_ylim([1e8, 1e13])
+ax.legend(fontsize=8)
+ax.set_xlabel(r'$\Delta t$ (s)')
+  
+
+
+ax = axes[1]
+ax.set_xlabel(r'$q\ (\mu m)$')
 ax.set_xscale('log')
 ax.set_yscale('log')
-ax.plot(QQ, list_A, ls='', marker='.')
-ax.plot(QQ, list_B, ls='', marker='.')
+ax.plot(QQ, list_A, ls='', marker='.', label='A(q)')
+ax.plot(QQ, B_est, 'k.', alpha=0.4, label='B(q) - estimated')
+ax.plot(QQ, list_B, ls='', marker='.', label='B(q)')
 ax.plot(QQ, A_B * QQ**k_B, ls='-')
+ax.set_ylim([1e8, 1e13])
+ax.legend(fontsize=8)
 
-ax = axes[1]
+
+ax = axes[2]
+ax.set_xlabel(r'$q\ (\mu m)$')
+ax.set_ylabel(r'Characteristic Times (s)')
 ax.set_xscale('log')
 ax.set_yscale('log')
-ax.plot(QQ, list_tD, 'k.')
-ax.plot(QQ, AD * QQ**kD, 'r-')
+ax.plot(QQ, list_tD, 'k.', label=r'$\tau_D(q)$')
+ax.plot(QQ, AD * QQ**kD, 'r-', label=r'Fit $\tau_D(q)$ ' + f'\nk={kD:.2f}')
 
-ax = axes[1]
 ax.set_xscale('log')
 ax.set_yscale('log')
-ax.plot(QQ, list_tB, 'b.')
-ax.plot(QQ, AB * QQ**kB, 'c-')
+ax.plot(QQ, list_tB, 'b.', label=r'$\tau_B$')
+ax.plot(QQ, AB * QQ**kB, 'c-', label=r'Fit $\tau_B(q)$ ' + f'\nk={kB:.2f}')
+ax.legend()
+
+ax = axes[3]
+ax.set_xlabel(r'$q\ (\mu m)$')
+ax.set_xscale('log')
+ax.plot(QQ, list_alpha, 'b.', label=r'$\alpha$')
+ax.legend()
 
 plt.show()
 
@@ -1064,13 +1152,14 @@ plt.show()
 # %% Film NB-Yolk
 
 # mainDir = 'C://Users//josep//Desktop//Seafile//DownloadedFromSeafile//IntraCellTracking//26-06-19_FastAcq_BF'
-mainDir = os.path.join(up.Path_IntraCellTracking, '26-07-29_FastAcq_NBYolk-Fecondation')
+mainDir = os.path.join(up.Path_IntraCellTracking, '26-07-29_FastAcq_Fec_NB-Yolk')
 
 
 # %%% 1. DDM 
 
 # %%%% 1.1 Settings
 
+mainDir = os.path.join(up.Path_IntraCellTracking, '26-07-29_FastAcq_Fec_NB-Yolk')
 srcDir = os.path.join(mainDir, 'Crops')
 tifNames = ['26-07-29_PostF_2min_Pos11_10fps_Texp100ms_CSU642_crop.tif',
             '26-07-29_PostF_6min30_Pos11_10fps_Texp100ms_CSU642_crop.tif',
@@ -1320,6 +1409,7 @@ plt.show()
 # %%%% 1.5 Use a model to fit A, B and get f (Brownian case)
 
 AA, BB, GG = [], [], []
+kk_G = []
 
 for ii in range(len(DDMs)): # len(DDMs)
     fN = tifNames[ii]
@@ -1449,160 +1539,7 @@ for ii in range(len(DDMs)): # len(DDMs)
     k = p2
     A = np.exp(p1)
     
-    ax = axes[0]
-    ax.set_ylim([1e8, 1e13])
-    ax.legend(fontsize=8)
-      
-    
-    ax = axes[1]
-    ax.set_xscale('log')
-    ax.set_yscale('log')
-    ax.plot(QQ, list_A, ls='', marker='.', label='A(q)')
-    ax.plot(QQ, list_B, ls='', marker='.', label='B(q)')
-    ax.set_ylim([1e8, 1e13])
-    ax.legend(fontsize=8)
-    
-    ax = axes[2]
-    ax.set_xscale('log')
-    ax.set_yscale('log')
-    ax.plot(QQ, list_G, 'k.', label=r'$\Gamma$(q)')
-    ax.plot(QQ, A * QQ**k, 'r-', label=f'k = {k:.2f}')
-    ax.set_ylim([1e-3, 1e0])
-    ax.legend(fontsize=8)
-    
-    fig.suptitle(f'T dev = {fN.split('_')[2]}')
-    figName = '_'.join(fN.split('_')[:5])
-    print(figName)
-    figfile = f'{figName}' + '_BrownianFit.png'
-    figpath = os.path.join(srcDir, figfile)
-    fig.savefig(figpath, dpi=500, )
-    
-    plt.show()
-
-# %%%% As a function
-    
-def fitBrownianModel(DDM, dt, QQ, iQ, fN):
-    DDM_fit = DDM
-    dt_fit = dt
-    
-    def simple_brownian_model(dt, A, B, G):
-        D = A * (1 - np.exp(-G*dt)) + B
-        return(D)
-    
-    ApB_est = np.median(DDM_fit[-4:, :], axis=0)
-    B_est = np.min(DDM_fit[:5, :], axis=0)
-    A_est = ApB_est - B_est
-    
-    A_est = A_est[iQ]
-    B_est = B_est[iQ]
-    
-    
-    list_A, list_B, list_G = [], [], []
-    
-    FORCE_B = True
-    
-    forced_B = [np.percentile(B_est, 3)] * len(QQ)
-    
-    MB = np.median(B_est[:3])
-    mB = np.median(B_est[-3:])
-    MQ = np.max(QQ)
-    mQ = np.min(QQ)
-    k = (np.log(MB)-np.log(mB)) / (np.log(mQ)-np.log(MQ))
-    A = mB / (MQ**k)
-    forced_B = [A * q**k for q in QQ]
-    
-    # logQQ = np.log(QQ)
-    # logBest = np.log(B_est)
-    # p_fitted = np.polynomial.Polynomial.fit(logQQ, logBest, deg=2)
-    # B_smooth = [np.exp(p_fitted(q)) for q in logQQ]
-    # forced_B = B_smooth
-    
-    # fig, ax = plt.subplots(1, 1, figsize=(4, 3), sharey=True)
-    # ax.set_xscale('log')
-    # ax.set_yscale('log')
-    # ax.plot(QQ, B_est, 'r.')
-    # ax.plot(QQ, forced_B, 'k--')
-    # ax.axvline(qmax, color='gray', ls='-', alpha=0.7)
-    # plt.show()
-    
-    fig, axes = plt.subplots(1, 3, figsize = (12, 5))
-    
-    for iq in iQ:
-        jq = iq - min(iQ)
-        q = QQ[jq]        
-        D = DDM_fit[:,iq]
-        dt = dt_fit
-        
-        if not FORCE_B:
-            # some initial parameter values - must be within bounds
-            initB = np.median(DDM_fit[:5,iq], axis=0)
-            initA = np.median(DDM_fit[-4:,iq], axis=0) - initB
-            initG = 1
-            
-            initialParameters = [initA, initB, initG]
-            
-            # bounds on parameters - initial parameters must be within these
-            lowerBounds = (0, 0.8*np.min(B_est), 0)
-            upperBounds = (np.inf, np.inf, np.inf)
-            parameterBounds = [lowerBounds, upperBounds]
-            
-            params, covM = curve_fit(simple_brownian_model, dt, D, 
-                                     p0=initialParameters, bounds = parameterBounds)
-            
-            A, B, G = params[0], params[1], params[2]
-            list_A.append(A)
-            list_B.append(B)
-            list_G.append(G)
-        
-        else:
-            # some initial parameter values - must be within bounds
-            B_set = forced_B[jq]
-            def simple_brownian_model_forced_B(dt, A, G):
-                D = A * (1 - np.exp(-G*dt)) + B_set
-                return(D)
-            
-            initA = np.median(DDM_fit[-4:,iq], axis=0) - B_set
-            initG = 1
-                   
-            initialParameters = [initA, initG]
-            
-            # bounds on parameters - initial parameters must be within these
-            lowerBounds = (0, 0)
-            upperBounds = (np.inf, np.inf)
-            parameterBounds = [lowerBounds, upperBounds]
-            
-            params, covM = curve_fit(simple_brownian_model_forced_B, dt, D, 
-                                     p0=initialParameters, bounds = parameterBounds)
-            
-            A, B, G = params[0], B_set, params[1]
-            list_A.append(A)
-            list_B.append(B)
-            list_G.append(G)
-            
-            
-        if iq%10 == 0:
-            ax = axes[0]
-            ax.set_xscale('log')
-            ax.set_yscale('log')
-            D = DDM_fit[:, iq]
-            ax.plot(dt_fit, D, ls='', marker='o', label=f'q={q:.1f}')
-            
-            D_fit = simple_brownian_model(dt_fit, A, B, G)
-            ax.plot(dt_fit, D_fit, ls='-', marker='', color='k')
-            plt.show()
-    
-    list_A = np.array(list_A)
-    list_B = np.array(list_B)
-    list_G = np.array(list_G)
-
-    
-    valid = (QQ < 10) & (QQ > 2)
-    
-    X, Y = np.log(QQ[valid]), np.log(list_G[valid])
-    params, results = ufun.fitLineHuber(X, Y)
-    (p1, p2) = params
-    k = p2
-    A = np.exp(p1)
+    kk_G.append(k)
     
     ax = axes[0]
     ax.set_ylim([1e8, 1e13])
@@ -1625,16 +1562,16 @@ def fitBrownianModel(DDM, dt, QQ, iQ, fN):
     ax.set_ylim([1e-3, 1e0])
     ax.legend(fontsize=8)
     
-    fig.suptitle(f'T dev = {fN.split('_')[2]}')
-    figName = '_'.join(fN.split('_')[:5])
-    print(figName)
-    figfile = f'{figName}' + '_BrownianFit.png'
-    figpath = os.path.join(srcDir, figfile)
-    fig.savefig(figpath, dpi=500, )
+    # fig.suptitle(f'T dev = {fN.split('_')[2]}')
+    # figName = '_'.join(fN.split('_')[:5])
+    # print(figName)
+    # figfile = f'{figName}' + '_BrownianFit.png'
+    # figpath = os.path.join(srcDir, figfile)
+    # fig.savefig(figpath, dpi=500, )
     
     plt.show()
-    
-    return(list_A, list_B, list_G)
+
+
 
     
 
@@ -1649,6 +1586,7 @@ for ii in range(len(DDMs)): # len(DDMs)
     list_A = AA[ii]
     list_B = BB[ii]
     list_G = GG[ii]
+    k_G = kk_G[ii]
     
     idx = slice(10, len(iQ), 10)
     
@@ -1682,7 +1620,7 @@ for ii in range(len(DDMs)): # len(DDMs)
     
     
     
-    fig, axes = plt.subplots(1, 2, figsize=(8, 3.5), layout='compressed')
+    fig, axes = plt.subplots(1, 3, figsize=(12, 3.5), layout='compressed')
     cmap = mpl.cm.viridis
     
     k = 0
@@ -1709,6 +1647,10 @@ for ii in range(len(DDMs)): # len(DDMs)
         ax = axes[1]
         ax.plot(dt_fit*q*q, fR, ls='', marker='o', color = color, ms=3)
         ax.plot(dt_fit*q*q, fR_fit, ls='-', marker='', color = color, lw=1)
+        
+        ax = axes[2]
+        ax.plot(dt_fit*(q**k_G), fR, ls='', marker='o', color = color, ms=3)
+        ax.plot(dt_fit*(q**k_G), fR_fit, ls='-', marker='', color = color, lw=1)
     
     for ax in axes:
         ax.set_xscale('log')
@@ -1718,6 +1660,7 @@ for ii in range(len(DDMs)): # len(DDMs)
     
     axes[0].set_xlabel(r'$\Delta t$ (s)')
     axes[1].set_xlabel(r'$\Delta t \cdot q^2$ (s/um²)')
+    axes[2].set_xlabel(r'$\Delta t \cdot q^k\ (s/um^k)$ ' + f'k={k_G:.1f}')
     fig.legend(fontsize = 7, loc='outside right center')
     
     plt.show()
@@ -1787,14 +1730,125 @@ for ii in range(len(DDMs)): # len(DDMs)
     # for ax in axes:
     #     ax.legend()
     #     ax.grid()
-        
+
+# %%%% 1.6.ii Plot the fit, cont'd
+
+pm.setGraphicOptions(mode='screen')
+cmap = mpl.cm.viridis
+
+iq = 13
+jq = iq - min(iQ)
+q = QQ[jq]
+
+fig, ax = plt.subplots(1, 1, layout='compressed')
+ax.set_xscale('log')
+ax.set_ylabel('ACF')
+ax.set_xlabel(r'$\Delta t$ (s)')
+ax.grid()
+
+for ii in range(len(DDMs)):
+    DDM = DDMs[ii]
+    dt = dts[ii]
+    name = ddmFileNames[ii]
+    list_A = AA[ii]
+    list_B = BB[ii]
+    list_G = GG[ii]
     
+    D = DDM[:, iq]
+    
+    A = list_A[jq]
+    B = list_B[jq]
+    G = list_G[jq]
+    
+    fR = 1 - ((D-B)/A)
+    fR_fit = np.exp(-G*dt)
+    
+    color = cmap((ii+0.5)/len(DDMs))
+    Tdev = name.split('_')[2]
+    
+    ax.set_title(f'q = {q:.1f}' + r'$\mu m^{-1}$')
+    ax.plot(dt, fR, ls='', marker='o', color = color, ms=3,
+            label=f'tpf = {Tdev}')
+    ax.plot(dt, fR_fit, ls='-', marker='', color = color, lw=1,
+            label=r'$\Gamma$' + f'={G:.1e}' + r'$s^{-1}$')
+    
+fig.legend(fontsize = 9, loc='outside right center',
+           title='Time Post Fertil.')
+    
+plt.show()
+
+figfile = f'ACF_Brownian_allTdev_q-{q*1000:.0f}' + '.png'
+figpath = os.path.join(srcDir, figfile)
+fig.savefig(figpath, dpi=500, )
 
 
+# %%%% 1.6.iii Plot the fit, cont'd
 
+pm.setGraphicOptions(mode='screen')
+cmap = mpl.cm.viridis
+cmap = mpl.cm.BrBG
 
+def Tpf_str2num(tpf_str):
+    L = tpf_str.split('min')
+    tpf_num = int(L[0])*60
+    if len(L) > 1 and len(L[1]) > 0:
+        tpf_num += int(L[1])
+    return(tpf_num)    
+    
+fig, ax = plt.subplots(1, 1, layout='compressed')
+# ax.set_xscale('log')
+ax.set_ylabel(r'$q \ (\mu m^{-1})$')
+ax.set_xlabel('Tpf (min)')
+# ax.grid()
 
-# %%%% 1.X Use a model to fit Beta, A, B and get f (Brownian case)
+TT = 1/np.array(GG)
+T_min, T_max = np.min(TT), np.max(TT)
+norm_TT = (lambda x : (np.log(x)-np.log(T_min))/(np.log(T_max)-np.log(T_min)))
+
+for ii in range(len(DDMs)):
+    DDM = DDMs[ii]
+    dt = dts[ii]
+    name = ddmFileNames[ii]
+    list_A = AA[ii]
+    list_B = BB[ii]
+    list_G = GG[ii]
+    list_T = TT[ii, :]
+    
+    Tpf_str = name.split('_')[2]
+    Tpf_num = Tpf_str2num(Tpf_str)
+    
+    for iq in iQ:
+    
+        D = DDM[:, iq]
+        
+        jq = iq - min(iQ)
+        q = QQ[jq]
+        A = list_A[jq]
+        B = list_B[jq]
+        G = list_G[jq]
+        T = list_T[jq]
+        
+        fR = 1 - ((D-B)/A)
+        fR_fit = np.exp(-dt/T)
+        
+        color = cmap(norm_TT(T))
+    
+    
+        # ax.set_title(f'q = {q:.1f}' + r'$\mu m^{-1}$')
+        ax.scatter(Tpf_num/60, q, s=12, color = color, alpha=0.8)
+
+fig.colorbar(plt.cm.ScalarMappable(norm=mpl.colors.LogNorm(vmin=np.min(TT), 
+                                                           vmax=np.max(TT)), 
+                                   cmap=cmap),
+             ax=ax, label=r"$\tau=1/\Gamma \ (s)$")
+    
+plt.show()
+
+# figfile = f'ACF_Brownian_allTdev_q-{q*1000:.0f}' + '.png'
+# figpath = os.path.join(srcDir, figfile)
+# fig.savefig(figpath, dpi=500, )
+
+# %%%% 1.X Use a model to fit Beta, A, B and get f (Brownian + Exp Beta case)
 
 AA, BB, GG, BetaBeta = [], [], [], []
 
@@ -1954,7 +2008,7 @@ for ii in range(len(DDMs)): # len(DDMs)
     fig.suptitle(f'T dev = {fN.split('_')[2]}')
     figName = '_'.join(fN.split('_')[:5])
     print(figName)
-    figfile = f'{figName}' + '_BrownianFit.png'
+    figfile = f'{figName}' + '_BrownianBetaFit.png'
     figpath = os.path.join(srcDir, figfile)
     fig.savefig(figpath, dpi=500, )
     
@@ -1962,6 +2016,107 @@ for ii in range(len(DDMs)): # len(DDMs)
 
 
 
+
+# %%%% 1.X Plot the fit
+
+
+for ii in range(len(DDMs)): # len(DDMs)
+    fN = tifNames[ii]
+    DDM_fit = DDMs[ii]
+    dt_fit = dts[ii]
+    list_A = AA[ii]
+    list_B = BB[ii]
+    list_G = GG[ii]
+    list_Beta = BetaBeta[ii]
+    
+    idx = slice(10, len(iQ), 10)
+    
+    # fig, ax = plt.subplots(1, 1, figsize=(10, 8))
+    # ax = ax
+    # ax.set_xscale('log')
+    # ax.set_yscale('log')
+    # cmap = mpl.cm.plasma
+    
+    # k = 0
+    
+    # for iq in iQ[idx]:
+    #     jq = iq - min(iQ)
+    #     q = QQ[iq]
+    #     A = list_A[jq]
+    #     B = list_B[jq]
+    #     G = list_G[jq]
+        
+    #     D = DDM_fit[:, iq]
+    #     color = cmap(k/len(iQ[idx]))
+    #     k += 1
+    #     ax.plot(dt_fit, D, ls='', marker='o', color = color, label=f'q={q:.1f}')
+        
+    #     D_fit = simple_brownian_model(dt_fit, A, B, G)
+    #     ax.plot(dt_fit, D_fit, ls='-', marker='', color = color, label='fit')
+    
+    # ax.legend()
+    # ax.grid()
+    # plt.show()
+    
+    
+    
+    
+    fig, axes = plt.subplots(1, 2, figsize=(8, 3.5), layout='compressed')
+    cmap = mpl.cm.viridis
+    
+    k = 0
+    
+    for iq in iQ[idx]:
+        jq = iq - min(iQ)
+        q = QQ[iq]
+        A = list_A[jq]
+        B = list_B[jq]
+        G = list_G[jq]
+        Beta = list_Beta[jq]
+        
+        D = DDM_fit[:, iq]
+        color = cmap(k/len(iQ[idx]))
+        k += 1
+        fR = 1 - ((D-B)/A)
+        fR_fit = np.exp(-(G*dt)**Beta)
+        
+        ax = axes[0]
+        ax.plot(dt_fit, fR, ls='', marker='o', color = color, ms=3,
+                label=f'q = {q:.1f}' + r'$\mu m^{-1}$')
+        ax.plot(dt_fit, fR_fit, ls='-', marker='', color = color, lw=1,
+                label=r'Fit, $\Gamma$' + f'={G:.1e}' + r'$s^{-1}$')
+        
+        
+    ax = axes[1]
+    ax.set_xscale('log')
+    ax.set_ylabel(r'Exponent $\beta$')
+    ax.scatter(QQ, list_Beta, ls='', marker='o', s=5, 
+                   c=(QQ-min(QQ))/(max(QQ)-min(QQ)), cmap=cmap)
+    
+    for ax in axes:
+        ax.grid()
+    
+    axes[0].set_xlabel(r'$\Delta t$ (s)')
+    axes[0].set_xscale('log')
+    axes[0].set_ylabel('ACF')
+    
+    axes[1].set_xlabel(r'q ($\mu m^{-1}$)')
+    fig.legend(fontsize = 7, loc='outside right center')
+    
+    plt.show()
+    fig.suptitle(f'T dev = {fN.split('_')[2]}', fontsize=11)
+    figName = '_'.join(fN.split('_')[:5])
+    print(figName)
+    figfile = f'{figName}' + '_ACF_BrownianBeta.png'
+    figpath = os.path.join(srcDir, figfile)
+    fig.savefig(figpath, dpi=500, )
+    
+    
+    
+    
+    
+    
+    
 
 
 
@@ -2145,8 +2300,38 @@ plt.show()
     
 # %%%% 1.8 Use a model to fit A, B and get f (Brownian + Ballistic Fraction case)
 
-DDM_fit = DDMMerge
-dt_fit = dtMerge
+AA, BB, TDTD, TBTB, AlphaAlpha, ZZ = [], [], [], []
+
+for ii in range(len(DDMs)): # len(DDMs)
+    fN = tifNames[ii]
+    DDM_fit = DDMs[ii]
+    dt_fit = dts[ii]
+    
+    def expo_brownian_model(dt, A, B, G, Beta):
+        D = A * (1 - np.exp(-(G*dt)**Beta)) + B
+        return(D)
+    
+    ApB_est = np.median(DDM_fit[-4:, :], axis=0)
+    B_est = np.min(DDM_fit[:5, :], axis=0)
+    A_est = ApB_est - B_est
+    
+    A_est = A_est[iQ]
+    B_est = B_est[iQ]
+    
+    
+    list_A, list_B, list_G, list_Beta = [], [], [], []
+    
+    FORCE_B = True
+    
+    forced_B = [np.percentile(B_est, 3)] * len(QQ)
+    
+    MB = np.median(B_est[:3])
+    mB = np.median(B_est[-3:])
+    MQ = np.max(QQ)
+    mQ = np.min(QQ)
+    k = (np.log(MB)-np.log(mB)) / (np.log(mQ)-np.log(MQ))
+    A = mB / (MQ**k)
+    forced_B = [A * q**k for q in QQ]
 
 def brownian_plus_ballisticFrac_model(dt, A, B, tD, tB, alpha, Z):
     theta = dt/((Z+1) * tB)
@@ -2402,7 +2587,162 @@ for ax in axes:
 plt.show()
 
 
+# %%% 1.5. Brownian fit as a function
 
+def fitBrownianModel(DDM, dt, QQ, iQ, fN):
+    DDM_fit = DDM
+    dt_fit = dt
+    
+    def simple_brownian_model(dt, A, B, G):
+        D = A * (1 - np.exp(-G*dt)) + B
+        return(D)
+    
+    ApB_est = np.median(DDM_fit[-4:, :], axis=0)
+    B_est = np.min(DDM_fit[:5, :], axis=0)
+    A_est = ApB_est - B_est
+    
+    A_est = A_est[iQ]
+    B_est = B_est[iQ]
+    
+    
+    list_A, list_B, list_G = [], [], []
+    
+    FORCE_B = True
+    
+    forced_B = [np.percentile(B_est, 3)] * len(QQ)
+    
+    MB = np.median(B_est[:3])
+    mB = np.median(B_est[-3:])
+    MQ = np.max(QQ)
+    mQ = np.min(QQ)
+    k = (np.log(MB)-np.log(mB)) / (np.log(mQ)-np.log(MQ))
+    A = mB / (MQ**k)
+    forced_B = [A * q**k for q in QQ]
+    
+    # logQQ = np.log(QQ)
+    # logBest = np.log(B_est)
+    # p_fitted = np.polynomial.Polynomial.fit(logQQ, logBest, deg=2)
+    # B_smooth = [np.exp(p_fitted(q)) for q in logQQ]
+    # forced_B = B_smooth
+    
+    # fig, ax = plt.subplots(1, 1, figsize=(4, 3), sharey=True)
+    # ax.set_xscale('log')
+    # ax.set_yscale('log')
+    # ax.plot(QQ, B_est, 'r.')
+    # ax.plot(QQ, forced_B, 'k--')
+    # ax.axvline(qmax, color='gray', ls='-', alpha=0.7)
+    # plt.show()
+    
+    fig, axes = plt.subplots(1, 3, figsize = (12, 5))
+    
+    for iq in iQ:
+        jq = iq - min(iQ)
+        q = QQ[jq]        
+        D = DDM_fit[:,iq]
+        dt = dt_fit
+        
+        if not FORCE_B:
+            # some initial parameter values - must be within bounds
+            initB = np.median(DDM_fit[:5,iq], axis=0)
+            initA = np.median(DDM_fit[-4:,iq], axis=0) - initB
+            initG = 1
+            
+            initialParameters = [initA, initB, initG]
+            
+            # bounds on parameters - initial parameters must be within these
+            lowerBounds = (0, 0.8*np.min(B_est), 0)
+            upperBounds = (np.inf, np.inf, np.inf)
+            parameterBounds = [lowerBounds, upperBounds]
+            
+            params, covM = curve_fit(simple_brownian_model, dt, D, 
+                                     p0=initialParameters, bounds = parameterBounds)
+            
+            A, B, G = params[0], params[1], params[2]
+            list_A.append(A)
+            list_B.append(B)
+            list_G.append(G)
+        
+        else:
+            # some initial parameter values - must be within bounds
+            B_set = forced_B[jq]
+            def simple_brownian_model_forced_B(dt, A, G):
+                D = A * (1 - np.exp(-G*dt)) + B_set
+                return(D)
+            
+            initA = np.median(DDM_fit[-4:,iq], axis=0) - B_set
+            initG = 1
+                   
+            initialParameters = [initA, initG]
+            
+            # bounds on parameters - initial parameters must be within these
+            lowerBounds = (0, 0)
+            upperBounds = (np.inf, np.inf)
+            parameterBounds = [lowerBounds, upperBounds]
+            
+            params, covM = curve_fit(simple_brownian_model_forced_B, dt, D, 
+                                     p0=initialParameters, bounds = parameterBounds)
+            
+            A, B, G = params[0], B_set, params[1]
+            list_A.append(A)
+            list_B.append(B)
+            list_G.append(G)
+            
+            
+        if iq%10 == 0:
+            ax = axes[0]
+            ax.set_xscale('log')
+            ax.set_yscale('log')
+            D = DDM_fit[:, iq]
+            ax.plot(dt_fit, D, ls='', marker='o', label=f'q={q:.1f}')
+            
+            D_fit = simple_brownian_model(dt_fit, A, B, G)
+            ax.plot(dt_fit, D_fit, ls='-', marker='', color='k')
+            plt.show()
+    
+    list_A = np.array(list_A)
+    list_B = np.array(list_B)
+    list_G = np.array(list_G)
+
+    
+    valid = (QQ < 10) & (QQ > 2)
+    
+    X, Y = np.log(QQ[valid]), np.log(list_G[valid])
+    params, results = ufun.fitLineHuber(X, Y)
+    (p1, p2) = params
+    k = p2
+    A = np.exp(p1)
+    
+    ax = axes[0]
+    ax.set_ylim([1e8, 1e13])
+    ax.legend(fontsize=8)
+      
+    
+    ax = axes[1]
+    ax.set_xscale('log')
+    ax.set_yscale('log')
+    ax.plot(QQ, list_A, ls='', marker='.', label='A(q)')
+    ax.plot(QQ, list_B, ls='', marker='.', label='B(q)')
+    ax.set_ylim([1e8, 1e13])
+    ax.legend(fontsize=8)
+    
+    ax = axes[2]
+    ax.set_xscale('log')
+    ax.set_yscale('log')
+    ax.plot(QQ, list_G, 'k.', label=r'$\Gamma$(q)')
+    ax.plot(QQ, A * QQ**k, 'r-', label=f'k = {k:.2f}')
+    ax.set_ylim([1e-3, 1e0])
+    ax.legend(fontsize=8)
+    
+    fig.suptitle(f'T dev = {fN.split('_')[2]}')
+    figName = '_'.join(fN.split('_')[:5])
+    print(figName)
+    figfile = f'{figName}' + '_BrownianFit.png'
+    figpath = os.path.join(srcDir, figfile)
+    fig.savefig(figpath, dpi=500, )
+    
+    plt.show()
+    
+    return(list_A, list_B, list_G)
 
 
 
@@ -2414,7 +2754,7 @@ plt.show()
 
 # %%%% Settings
 
-mainDir = os.path.join(up.Path_IntraCellTracking, '26-07-29_FastAcq_NBYolk-Fecondation')
+mainDir = os.path.join(up.Path_IntraCellTracking, '26-07-29_FastAcq_Fec_NB-Yolk')
 srcDir = os.path.join(mainDir, 'Crops')
 dstDir = os.path.join(mainDir, 'SPT_results')
 
@@ -2469,8 +2809,6 @@ for tifPath, xmlName in zip(tifPaths, xmlNames):
                                      PLOT = True, SAVEPLOT = True)
 
 
-
-
 # %%%% Import & format tracks
 
 for ii in range(len(xmlPaths)):
@@ -2485,7 +2823,11 @@ for ii in range(len(xmlPaths)):
     all_tracks = []
     for i, track in enumerate(Tracks):
         nT = len(track)
-        if nT >= 30:
+        # test_x_sat = ((np.max(track[:, 1]) - np.min(track[:, 1])) < 1)
+        # test_y_sat = ((np.max(track[:, 2]) - np.min(track[:, 2])) < 1)
+        test_x_sat = ((np.max(track[:, 1]) == (N_pix-1)) or (np.min(track[:, 1]) == 0))
+        test_y_sat = ((np.max(track[:, 2]) == (N_pix-1)) or (np.min(track[:, 2]) == 0))
+        if (not test_x_sat) and (not test_y_sat) and (nT >= 30):
             track = np.concat((track, np.ones((len(track[:,0]), 1), dtype=int) * (i+1)), axis = 1)
             track[:, 0] = track[:, 0].astype(int) + 1
             all_tracks.append(track)
@@ -2615,51 +2957,119 @@ ax.set_ylabel('MSD (um²)')
 ax.set_xlabel('T (s)')
 plt.show()
 
+# %%%% Import tracks & analyse shape of explored zone
+
+pm.setGraphicOptions(mode='screen')
+fig, ax = plt.subplots(figsize=(5, 5))
+ax.set_xlim([0, 250])
+ax.set_ylim([0, 50])
+
+colors = pm.cL_Set21
+
+for ii in range(0, 1):   
+    dfName = dfNames[ii]
+    df = pd.read_csv(os.path.join(dstDir, dfName), sep='\t')
+    Lp = df['particle'].unique().astype(int)
+    for j in Lp[:3]:
+        c = colors[j%len(colors)]
+        df_j = df[df['particle']==j]
+        # x, y = 
+        points = np.array([[x, y] for (x, y) in zip(df_j.x, df_j.y)])
+        hull = ConvexHull(points)
+        hull_xy = [[float(points[i, 0]) for i in hull.vertices],
+                   [float(points[i, 1]) for i in hull.vertices]]
+        # ax.plot(points[:,0], points[:,1], 
+        #         c=c, ls='', marker='.')
+        Hx_plot = hull_xy[0] + [hull_xy[0][0]]
+        Hy_plot = hull_xy[1] + [hull_xy[1][0]]
+        ax.plot(Hx_plot, Hy_plot,
+                c=c, marker='.', ls='', ) #ls='-', lw=1)
+        
+        [M, m, cx, cy, phi] = ufun.fitEllipse(np.array(hull_xy[0]), 
+                                              np.array(hull_xy[1]))
+        print(m)
+
+        theta = np.linspace(0, 2*np.pi, 360)
+        xp = cx + M*np.cos(phi)*np.cos(theta) - m*np.sin(phi)*np.sin(theta)
+        yp = cy + M*np.cos(phi)*np.sin(theta) + m*np.sin(phi)*np.cos(theta)
+        ax.plot(xp, yp, 'k-', lw=0.5)
+        
+        # Ell = mpl.patches.Ellipse(xy=(50, 20),
+        #         width=10, height=5,
+        #         angle=1 * (180/np.pi),
+        #         facecolor='None', edgecolor='k', lw=0.5)
+        # ax.add_patch(Ell)
+        
+plt.show()
 
 # %%%% Import tracks & run pcf2d
 
+pm.setGraphicOptions(mode='screen')
 
-for ii in range(1):
-    ii = 2
-    
+for ii in range(5, 10):   
     dfName = dfNames[ii]
     df = pd.read_csv(os.path.join(dstDir, dfName), sep='\t')
+    title = '_'.join(dfName.split('_')[:5])
     
-    for jj in range(1, 2001, 200):
+    for jj in [1000]:
         df_j = df[df['frame'] == jj]
+        title_j = title + f' - Frame no {jj:.0f}'
+        fName_j = title + f'_Fn{jj:.0f}_PCF.png'
         XX, YY = df_j.x*UmPerPix, df_j.y*UmPerPix
         XXYY = np.array([XX, YY]).T
         
-        fig, ax = plt.subplots(1, 1)
+        fig, axes = plt.subplots(1, 3, figsize=(12, 4), layout='compressed')
+        ax = axes[0]
         ax.axis('equal')
         ax.plot(XX, YY, ls='', marker='.')
-        plt.show()
+        ax.set_xlabel(r'$x\ (\mu m)$')
+        ax.set_ylabel(r'$y\ (\mu m)$')
+        ax.set_xlim([0, 512*UmPerPix])
+        ax.set_ylim([0, 512*UmPerPix])
         
         array_positions = XXYY
         bins_distances = np.arange(0, 15, 0.2)
         
         out = tbsa.pcf2d(array_positions, bins_distances, 
                   coord_border=None, coord_holes=None, fast_method=False,
-                  show_timing=False,plot=False,full_output=False)
+                  show_timing=False, plot=False, full_output=False)
         
         (g_of_r_normalized, radii) = out
         N_of_r_normalized = 2*np.pi * np.array([np.sum(radii[:k]*g_of_r_normalized[:k]) for k in range(len(g_of_r_normalized))])
-        fig, ax = plt.subplots(1, 1)
-        ax.plot(radii, g_of_r_normalized)
         
-        fig, ax = plt.subplots(1, 1)
+        ax = axes[1]
+        ax.plot(radii, g_of_r_normalized, color=pm.cL_Set2[0])
+        ax.set_xlabel(r'$r\ (\mu m)$')
+        ax.set_ylabel(r'$G(r)$')
+        # ax.grid()
+        ax.axhline(1, linestyle=':', color='gray')
+
+        
+        ax = axes[2]
         ax.set_xscale('log')
         ax.set_yscale('log')
-        idx_s = 30
-        ax.plot(radii[idx_s:], N_of_r_normalized[idx_s:])
-        xfit, yfit = np.log(radii[idx_s:]), np.log(N_of_r_normalized[idx_s:])
+        idx_start_fit = 30
+        
+
+        ax.plot(radii[:], N_of_r_normalized[:],
+                'k.', label='Data')
+        
+        xfit = np.log(radii[idx_start_fit:])
+        yfit = np.log(N_of_r_normalized[idx_start_fit:])
         parms, res = ufun.fitLineHuber(xfit, yfit)
         b, a = parms
-        k = a
-        print(k)
-        A = np.exp(b)
-        xx = np.array([3, 15])
-        ax.plot(xx, A*xx**k)
+        k, A = a, np.exp(b)
+        xx = radii[idx_start_fit:]
+        ax.plot(xx, A*xx**k, lw=1.5,
+                label=r'Fit $y=Ax^k$' + f'\nk={k:.2f}')
+        ax.legend()
+        ax.grid()
+        ax.set_xlabel(r'$r\ (\mu m)$')
+        ax.set_ylabel(r'$N(r)$')
+        
+        fig.suptitle(title_j)
+        figpath = os.path.join(dstDir, fName_j)
+        fig.savefig(figpath, dpi=500, )
         
         
     
@@ -2717,113 +3127,115 @@ frequencies = [10] * len(DDMs)
 
 #### RUN
 
-ii = 5
-
-fN = tifNames[ii]
-DDMname = ddmFileNames[ii]
-dtname = dtFileNames[ii]
-DDM = np.load(os.path.join(dstDDMDir, DDMname))
-dt = np.load(os.path.join(dstDDMDir, dtname))
-
-dict_MSDfits = ufun.json2dict(dstDir, jsonNames[ii])
-res_emsd = pd.read_csv(os.path.join(dstDir, msdNames[ii]), sep='\t')
-
-QQ_raw = np.arange(1, 1+DDM.shape[1])*dq
-
-valid_iQ, valid_Q = [], []
-for iq in range(len(QQ_raw)):
-    q = QQ_raw[iq]
-    if q >= qmin and q < qmax:
-        valid_Q.append(q)
-        valid_iQ.append(iq)
-
-QQ = np.array(valid_Q)
-iQ = np.array(valid_iQ)
-
-#### DDM
-
-AA, BB, GG = fitBrownianModel(DDM, dt, QQ, iQ, fN)
-
-
-#### MSD
-
-T, MSD = res_emsd['lagt'], res_emsd['msd']
-
-D_linear = dict_MSDfits['D_linear']
-k_full = dict_MSDfits['k_full']
-D_full = dict_MSDfits['D_full']
-k_f4 = dict_MSDfits['k_f4']
-D_f4 = dict_MSDfits['D_f4']
-k_l15 = dict_MSDfits['k_l15']
-D_l15 = dict_MSDfits['D_l15']
-
-
-#### PLOT
-
-fig, ax = plt.subplots(1, 1, figsize=(5, 5))
-ax.set_xscale('log')
-ax.set_yscale('log')
-
-Xp = np.array([1e-3, 1e3])
-
-ax.plot(T, MSD, 'wo', mec='k')
-# ax.plot(Xp, 4*D_full*(Xp**k_full), ls='-', color=pm.cL_Set21[0], mec='k', label='Full curve')
-ax.plot(Xp, 4*D_f4*(Xp**k_f4), ls='-', color=pm.cL_Set21[1], mec='k', 
-        label=f'First 4 pts\n$\\alpha$ = {k_f4:.2f}')
-ax.plot(Xp, 4*D_l15*(Xp**k_l15), ls='-', color=pm.cL_Set21[2], mec='k', 
-        label=f'Last 15 pts\n$\\alpha$ = {k_l15:.2f}')
-ax.axvline(Tc, color='gray', lw=1.5, label=f'$T_c$ = {Tc:.2f}')
-ax.legend()
-ax.grid()
-ax.set_xlim([0.5e-1, 2e1])
-ax.set_ylim([0.5e-3, 2e0])
-ax.set_ylabel('MSD (um²)')
-ax.set_xlabel('T (s)')
-plt.show()
-
-
-idx = slice(10, len(iQ), 10)
-cmap = mpl.cm.plasma
-
-# idx = slice(0, len(valid_iQ), 10)
-
-list_MSD_exp = []
-list_MSD_fit = []
-
-for iq in iQ[idx]:
-    jq = iq - min(iQ)
-    q = QQ[iq]
-    A = AA[jq]
-    B = BB[jq]
-    G = GG[jq]
+for ii in [0, 2, 4]:
+    print(fN.split('_')[2])
+    fN = tifNames[ii]
+    DDMname = ddmFileNames[ii]
+    dtname = dtFileNames[ii]
+    DDM = np.load(os.path.join(dstDDMDir, DDMname))
+    dt = np.load(os.path.join(dstDDMDir, dtname))
     
-    D = DDM[:, iq]
-    color = cmap(jq/(len(iQ)))
+    dict_MSDfits = ufun.json2dict(dstDir, jsonNames[ii])
+    res_emsd = pd.read_csv(os.path.join(dstDir, msdNames[ii]), sep='\t')
     
-    fR = 1 - ((D-B)/A)
-    fR_fit = np.exp(-G*dt)
+    QQ_raw = np.arange(1, 1+DDM.shape[1])*dq
     
-    MSD_exp = -(4/q**2) * np.log(fR)
-    MSD_fit = -(4/q**2) * np.log(fR_fit)
+    valid_iQ, valid_Q = [], []
+    for iq in range(len(QQ_raw)):
+        q = QQ_raw[iq]
+        if q >= qmin and q < qmax:
+            valid_Q.append(q)
+            valid_iQ.append(iq)
     
-    list_MSD_exp.append(MSD_exp)
-    list_MSD_fit.append(MSD_fit)
+    QQ = np.array(valid_Q)
+    iQ = np.array(valid_iQ)
+    
+    #### DDM
+    
+    AA, BB, GG = fitBrownianModel(DDM, dt, QQ, iQ, fN)
     
     
-list_MSD_exp = np.array(list_MSD_exp)
-list_MSD_fit = np.array(list_MSD_fit)
-
-avg_MSD_exp = np.nanmean(list_MSD_exp, axis=0)
-avg_MSD_fit = np.nanmean(list_MSD_fit, axis=0)
-
-ax = ax
-ax.plot(dt, avg_MSD_exp, ls='', marker='o', color = 'k')
-ax.plot(dt, avg_MSD_fit, ls='-', marker='', color = 'k')
-ax.legend()
-ax.grid()
+    #### MSD
     
-
-plt.show()
+    T, MSD = res_emsd['lagt'], res_emsd['msd']
+    
+    D_linear = dict_MSDfits['D_linear']
+    k_full = dict_MSDfits['k_full']
+    D_full = dict_MSDfits['D_full']
+    k_f4 = dict_MSDfits['k_f4']
+    D_f4 = dict_MSDfits['D_f4']
+    k_l15 = dict_MSDfits['k_l15']
+    D_l15 = dict_MSDfits['D_l15']
+    Tc = (D_f4/D_l15)**(1/(k_l15-k_f4))  
+    
+    #### PLOT
+    
+    fig, ax = plt.subplots(1, 1, figsize=(5, 5))
+    ax.grid()
+    fig.suptitle(fN.split('_')[2])
+    ax.set_xscale('log')
+    ax.set_yscale('log')
+    
+    Xp = np.array([1e-3, 1e3])
+    
+    ax.plot(T, MSD, 'wo', mec='k', label='MSD from SPT')
+    # ax.plot(Xp, 4*D_full*(Xp**k_full), ls='-', color=pm.cL_Set21[0], mec='k', label='Full curve')
+    # ax.plot(Xp, 4*D_f4*(Xp**k_f4), ls='-', color=pm.cL_Set21[1], mec='k', 
+    #         label=f'First 4 pts\n$\\alpha$ = {k_f4:.2f}')
+    # ax.plot(Xp, 4*D_l15*(Xp**k_l15), ls='-', color=pm.cL_Set21[2], mec='k', 
+    #         label=f'Last 15 pts\n$\\alpha$ = {k_l15:.2f}')
+    # ax.axvline(Tc, color='gray', lw=1.5, label=f'$T_c$ = {Tc:.2f}')
+    ax.legend()
+    ax.grid()
+    ax.set_xlim([0.5e-1, 2e1])
+    ax.set_ylim([0.5e-3, 2e0])
+    ax.set_ylabel('MSD (um²)')
+    ax.set_xlabel('T (s)')
+    plt.show()
+    
+    
+    idx = slice(10, len(iQ), 10)
+    cmap = mpl.cm.plasma
+    
+    # idx = slice(0, len(valid_iQ), 10)
+    
+    list_MSD_exp = []
+    list_MSD_fit = []
+    
+    for iq in iQ[idx]:
+        jq = iq - min(iQ)
+        q = QQ[iq]
+        A = AA[jq]
+        B = BB[jq]
+        G = GG[jq]
+        
+        D = DDM[:, iq]
+        color = cmap(jq/(len(iQ)))
+        
+        fR = 1 - ((D-B)/A)
+        fR_fit = np.exp(-G*dt)
+        
+        MSD_exp = -(4/q**2) * np.log(fR)
+        MSD_fit = -(4/q**2) * np.log(fR_fit)
+        
+        list_MSD_exp.append(MSD_exp)
+        list_MSD_fit.append(MSD_fit)
+        
+        
+    list_MSD_exp = np.array(list_MSD_exp)
+    list_MSD_fit = np.array(list_MSD_fit)
+    
+    avg_MSD_exp = np.nanmean(list_MSD_exp, axis=0)
+    avg_MSD_fit = np.nanmean(list_MSD_fit, axis=0)
+    
+    ax = ax
+    ax.plot(dt, avg_MSD_exp, ls='', marker='o', color = 'k', label='MSD from DDM')
+    # ax.plot(dt, avg_MSD_fit, ls='-', marker='', color = 'k')
+    ax.legend()
+    ax.grid()
+        
+    
+    plt.show()
 
 
 
