@@ -79,7 +79,8 @@ def getGlycerolViscosity(ratio, T):
 
 # %% Make a table !
 
-RR = np.arange(0, 1.05, 0.05)
+# RR = np.arange(0, 1.05, 0.05)
+RR = np.arange(0.75, 0.85, 0.01)
 TT = np.arange(15, 25.5, 0.5)
 nR = len(RR)
 nT = len(TT)
@@ -88,7 +89,7 @@ DictVisco = {}
 for j in range(nT):
     DictVisco[TT[j]] = []
     for i in range(nR):
-        V = getGlycerolViscosity(RR[i], TT[j]) * 1000
+        V = getGlycerolViscosity(RR[i], TT[j]) #* 1000
         V = truncArray(V, 2)
         DictVisco[TT[j]].append(V)
 
