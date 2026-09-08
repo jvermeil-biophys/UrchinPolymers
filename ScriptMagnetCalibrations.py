@@ -24,7 +24,7 @@ from scipy import interpolate, optimize
 import Libs.PlotMaker as pm
 import Libs.UrchinPaths as up
 import Libs.UtilityFunctions as ufun
-import Libs.MagnetsCalibrationsConstants as mcc
+import Libs.CalibrationData as mcc
 import Libs.ToolboxCalibVisco as tbcv
 from Libs.GlycerolCalc import getGlycerolViscosity
 # getGlycerolViscosity(ratio, T)
@@ -235,7 +235,7 @@ tbcv.runCalibration(mainDir, SCALE, Rb, Mag_dX0, visco, filesInfo,
 mainDir = up.Path_AnalysisPulls + '26-04-30_CalibMagnet_JV01_and_JN/Tracks'
 
 # saveDir is the directory where the data and the plots will be saved
-saveDir = up.Path_AnalysisPulls + '26-04-30_CalibMagnet_JV01_and_JN/Results'
+saveDir = up.Path_AnalysisPulls + '26-04-30_CalibMagnet_JV01_and_JN/Results_sept2026'
 
 expLabel = '26-04-30_Magnet-JV01_MyOne_Glycerol75%' # The label for this condition - used as a prefix for saved data and plots
 saveResults = True             # If you want to export results as a .json file
@@ -244,7 +244,7 @@ Rb = 1 * 0.5                   # Bead radius, µm - here MyOne Dynabeads
 visco = getGlycerolViscosity(0.75, 22)   # Medium viscosity, mPa.s - here 75% Gly at 22°C
 SCALE = 0.461                  # Microscope scale, µm/pixel
 FPS = 5                        # Frame per second, 1/s
-Mag_dX0 = 84
+
 
 filesInfo = []
 
@@ -290,12 +290,21 @@ fI['MagX'], fI['MagY'], fI['MagR'] =  467, 503, 150 * 0.5
 fI['CropX'], fI['CropY'] = 0, 0 
 filesInfo.append(fI)
 
-# tbcv.tracks_trajectories(mainDir, filesInfo, SCALE, FPS, Rb,
-#                          label=expLabel, saveData=True, dstDir=saveDir)
+# %%%%% Get the center of the trajectories
 
-#### Run the calibration
+tbcv.tracks_trajectories(mainDir, filesInfo, SCALE, FPS, Rb,
+                         label=expLabel, saveData=True, dstDir=saveDir)
+
+# %%%%% Run the calibration
+Mag_dX0 = 0
+expLabel_1 = expLabel + '_dX0-0um'
 tbcv.runCalibration(mainDir, SCALE, Rb, Mag_dX0, visco, filesInfo, 
-                    saveDir, expLabel, saveResults, savePlots)
+                    saveDir, expLabel_1, saveResults, savePlots)
+
+Mag_dX0 = 86
+expLabel_1 = expLabel + '_dX0-86um'
+tbcv.runCalibration(mainDir, SCALE, Rb, Mag_dX0, visco, filesInfo, 
+                    saveDir, expLabel_1, saveResults, savePlots)
 
 # %%%% M1 & M2 - Magnet_JV01, MyOne, compare Gly80% and Gly 75%
 
