@@ -25,12 +25,15 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 # %% Imports
 
 import os
+import cv2
 
 import numpy as np
 import pandas as pd
 import trackpy as tp
+import skimage as skm
 import seaborn as sns
 import matplotlib as mpl
+import scipy.ndimage as ndi
 import matplotlib.pyplot as plt
 
 from scipy.signal import savgol_filter
@@ -2963,82 +2966,137 @@ plt.show()
 
 pm.setGraphicOptions(mode='screen')
 fig, ax = plt.subplots(figsize=(5, 5))
-# ax.set_xlim([0, 250])
-# ax.set_ylim([0, 50])
+ax.set_xlim([0, 511])
+ax.set_ylim([0, 511])
 ax.set_aspect('equal', adjustable='box')
 
 colors = pm.cL_Set21
 
-for ii in range(0, 1):   
+for ii in range(2, 3):  
     dfName = dfNames[ii]
     df = pd.read_csv(os.path.join(dstDir, dfName), sep='\t')
     Lp = df['particle'].unique().astype(int)
-    for j in Lp[:4]:
+    dict_geom = {'particle':[],
+                 'np':[],
+                 'xc':[],
+                 'yc':[],
+                 'theta':[],
+                 'L':[],
+                 'l':[],
+                 'AR':[],
+                 'phi':[],}
+    
+    for j in Lp[:]:
         c = colors[j%len(colors)]
         df_j = df[df['particle']==j]
         # x, y = 
         points = np.array([[x, y] for (x, y) in zip(df_j.x, df_j.y)])
-        hull = ConvexHull(points)
-        hull_xy = [[float(points[i, 0]) for i in hull.vertices],
-                   [float(points[i, 1]) for i in hull.vertices]]
-        # ax.plot(points[:,0], points[:,1], 
-        #         c=c, ls='', marker='.')
-        Hx_plot = hull_xy[0] + [hull_xy[0][0]]
-        Hy_plot = hull_xy[1] + [hull_xy[1][0]]
-        ax.plot(Hx_plot, Hy_plot,
-                c=c, marker='.', ls='', ) #ls='-', lw=1)
         
-        # [xc, yc, a, b, phi] = ufun.fit_ellipse(np.array(hull_xy[0]), 
-        #                                   np.array(hull_xy[1]), 
-        #                                   mode='cartesian')
-        # aa = np.linspace(0, 2*np.pi, 360)
-        # xp, yp = ufun.get_ellipse_xy(xc, yc, a, b, phi, aa=aa)
-        # ax.plot(xp, yp, 'k-', lw=0.5)
+        MPoints = MultiPoint(points)
+        Hull = MPoints.convex_hull
+        xy_ch = np.array([xy for xy in Hull.exterior.coords[1:]])
+        xc, yc = Hull.centroid.coords[0]
         
-        # create a minimum rotated rectangle containing all the points
-        points = np.array(hull_xy).T 
-        multipoints = MultiPoint(points)
-        polygon = multipoints.minimum_rotated_rectangle
-        Xr, Yr = polygon.exterior.coords.xy
-        ax.plot(Xr, Yr, 'k-', lw=0.5)
+        out = ufun.fit_ellipse_fixedCenter(xy_ch[:, 0], xy_ch[:, 1], 
+                                           xc, yc, mode='cartesian')
+        _, _, a, b, phi = out
+        aa = np.linspace(0, 2*np.pi, 360)
+        xp, yp = ufun.get_ellipse_xy(xc, yc, a, b, phi, aa=aa)
         
-        d1 = ((Xr[0]-Xr[1])**2 + (Yr[0]-Yr[1])**2)**0.5
-        d2 = ((Xr[2]-Xr[1])**2 + (Yr[2]-Yr[1])**2)**0.5
-        print(d1, d2)
-        L, l = max(d1, d2), min(d1, d2)
+        # ax.plot(xy_ch[:, 0], xy_ch[:, 1],
+        #         c=c, marker='.', ls='', ) #ls='-', lw=1)
+        ax.plot(xp, yp, c=c, ls='-', lw=0.5)
+        
+        
+        
+        theta = np.atan2(yc-255, xc-255)
+        theta_deg = theta * 180/np.pi
+        
+        dotprod = np.cos(theta)*np.cos(phi) + np.sin(theta)*np.sin(phi)
+        if dotprod < 0:
+            phi = phi - np.sign(phi) * np.pi
+            
+        phi_deg = phi * 180/np.pi
+        # print(phi_deg, theta_deg)
+        
+        L, l = max(a, b), min(a, b)
         AR = L/l
         
-        V1 = (Xr[1]-Xr[0], Yr[1]-Yr[0])
-        theta = np.atan2(V1[1], V1[0])
-        print(theta*180/np.pi)
+        dict_geom['particle'].append(j)
+        dict_geom['np'].append(xc)
+        dict_geom['xc'].append(xc)
+        dict_geom['yc'].append(yc)
+        dict_geom['theta'].append(theta)
+        dict_geom['L'].append(L)
+        dict_geom['l'].append(l)
+        dict_geom['AR'].append(AR)
+        dict_geom['phi'].append(phi)
+        
+        # # create a minimum rotated rectangle containing all the points
+        # points = np.array(hull_xy).T 
+        # multipoints = MultiPoint(points)
+        # polygon = multipoints.minimum_rotated_rectangle
+        # Xr, Yr = polygon.exterior.coords.xy
+        # ax.plot(Xr, Yr, 'k-', lw=0.5)
+        
+        # d1 = ((Xr[0]-Xr[1])**2 + (Yr[0]-Yr[1])**2)**0.5
+        # d2 = ((Xr[2]-Xr[1])**2 + (Yr[2]-Yr[1])**2)**0.5
+        # # print(d1, d2)
+        # L, l = max(d1, d2), min(d1, d2)
+        # AR = L/l
+        
+        # V1 = (Xr[1]-Xr[0], Yr[1]-Yr[0])
+        # theta = np.atan2(V1[1], V1[0])
+        # print(theta*180/np.pi)
         
         
+plt.show()
+
+# %%%%
+
+df_geom = pd.DataFrame(dict_geom)
+df_geom['theta_bin'] = (df_geom['theta'].values * 18/np.pi).astype(int) * 10 + 5
+
+fig, ax = plt.subplots(1, 1)
+ax.scatter(df_geom.theta, df_geom.phi, alpha=0.1)
 plt.show()
 
 # %%%% Import tracks & run pcf2d
 
 pm.setGraphicOptions(mode='screen')
 
-for ii in range(5, 10):   
+for ii in [2]:   
     dfName = dfNames[ii]
     df = pd.read_csv(os.path.join(dstDir, dfName), sep='\t')
     title = '_'.join(dfName.split('_')[:5])
     
     for jj in [1000]:
-        df_j = df[df['frame'] == jj]
+        df_j = df[df['frame'] == jj+1]
+        im = ufun.load_stack_region(tifPaths[ii], time_indices=[jj])[0]
         title_j = title + f' - Frame no {jj:.0f}'
         fName_j = title + f'_Fn{jj:.0f}_PCF.png'
         XX, YY = df_j.x*UmPerPix, df_j.y*UmPerPix
         XXYY = np.array([XX, YY]).T
         
-        fig, axes = plt.subplots(1, 3, figsize=(12, 4), layout='compressed')
-        ax = axes[0]
-        ax.axis('equal')
+        fig, axes = plt.subplots(2, 2, figsize=(8, 8), layout='compressed')
+        axes_f = axes.flatten()
+        
+        ax = axes_f[0]
+        ax.set_aspect('equal', adjustable='box')
+        ax.imshow(im, cmap='gray')
+        ax.plot(XX/UmPerPix, YY/UmPerPix, ls='', marker='.',  markersize=1, color='red')
+        ax.set_xlabel(r'$x\ (px)$')
+        ax.set_ylabel(r'$y\ (px)$')
+        ax.set_xlim([0, 511])
+        ax.set_ylim([0, 511])
+        
+        ax = axes_f[1]
+        ax.set_aspect('equal', adjustable='box')
         ax.plot(XX, YY, ls='', marker='.')
         ax.set_xlabel(r'$x\ (\mu m)$')
         ax.set_ylabel(r'$y\ (\mu m)$')
-        ax.set_xlim([0, 512*UmPerPix])
-        ax.set_ylim([0, 512*UmPerPix])
+        ax.set_xlim([0, 511*UmPerPix])
+        ax.set_ylim([0, 511*UmPerPix])
         
         array_positions = XXYY
         bins_distances = np.arange(0, 15, 0.2)
@@ -3050,7 +3108,7 @@ for ii in range(5, 10):
         (g_of_r_normalized, radii) = out
         N_of_r_normalized = 2*np.pi * np.array([np.sum(radii[:k]*g_of_r_normalized[:k]) for k in range(len(g_of_r_normalized))])
         
-        ax = axes[1]
+        ax = axes_f[2]
         ax.plot(radii, g_of_r_normalized, color=pm.cL_Set2[0])
         ax.set_xlabel(r'$r\ (\mu m)$')
         ax.set_ylabel(r'$G(r)$')
@@ -3058,7 +3116,7 @@ for ii in range(5, 10):
         ax.axhline(1, linestyle=':', color='gray')
 
         
-        ax = axes[2]
+        ax = axes_f[3]
         ax.set_xscale('log')
         ax.set_yscale('log')
         idx_start_fit = 30
@@ -3080,11 +3138,336 @@ for ii in range(5, 10):
         ax.set_xlabel(r'$r\ (\mu m)$')
         ax.set_ylabel(r'$N(r)$')
         
-        fig.suptitle(title_j)
-        figpath = os.path.join(dstDir, fName_j)
-        fig.savefig(figpath, dpi=500, )
+        # fig.suptitle(title_j)
+        # figpath = os.path.join(dstDir, fName_j)
+        # fig.savefig(figpath, dpi=500, )
+        
+# %%%% GPT
+
+
+def sample_white_pixels(binary_image, M, seed=None):
+    """
+    Randomly select M reference points from all white pixels.
+
+    Parameters
+    ----------
+    binary_image : 2D numpy array
+        Binary image. Non-zero pixels are treated as objects.
+    M : int
+        Number of reference points.
+    seed : int or None
+        Random seed.
+
+    Returns
+    -------
+    selected_points : (M, 2) numpy array
+        Selected coordinates as (x, y).
+    all_points : (N, 2) numpy array
+        All white pixel coordinates as (x, y).
+    """
+
+    rng = np.random.default_rng(seed)
+
+    # All white pixels
+    all_points = np.argwhere(binary_image > 0)
+
+    N = len(all_points)
+
+    if M > N:
+        raise ValueError(
+            f"M={M} is larger than the number of white pixels N={N}."
+        )
+
+    # Random reference points
+    selected_idx = rng.choice(
+        N,
+        size=M,
+        replace=False
+    )
+
+    # Convert (row, col) = (y, x) to (x, y)
+    all_points = all_points[:, ::-1].astype(float)
+
+    selected_points = all_points[selected_idx]
+
+    return selected_points, all_points
+
+
+def ripley_K_sampled_references(
+    selected_points,
+    all_points,
+    image_shape,
+    r_values
+):
+    """
+    Compute local Ripley's K around M selected reference points,
+    using ALL N white pixels as neighbors.
+
+    Translation edge correction is applied.
+
+    Parameters
+    ----------
+    selected_points : (M, 2) numpy array
+        Reference points (x, y).
+    all_points : (N, 2) numpy array
+        Full point pattern (x, y).
+    image_shape : tuple
+        (height, width).
+    r_values : 1D numpy array
+        Radii.
+
+    Returns
+    -------
+    K_local : (M, len(r_values)) numpy array
+        Local K function for each reference point.
+
+    K_global : (len(r_values),) numpy array
+        Estimated global Ripley's K using M reference points.
+
+    """
+
+    H, W = image_shape
+
+    N = len(all_points)
+    M = len(selected_points)
+
+    area = W * H
+
+    # Intensity estimated using ALL points
+    lambda_hat = N / area
+
+    # Pairwise differences:
+    # selected points vs all points
+    dx = (
+        selected_points[:, None, 0]
+        - all_points[None, :, 0]
+    )
+
+    dy = (
+        selected_points[:, None, 1]
+        - all_points[None, :, 1]
+    )
+
+    distances = np.sqrt(dx**2 + dy**2)
+
+    # Translation edge correction
+    overlap = (
+        (W - np.abs(dx))
+        *
+        (H - np.abs(dy))
+    )
+
+    weights = np.zeros_like(overlap)
+
+    valid = overlap > 0
+
+    weights[valid] = area / overlap[valid]
+
+    # Remove self-pairs:
+    # A reference point is also present in all_points.
+    #
+    # We identify exact coordinate matches.
+    self_pairs = distances == 0
+
+    weights[self_pairs] = 0
+
+    # Local K for each reference point
+    K_local = np.zeros((M, len(r_values)))
+
+    for k, r in enumerate(r_values):
+
+        neighbors = distances <= r
+
+        K_local[:, k] = np.sum(
+            weights * neighbors,
+            axis=1
+        ) / lambda_hat
+
+    # Average over sampled reference points
+    K_global = K_local.mean(axis=0)
+
+    return K_local, K_global
+        
+# %%%% Import image, treat and & run pcf2d
+
+pm.setGraphicOptions(mode='screen')
+
+for ii in [2]:   
+    dfName = dfNames[ii]
+    df = pd.read_csv(os.path.join(dstDir, dfName), sep='\t')
+    title = '_'.join(dfName.split('_')[:5])
+    
+    for jj in [750]:
+        # df_j = df[df['frame'] == jj+1]
+        im = ufun.load_stack_region(tifPaths[ii], time_indices=[jj])[0]
+        title_j = title + f' - Frame no {jj+1:.0f}'
+        fName_j = title + f'_Fn{jj+1:.0f}_PCF.png'
+        # XX, YY = df_j.x*UmPerPix, df_j.y*UmPerPix
+        # XXYY = np.array([XX, YY]).T
+        
+        #### EQUALIZE
+        p1, p99 = np.percentile(im, (1, 99))
+        im_pt = skm.exposure.rescale_intensity(im, in_range=(p1, p99))   
+            
+        #### FILTER
+        k = 3
+        im_pt = cv2.medianBlur(im_pt, k)
+        
+        #### TOP_HAT
+        filterSize = (12, 12)
+        kernel = cv2.getStructuringElement(cv2.MORPH_RECT, filterSize)
+        im_pt = cv2.morphologyEx(im_pt, cv2.MORPH_TOPHAT, kernel)
+        p1, p99 = np.percentile(im_pt, (1, 99))
+        im_pt = skm.exposure.rescale_intensity(im_pt, in_range=(p1, p99))
+
+        #### BINARIZE
+        th = skm.filters.threshold_li(im_pt)
+        im_bin = (im_pt >= th)
+        k = 3
+        im_bin = ndi.binary_opening(im_bin)
         
         
+        M = 150
+
+        selected_points, all_points = sample_white_pixels(
+            im_bin,
+            M=M,
+            seed=41
+        )
+        
+        r_values = np.linspace(1, 100, 200)
+        
+        K_local, K_global = ripley_K_sampled_references(
+            selected_points,
+            all_points,
+            im_bin.shape,
+            r_values
+        )
+        
+        
+        
+
+        fig, axes = plt.subplots(1, 3, figsize=(12, 4), layout='compressed',
+                                 sharex=True, sharey=True)
+        axes_f = axes.flatten()
+        
+        ax = axes_f[0]
+        ax.set_aspect('equal', adjustable='box')
+        ax.imshow(im, cmap='gray')
+        ax.set_xlabel(r'$x\ (px)$')
+        ax.set_ylabel(r'$y\ (px)$')
+        ax.set_xlim([0, 511])
+        ax.set_ylim([0, 511])
+        
+        ax = axes_f[1]
+        ax.set_aspect('equal', adjustable='box')
+        ax.imshow(im_pt, cmap='gray')
+        ax.set_xlabel(r'$x\ (\mu m)$')
+        ax.set_ylabel(r'$y\ (\mu m)$')
+        ax.set_xlim([0, 511])
+        ax.set_ylim([0, 511])
+        
+        ax = axes_f[2]
+        ax.set_aspect('equal', adjustable='box')
+        ax.imshow(im_bin, cmap='gray')
+        ax.set_xlabel(r'$x\ (\mu m)$')
+        ax.set_ylabel(r'$y\ (\mu m)$')
+        ax.set_xlim([0, 511])
+        ax.set_ylim([0, 511])
+        
+        
+        fig, axes = plt.subplots(1, 3, figsize=(12, 4), layout='compressed')
+        axes_f = axes.flatten()
+        ax = axes_f[0]
+        ax.imshow(im_bin, cmap='gray')
+        ax.plot(
+            selected_points[:,0], selected_points[:,1],
+            ls='', marker='.',  markersize=3, color='red',
+        )
+        ax.set_xlabel(r'$x\ (\mu m)$')
+        ax.set_ylabel(r'$y\ (\mu m)$')
+        
+        ax = axes_f[1]
+        for i in range(M):
+            ax.plot(
+                r_values,
+                K_local[i, :],
+                alpha=0.05
+            )
+        ax.grid()
+        ax.set_xscale('log')
+        ax.set_yscale('log')
+        ax.set_xlabel("Radius r")
+        ax.set_ylabel("Local Ripley K(r)")
+        
+        ax = axes_f[2]
+        ax.plot(
+            r_values,
+            K_global,
+            linewidth=2
+        )
+        ax.set_xscale('log')
+        ax.set_yscale('log')
+        ax.set_xlabel("Radius r")
+        ax.set_ylabel("Ripley K(r)")
+        
+        
+        idx_start_fit = 10
+        xfit = np.log(r_values[idx_start_fit:])
+        yfit = np.log(K_global[idx_start_fit:])
+        parms, res = ufun.fitLineHuber(xfit, yfit)
+        b, a = parms
+        k, A = a, np.exp(b)
+        xx = r_values[idx_start_fit:]
+        ax.plot(xx, A*xx**k, lw=1.5,
+                label=r'Fit $y=Ax^k$' + f'\nk={k:.2f}')
+        ax.legend()
+        ax.grid()
+
+        
+        # array_positions = XXYY
+        # bins_distances = np.arange(0, 15, 0.2)
+        
+        # out = tbsa.pcf2d(array_positions, bins_distances, 
+        #           coord_border=None, coord_holes=None, fast_method=False,
+        #           show_timing=False, plot=False, full_output=False)
+        
+        # (g_of_r_normalized, radii) = out
+        # N_of_r_normalized = 2*np.pi * np.array([np.sum(radii[:k]*g_of_r_normalized[:k]) for k in range(len(g_of_r_normalized))])
+        
+        # ax = axes_f[2]
+        # ax.plot(radii, g_of_r_normalized, color=pm.cL_Set2[0])
+        # ax.set_xlabel(r'$r\ (\mu m)$')
+        # ax.set_ylabel(r'$G(r)$')
+        # # ax.grid()
+        # ax.axhline(1, linestyle=':', color='gray')
+
+        
+        # ax = axes_f[3]
+        # ax.set_xscale('log')
+        # ax.set_yscale('log')
+        # idx_start_fit = 30
+        
+
+        # ax.plot(radii[:], N_of_r_normalized[:],
+        #         'k.', label='Data')
+        
+        # xfit = np.log(radii[idx_start_fit:])
+        # yfit = np.log(N_of_r_normalized[idx_start_fit:])
+        # parms, res = ufun.fitLineHuber(xfit, yfit)
+        # b, a = parms
+        # k, A = a, np.exp(b)
+        # xx = radii[idx_start_fit:]
+        # ax.plot(xx, A*xx**k, lw=1.5,
+        #         label=r'Fit $y=Ax^k$' + f'\nk={k:.2f}')
+        # ax.legend()
+        # ax.grid()
+        # ax.set_xlabel(r'$r\ (\mu m)$')
+        # ax.set_ylabel(r'$N(r)$')
+        
+        # fig.suptitle(title_j)
+        # figpath = os.path.join(dstDir, fName_j)
+        # fig.savefig(figpath, dpi=500, )
     
 # %%% Compare MSD for DDM and SPT
 
@@ -3675,6 +4058,17 @@ y = yc + ay*np.cos(aa) + by*np.sin(aa)
 xn = x + (np.random.rand(len(aa)) - 0.5) * 1
 yn = y + (np.random.rand(len(aa)) - 0.5) * 1
 
+out = ufun.fit_ellipse_fixedCenter(xn, yn, xc, yc, mode='cartesian')
+xc0, yc0, a, b, theta = out
 
+
+xplot, yplot = ufun.get_ellipse_xy(xc, yc, a, b, theta, aa=aa)
+
+
+fig, ax = plt.subplots(1, 1)
+ax.set_aspect('equal')
+ax.plot(xn, yn, 'k.')
+ax.plot(xplot, yplot, 'r-', lw=0.5)
+plt.show()
 
 

@@ -907,6 +907,26 @@ def fit_ellipse(x, y, mode='cartesian'):
     return(out)
 
 
+def fit_ellipse_fixedCenter(x, y, xc, yc, mode='cartesian'):
+    x = x - xc
+    y = y - yc
+    A = np.stack([x**2, x * y, y**2]).T
+    b = np.ones_like(x)
+    w = np.linalg.lstsq(A, b)[0].squeeze()
+    
+    if mode=='cartesian':
+        w = [x for x in w] + [0, 0]
+        out = ellipse_conique2cartesian(w)
+        # xc, yc, a, b, theta
+        
+    elif mode=='conique':
+        out = [x for x in w] + [0, 0, -1]
+        # [A B C D E F]
+        # Ax² + Bxy + Cy² + Dx + Ey + F = 0
+        
+    return(out)
+
+
 def get_ellipse_xy(xc, yc, a, b, theta, aa=[]):
     if len(aa)==0:
         aa = np.linspace(0, 2*np.pi, 72)
