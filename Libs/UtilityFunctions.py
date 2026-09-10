@@ -890,62 +890,59 @@ def fitCircle_withFixedR(contour, R_set, loss = 'huber'):
     return(center, R)
 
 
-def __fit_ellipse(x, y):
-    x, y = x[:, np.newaxis], y[:, np.newaxis]
-    D = np.hstack((x * x, x * y, y * y, x, y, np.ones_like(x)))
-    S, C = np.dot(D.T, D), np.zeros([6, 6])
-    C[0, 2], C[2, 0], C[1, 1] = 2, 2, -1
-    U, s, V = np.linalg.svd(np.dot(np.linalg.inv(S), C))
-    A = U[:, 0]
-    return(A)
+def fit_ellipse(x, y, mode='cartesian'):
+    A = np.stack([x**2, x * y, y**2, x, y]).T
+    b = np.ones_like(x)
+    w = np.linalg.lstsq(A, b)[0].squeeze()
+    
+    if mode=='cartesian':
+        out = ellipse_conique2cartesian(w)
+        # xc, yx, a, b, theta
+        
+    elif mode=='conique':
+        out = [x for x in w] + [-1]
+        # [A B C D E F]
+        # Ax² + Bxy + Cy² + Dx + Ey + F = 0
+        
+    return(out)
 
-def ellipse_center(A):
-    b, c, d, f, g, A = A[1] / 2, A[2], A[3] / 2, A[4] / 2, A[5], A[0]
-    num = b * b - A * c
-    x0 = (c * d - b * f) / num
-    y0 = (A * f - b * d) / num
-    return(np.array([x0, y0]))
 
-def ellipse_axis_length(A):
-    b, c, d, f, g, A = A[1] / 2, A[2], A[3] / 2, A[4] / 2, A[5], A[0]
-    up = 2 * (A * f * f + c * d * d + g * b * b - 2 * b * d * f - A * c * g)
-    down1 = (b * b - A * c) * (
-        (c - A) * np.sqrt(1 + 4 * b * b / ((A - c) * (A - c))) - (c + A)
-    )
-    down2 = (b * b - A * c) * (
-        (A - c) * np.sqrt(1 + 4 * b * b / ((A - c) * (A - c))) - (c + A)
-    )
-    res1 = np.sqrt(up / down1)
-    res2 = np.sqrt(up / down2)
-    return(np.array([res1, res2]))
+def get_ellipse_xy(xc, yc, a, b, theta, aa=[]):
+    if len(aa)==0:
+        aa = np.linspace(0, 2*np.pi, 72)
+    else:
+        pass
+    a_x, a_y = a*np.cos(theta), a*np.sin(theta)
+    b_x, b_y = -b*np.sin(theta), b*np.cos(theta)
+    x = xc + a_x*np.cos(aa) + b_x*np.sin(aa)
+    y = yc + a_y*np.cos(aa) + b_y*np.sin(aa)
+    return(x, y)
+    
 
-def ellipse_angle_of_rotation(A):
-    b, c, d, f, g, A = A[1] / 2, A[2], A[3] / 2, A[4] / 2, A[5], A[0]
-    return(atan2(2 * b, (A - c)) / 2)
+def ellipse_conique2cartesian(w):
+    [A, B, C, D, E] = w
+    F = -1
+    det = B**2 - 4*A*C
+    xc = (2*C*D - B*E)/det
+    yc = (2*A*E - B*D)/det
+    theta = 0.5*np.atan2(-B, C-A)
+    
+    K = 2*(A*(E**2) + C*(D**2) - B*D*E + det*F)
+    ka = (A + C) + ((A-C)**2 + B**2)**0.5
+    kb = (A + C) - ((A-C)**2 + B**2)**0.5
+    a = -((K * ka)**0.5) / det
+    b = -((K * kb)**0.5) / det
+    return(xc, yc, a, b, theta)
 
-def fitEllipse(x, y):
-    """@brief fit an ellipse to supplied data points: the 5 params
-        returned are:
-
-        M - major axis length
-        m - minor axis length
-        cx - ellipse centre (x coord.)
-        cy - ellipse centre (y coord.)
-        phi - rotation angle of ellipse bounding box
-
-    @param x first coordinate of points to fit (array)
-    @param y second coord. of points to fit (array)
-    """
-    A = __fit_ellipse(x, y)
-    centre = ellipse_center(A)
-    phi = ellipse_angle_of_rotation(A)
-    M, m = ellipse_axis_length(A)
-    # assert that the major axix M > minor axis m
-    if m > M:
-        M, m = m, M
-    # ensure the angle is betwen 0 and 2*pi
-    phi -= 2 * np.pi * int(phi / (2 * np.pi))
-    return([M, m, centre[0], centre[1], phi])
+def ellipse_cartesian2conique(xc, yc, a, b, theta):
+    A = (a*np.sin(theta))**2 + (b*np.cos(theta))**2
+    B = 2*(b**2 - a**2) * np.sin(theta) * np.cos(theta)
+    C = (a*np.cos(theta))**2 + (b*np.sin(theta))**2
+    D = -2*A*xc - B*yc
+    E = -B*xc - 2*C*yc
+    F = A*(xc**2) + B*xc*yc + C*(yc**2) - a**2
+    w = [A, B, C, D, E]
+    return(w, F)
 
 
 def contour_to_mask(shape, contour):

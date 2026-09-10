@@ -286,7 +286,7 @@ def tracks_trajectories(mainDir, filesInfo, SCALE, FPS, Rb,
     
 def tracks_calibration(tracks_data, expLabel = '',
                        saveResults = True, savePlots = True, saveDir = '',
-                       return_fig = 0, MagR=60, Mag_dX0=0):
+                       return_fig = 0, Mag_dX0=0, MagR=60):
     
     # MagR = 60 # µm - Typical Diameter
     
@@ -319,6 +319,7 @@ def tracks_calibration(tracks_data, expLabel = '',
     for ax in axes1[:2]:
         circle1 = plt.Circle((Mag_dX0, 0), MagR, color='dimgrey')
         ax.add_patch(circle1)
+        ax.plot([0], [0], 'rP')
         # ax.axvspan(wall_L, wall_R, color='lightgray', zorder=0)
         ax.set_xlim([0, 800])
         ax.set_ylim([-400, +400])
@@ -338,7 +339,7 @@ def tracks_calibration(tracks_data, expLabel = '',
 
     # Double Expo
     V_popt_2exp, V_pcov_2exp = optimize.curve_fit(doubleExpo, all_D, all_V, 
-                           p0 = [1000, 50, 100, 1000], 
+                           p0 = [50, 100, 5, 500], 
                            bounds=([0, 0, 0, 0], [np.inf, np.inf, np.inf, np.inf]))
     V_fit_2exp = doubleExpo(D_plot, *V_popt_2exp)
     label_2exp = r'$\bf{A \cdot exp(-x/k_1) + B \cdot exp(-x/k_2)}$' + '\n'
@@ -394,6 +395,8 @@ def tracks_calibration(tracks_data, expLabel = '',
     # all_D = all_D[filterD]
     # all_V = all_V[filterD]
     # all_F = all_F[filterD]
+    D_lowRange = np.percentile(all_D, 0.01)
+    D_highRange = np.percentile(all_D, 99.99)
     
     #### 3.1 Final fits
     D_plot = np.linspace(1, 5000, 500)
@@ -401,7 +404,7 @@ def tracks_calibration(tracks_data, expLabel = '',
     #### 3.2 Velocity
     # Double Expo
     V_popt_2exp, V_pcov_2exp = optimize.curve_fit(doubleExpo, all_D, all_V, 
-                           p0 = [1000, 50, 100, 1000], 
+                           p0 = [50, 100, 5, 500], 
                            bounds=([0, 0, 0, 0], [np.inf, np.inf, np.inf, np.inf]))
     V_fit_2exp = doubleExpo(D_plot, *V_popt_2exp)
     V_label_2exp = r'$\bf{A \cdot exp(-x/k_1) + B \cdot exp(-x/k_2)}$' + '\n'
@@ -418,7 +421,7 @@ def tracks_calibration(tracks_data, expLabel = '',
     #### 3.3 Force
     # Double Expo
     F_popt_2exp, F_pcov_2exp = optimize.curve_fit(doubleExpo, all_D, all_F, 
-                           p0 = [1000, 50, 100, 1000], 
+                           p0 = [25, 100, 2.5, 500], 
                            bounds=([0, 0, 0, 0], [np.inf, np.inf, np.inf, np.inf]))
     F_fit_2exp = doubleExpo(D_plot, *F_popt_2exp)
     F_label_2exp = r'$\bf{A \cdot exp(-x/k_1) + B \cdot exp(-x/k_2)}$' + '\n'
@@ -512,6 +515,9 @@ def tracks_calibration(tracks_data, expLabel = '',
                        'V_popt_pL':V_popt_pL,
                        'F_popt_2exp':F_popt_2exp,
                        'F_popt_pL':F_popt_pL,
+                       'Mag_dX0':Mag_dX0,
+                       'D_lowRange':D_lowRange,
+                       'D_highRange':D_highRange,
                        'all_D':all_D,
                        'all_V':all_V,
                        'all_F':all_F,
@@ -732,6 +738,7 @@ def runCalibration(mainDir, SCALE, Rb, Mag_dX0, visco, filesInfo,
         tracks_data += rawTracks_pretreatment(all_tracks, SCALE, FPS, 
                                 MagX, MagY, MagR, Rb, CropX, CropY, Mag_dX0,
                                 mode = 'calibMag', visco = visco)
+        
     # 2. Run analysis
     tracks_calibration(tracks_data, expLabel, saveResults, savePlots, saveDir,
                        MagR=np.mean(list_MagR), Mag_dX0=Mag_dX0)
@@ -997,15 +1004,15 @@ def compareCalibrations(srcDir, labelList = [],
 
 # %% Test the new function
 
-mainDir = "C:/Users/josep/Desktop/Seafile/AnalysisPulls"
-expInfo = pd.read_csv(os.path.join(mainDir, "ExperimentalConditions_CapillaryViscosity.csv"))
-saveResults = True
-savePlots = True
-saveDir = os.path.join(mainDir, "Results_CapillaryViscosity")
+# mainDir = "C:/Users/josep/Desktop/Seafile/AnalysisPulls"
+# expInfo = pd.read_csv(os.path.join(mainDir, "ExperimentalConditions_CapillaryViscosity.csv"))
+# saveResults = True
+# savePlots = True
+# saveDir = os.path.join(mainDir, "Results_CapillaryViscosity")
 
-runViscoAnalysis(mainDir, expInfo,  
-                     saveResults, savePlots, saveDir, 
-                     fileName = 'Results_ViscoCapillary')
+# runViscoAnalysis(mainDir, expInfo,  
+#                      saveResults, savePlots, saveDir, 
+#                      fileName = 'Results_ViscoCapillary')
     
     
     

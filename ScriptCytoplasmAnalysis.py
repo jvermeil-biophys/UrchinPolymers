@@ -37,6 +37,8 @@ from scipy.signal import savgol_filter
 from scipy.optimize import curve_fit
 from scipy.spatial import ConvexHull
 
+from shapely.geometry import MultiPoint, Polygon
+
 import Libs.PlotMaker as pm
 import Libs.UrchinPaths as up
 import Libs.CalibrationData as cd
@@ -2961,8 +2963,9 @@ plt.show()
 
 pm.setGraphicOptions(mode='screen')
 fig, ax = plt.subplots(figsize=(5, 5))
-ax.set_xlim([0, 250])
-ax.set_ylim([0, 50])
+# ax.set_xlim([0, 250])
+# ax.set_ylim([0, 50])
+ax.set_aspect('equal', adjustable='box')
 
 colors = pm.cL_Set21
 
@@ -2970,7 +2973,7 @@ for ii in range(0, 1):
     dfName = dfNames[ii]
     df = pd.read_csv(os.path.join(dstDir, dfName), sep='\t')
     Lp = df['particle'].unique().astype(int)
-    for j in Lp[:3]:
+    for j in Lp[:4]:
         c = colors[j%len(colors)]
         df_j = df[df['particle']==j]
         # x, y = 
@@ -2985,20 +2988,30 @@ for ii in range(0, 1):
         ax.plot(Hx_plot, Hy_plot,
                 c=c, marker='.', ls='', ) #ls='-', lw=1)
         
-        [M, m, cx, cy, phi] = ufun.fitEllipse(np.array(hull_xy[0]), 
-                                              np.array(hull_xy[1]))
-        print(m)
-
-        theta = np.linspace(0, 2*np.pi, 360)
-        xp = cx + M*np.cos(phi)*np.cos(theta) - m*np.sin(phi)*np.sin(theta)
-        yp = cy + M*np.cos(phi)*np.sin(theta) + m*np.sin(phi)*np.cos(theta)
-        ax.plot(xp, yp, 'k-', lw=0.5)
+        # [xc, yc, a, b, phi] = ufun.fit_ellipse(np.array(hull_xy[0]), 
+        #                                   np.array(hull_xy[1]), 
+        #                                   mode='cartesian')
+        # aa = np.linspace(0, 2*np.pi, 360)
+        # xp, yp = ufun.get_ellipse_xy(xc, yc, a, b, phi, aa=aa)
+        # ax.plot(xp, yp, 'k-', lw=0.5)
         
-        # Ell = mpl.patches.Ellipse(xy=(50, 20),
-        #         width=10, height=5,
-        #         angle=1 * (180/np.pi),
-        #         facecolor='None', edgecolor='k', lw=0.5)
-        # ax.add_patch(Ell)
+        # create a minimum rotated rectangle containing all the points
+        points = np.array(hull_xy).T 
+        multipoints = MultiPoint(points)
+        polygon = multipoints.minimum_rotated_rectangle
+        Xr, Yr = polygon.exterior.coords.xy
+        ax.plot(Xr, Yr, 'k-', lw=0.5)
+        
+        d1 = ((Xr[0]-Xr[1])**2 + (Yr[0]-Yr[1])**2)**0.5
+        d2 = ((Xr[2]-Xr[1])**2 + (Yr[2]-Yr[1])**2)**0.5
+        print(d1, d2)
+        L, l = max(d1, d2), min(d1, d2)
+        AR = L/l
+        
+        V1 = (Xr[1]-Xr[0], Yr[1]-Yr[0])
+        theta = np.atan2(V1[1], V1[0])
+        print(theta*180/np.pi)
+        
         
 plt.show()
 
@@ -3640,4 +3653,28 @@ ax.set_xlabel('exponent $\\alpha$')
 ax.set_ylabel('D ($\\mu m^2/s$)')
 
 plt.show()
+
+
+
+# %% Ellipse
+
+xc, yc = 6, -12
+a, b = 4, 6
+theta = 0.8*np.pi
+
+aa = np.linspace(0, 2*np.pi, 72)
+
+# (((x-xc)*np.cos(theta) + (y-yc)*np.sin(theta))/a)**2
+
+ax, ay = a*np.cos(theta), a*np.sin(theta)
+bx, by = -b*np.sin(theta), b*np.cos(theta)
+
+x = xc + ax*np.cos(aa) + bx*np.sin(aa)
+y = yc + ay*np.cos(aa) + by*np.sin(aa)
+
+xn = x + (np.random.rand(len(aa)) - 0.5) * 1
+yn = y + (np.random.rand(len(aa)) - 0.5) * 1
+
+
+
 
