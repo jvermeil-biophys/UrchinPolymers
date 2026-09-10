@@ -15,11 +15,58 @@ import matplotlib.pyplot as plt
 
 from scipy.optimize import curve_fit
 
-import PlotMaker as pm
-import UtilityFunctions as ufun
+import Libs.PlotMaker as pm
+import Libs.UtilityFunctions as ufun
 pm.setGraphicOptions(mode = 'screen', palette = 'Set2', colorList = pm.colorList10)
 
 # %% 2. Plot Rheometer
+
+# %%% Load files & analyse
+
+mainDir = 'C:/Users/Joseph/Desktop/RheoMacro/26-09-07_TestGlycerol_forCalibs/Best'
+
+listFiles = []
+listPaths = []
+
+lF = [f for f in os.listdir(mainDir) if (f.endswith('.csv') and f.startswith('2026-09-07'))]
+lP = [os.path.join(mainDir, f) for f in lF]
+listFiles += lF
+listPaths += lP
+
+tempTable = pd.read_csv(os.path.join(mainDir, 'TableTemperatures.csv'))
+
+dictResults = {'date':[],
+               'liquid':[],
+               'sample':[],
+               'meas no':[],
+               'viscosity':[],
+               'T thc':[],
+               'T pt100':[],
+               'file name':[],}
+
+for f, fp in zip(listFiles, listPaths):
+    if f.endswith('.csv') and not f.startswith('Results'):
+        blocks = f[:-4].split('_')
+        dictResults['date'].append(blocks[0])
+        dictResults['liquid'].append(blocks[2])
+        dictResults['sample'].append(blocks[4])
+        dictResults['meas no'].append(blocks[5])
+        dictResults['file name'].append(f)
+        
+        dictResults['T thc'].append(tempTable[tempTable['file name'] == f]['T thc'].values[0])
+        dictResults['T pt100'].append(tempTable[tempTable['file name'] == f]['T pt100'].values[0])
+        
+        path = fp
+        df = pd.read_csv(path, header = 3, sep='\t', #skiprows=2,
+                         on_bad_lines='skip', encoding='utf_8') # 'utf_16_le'
+        df = df.drop(df.columns[:2], axis = 1).drop(df.index[:2], axis = 0).reset_index(drop=True)
+        viscosity = np.median(df['Viscosity'].astype(float).values)        
+        dictResults['viscosity'].append(viscosity)
+
+        
+df_summary = pd.DataFrame(dictResults)
+df_summary.to_csv(os.path.join(mainDir, 'ResultsMacroRheo.csv'), index=False)
+
 
 # %%% Load files
 
@@ -74,8 +121,8 @@ df_summary.to_csv(os.path.join(mainDir, 'ResultsMacroRheo_Round04.csv'), index=F
 
 # mainDir = 'C:/Users/Joseph/Desktop/RheoMacro/2025-10-08+09+10_Rheology/'
 # fileName = '2025-10-08+09+10_AllMeasures.csv'
-mainDir = 'C:/Users/Joseph/Desktop/RheoMacro/25-10-30_Rheology/'
-fileName = '2025-10-30_AllMeasures.csv'
+mainDir = 'C:/Users/Joseph/Desktop/RheoMacro/26-09-07_TestGlycerol_forCalibs/'
+fileName = '2026-09-07_PP40_Gly80p_allMeasures.csv'
 filePath = os.path.join(mainDir, fileName)
 
 Names = []
@@ -101,7 +148,18 @@ with open(filePath, mode='r', encoding='utf_16_le') as f:
         with open(newFilePath, mode = 'x', encoding='utf_8') as nf:
             for fL in fileLines:
                 nf.write(fL)
-                
+
+# %%% Create temp table
+
+# mainDir = 'C:/Users/Joseph/Desktop/RheoMacro/26-09-07_TestGlycerol_forCalibs/'
+# listFiles = os.listdir(mainDir)
+# T_thc = ['']*len(listFiles)
+# T_pt100 = ['']*len(listFiles)
+# df = pd.DataFrame({'file name':listFiles,
+#                    'temp thermocouple':T_thc,
+#                    'temp pt100':T_pt100,
+#                    })
+# df.to_csv(os.path.join(mainDir, 'TableTemperatures.csv'), index=False)
             
 # %% 3. Plot Droplet Pulling
 
