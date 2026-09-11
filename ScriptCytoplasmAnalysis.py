@@ -39,6 +39,7 @@ import matplotlib.pyplot as plt
 from scipy.signal import savgol_filter
 from scipy.optimize import curve_fit
 from scipy.spatial import ConvexHull
+from scipy.interpolate import make_splrep
 
 from shapely.geometry import MultiPoint, Polygon
 
@@ -52,9 +53,9 @@ import Libs.ToolboxStructureAnalysis as tbsa
 
 # %% Test the proper TF
 
-t = np.linspace(0, 2 * np.pi, 1024)
+t = np.linspace(0, 2 * np.pi, 64)
 A = np.array([np.sin(10*t)]).T
-B = np.ones((1, 1024))
+B = np.array([np.cos(5*t)])
 # B = np.array([np.cos(10*t)])
 # data2d = np.sin(t)[:, np.newaxis] * np.cos(t)[np.newaxis, :]
 im = A @ B
@@ -2928,6 +2929,15 @@ fig, ax = plt.subplots(1, 1, figsize=(5, 5))
 ax.set_xscale('log')
 ax.set_yscale('log')
 
+dict_res = {'label':[],
+            'D_full':[],
+            'k_full':[],
+            'D_f4':[],
+            'k_f4':[],
+            'D_l15':[],
+            'k_l15':[],
+            }
+
 for ii in range(len(msdNames)):
     df = pd.read_csv(os.path.join(dstDir, dfNames[ii]), sep='\t')
     res_emsd = pd.read_csv(os.path.join(dstDir, msdNames[ii]), sep='\t')
@@ -2944,10 +2954,18 @@ for ii in range(len(msdNames)):
     
     Tc = (D_f4/D_l15)**(1/(k_l15-k_f4))  
 
-    
+    label = msdNames[ii].split('_')[2]
 
     ax.plot(T, MSD, ls='', marker='o', color=pm.cL_Set21[ii], alpha=0.5,
-            markersize=4, label=msdNames[ii].split('_')[2])
+            markersize=4, label=label)
+    
+    dict_res['label'].append(label)
+    dict_res['D_full'].append(D_full)
+    dict_res['k_full'].append(k_full)
+    dict_res['D_f4'].append(D_f4)
+    dict_res['k_f4'].append(k_f4)
+    dict_res['D_l15'].append(D_l15)
+    dict_res['k_l15'].append(k_l15)
     
 
 Xp1 = np.array([1e-1, 5e-1])
@@ -2960,20 +2978,49 @@ ax.set_xlim([0.8e-1, 0.5e1])
 ax.set_ylim([2e-3, 0.4e0])
 ax.set_ylabel('MSD (um²)')
 ax.set_xlabel('T (s)')
+
+plt.show()
+
+
+df_Diffusion = pd.DataFrame(dict_res)
+
+fig, axes = plt.subplots(2, 1, figsize=(7, 6), sharex = True, layout='compressed')
+ax = axes[0]
+ax.plot(np.arange(len(df_Diffusion)), df_Diffusion.D_full, ls='-', marker='o', label=r'$D_{full}$')
+ax.plot(np.arange(len(df_Diffusion)), df_Diffusion.D_f4, ls='-', marker='o', label=r'$D_{first4}$')
+ax.plot(np.arange(len(df_Diffusion)), df_Diffusion.D_l15, ls='-', marker='o', label=r'$D_{last15}$')
+ax.set_ylabel(r'$D\ (\mu m^2/s)$')
+ax.legend(loc='center left', bbox_to_anchor=(1, 0.5))
+ax.grid()
+
+ax = axes[1]
+ax.plot(np.arange(len(df_Diffusion)), df_Diffusion.k_full, ls='-', marker='o', label=r'$\alpha_{full}$')
+ax.plot(np.arange(len(df_Diffusion)), df_Diffusion.k_f4, ls='-', marker='o', label=r'$\alpha_{first4}$')
+ax.plot(np.arange(len(df_Diffusion)), df_Diffusion.k_l15, ls='-', marker='o', label=r'$\alpha_{last15}$')
+ax.set_ylabel(r'$\alpha$')
+ax.set_xticks(np.arange(len(df_Diffusion)))
+ax.set_xticklabels(df_Diffusion['label'].values, rotation = 20)
+ax.set_xlabel('Tpf (min)')
+ax.legend(loc='center left', bbox_to_anchor=(1, 0.5))
+ax.grid()
+
 plt.show()
 
 # %%%% Import tracks & analyse shape of explored zone
 
-pm.setGraphicOptions(mode='screen')
-fig, ax = plt.subplots(figsize=(5, 5))
-ax.set_xlim([0, 511])
-ax.set_ylim([0, 511])
-ax.set_aspect('equal', adjustable='box')
+idx_films = [0, 1, 2, 3]
 
+pm.setGraphicOptions(mode='screen')
+fig, axes = plt.subplots(2, len(idx_films), figsize=(len(idx_films)*3, 6),
+                         layout='compressed')
 colors = pm.cL_Set21
 
-for ii in range(2, 3):  
+dict_res = {'label':[],
+            'AngleDiffs':[]}
+
+for ii in idx_films:
     dfName = dfNames[ii]
+    title = '_'.join(dfName.split('_')[1:3])
     df = pd.read_csv(os.path.join(dstDir, dfName), sep='\t')
     Lp = df['particle'].unique().astype(int)
     dict_geom = {'particle':[],
@@ -2985,6 +3032,12 @@ for ii in range(2, 3):
                  'l':[],
                  'AR':[],
                  'phi':[],}
+    
+    ax = axes[0, ii]
+    ax.set_xlim([0, 511])
+    ax.set_ylim([0, 511])
+    ax.set_aspect('equal', adjustable='box')
+    ax.set_title(title)
     
     for j in Lp[:]:
         c = colors[j%len(colors)]
@@ -3000,12 +3053,13 @@ for ii in range(2, 3):
         out = ufun.fit_ellipse_fixedCenter(xy_ch[:, 0], xy_ch[:, 1], 
                                            xc, yc, mode='cartesian')
         _, _, a, b, phi = out
-        aa = np.linspace(0, 2*np.pi, 360)
-        xp, yp = ufun.get_ellipse_xy(xc, yc, a, b, phi, aa=aa)
         
-        # ax.plot(xy_ch[:, 0], xy_ch[:, 1],
-        #         c=c, marker='.', ls='', ) #ls='-', lw=1)
-        ax.plot(xp, yp, c=c, ls='-', lw=0.5)
+        if j%10 == 0:
+            aa = np.linspace(0, 2*np.pi, 360)
+            xp, yp = ufun.get_ellipse_xy(xc, yc, a, b, phi, aa=aa)
+            # ax.plot(xy_ch[:, 0], xy_ch[:, 1],
+            #         c=c, marker='.', ls='', ) #ls='-', lw=1)
+            ax.plot(xp, yp, c=c, ls='-', lw=0.5)
         
         
         
@@ -3047,18 +3101,58 @@ for ii in range(2, 3):
         
         # V1 = (Xr[1]-Xr[0], Yr[1]-Yr[0])
         # theta = np.atan2(V1[1], V1[0])
-        # print(theta*180/np.pi)
-        
-        
+        # print(theta*180/np.pi
+    
+    plt.show()
+    
+    
+    df_geom = pd.DataFrame(dict_geom)
+    df_geom['theta_bin'] = (df_geom['theta'].values * 18/np.pi).astype(int) * 10 + 5
+    
+    C = np.cos(df_geom['theta'].values) * np.cos(df_geom['phi'].values) + np.sin(df_geom['theta'].values) * np.sin(df_geom['phi'].values)
+    DA = np.acos(C)
+    
+    ax = axes[1, ii]
+    ax.hist(DA, bins=40)
+    ax.set_ylabel('N trajectories')
+    ax.set_xlabel(r'$|\theta - \phi|$ (rad)')
+    ax.set_xticks([0, np.pi/8, np.pi/4, 3*np.pi/8, np.pi/2])
+    ax.set_xticklabels(['0', r'$\pi/8$', r'$\pi/4$', r'$3\pi/8$', r'$\pi/2$'])
+    ax.grid()
+    
+    
+    dict_res['label'].append(title)
+    dict_res['AngleDiffs'].append(DA)
+
 plt.show()
+
+
+# fig, ax = plt.subplots(1, 1, figsize=(6, 6),
+#                          layout='compressed')
+# for i, L in enumerate(dict_res['label']):
+#     ax.hist(dict_res['AngleDiffs'][i], bins=30, 
+#             density=True, alpha=1, label=L, histtype='step')
+# ax.legend()
+# ax.set_ylabel('Frequency')
+# ax.set_xlabel(r'$|\theta - \phi|$ (rad)')
+# plt.show()
+
 
 # %%%%
 
 df_geom = pd.DataFrame(dict_geom)
 df_geom['theta_bin'] = (df_geom['theta'].values * 18/np.pi).astype(int) * 10 + 5
 
-fig, ax = plt.subplots(1, 1)
-ax.scatter(df_geom.theta, df_geom.phi, alpha=0.1)
+C = np.cos(df_geom['theta'].values) * np.cos(df_geom['phi'].values) + np.sin(df_geom['theta'].values) * np.sin(df_geom['phi'].values)
+DA = np.acos(C)
+
+fig, ax = plt.subplots(1, 1, layout='compressed')
+ax.hist(DA, bins=40)
+ax.set_ylabel('N trajectories')
+ax.set_xlabel(r'$|\theta - \phi|$ (rad)')
+ax.set_xticks([0, np.pi/8, np.pi/4, 3*np.pi/8, np.pi/2])
+ax.set_xticklabels(['0', r'$\pi/8$', r'$\pi/4$', r'$3\pi/8$', r'$\pi/2$'])
+ax.grid()
 plt.show()
 
 # %%%% Import tracks & run pcf2d
@@ -3070,21 +3164,25 @@ for ii in [2]:
     df = pd.read_csv(os.path.join(dstDir, dfName), sep='\t')
     title = '_'.join(dfName.split('_')[:5])
     
-    for jj in [1000]:
+    for jj in [1750]:
         df_j = df[df['frame'] == jj+1]
         im = ufun.load_stack_region(tifPaths[ii], time_indices=[jj])[0]
-        title_j = title + f' - Frame no {jj:.0f}'
-        fName_j = title + f'_Fn{jj:.0f}_PCF.png'
+        title_j = title + f' - Frame no {jj+1:.0f}'
+        fName_j = title + f'_Fn{jj+1:.0f}_PCF.png'
         XX, YY = df_j.x*UmPerPix, df_j.y*UmPerPix
         XXYY = np.array([XX, YY]).T
         
         fig, axes = plt.subplots(2, 2, figsize=(8, 8), layout='compressed')
         axes_f = axes.flatten()
         
+        #### EQUALIZE
+        p1, p99 = np.percentile(im, (1, 99))
+        im_pt = skm.exposure.rescale_intensity(im, in_range=(p1, p99))
+        
         ax = axes_f[0]
         ax.set_aspect('equal', adjustable='box')
-        ax.imshow(im, cmap='gray')
-        ax.plot(XX/UmPerPix, YY/UmPerPix, ls='', marker='.',  markersize=1, color='red')
+        ax.imshow(im_pt, cmap='gray')
+        ax.plot(XX/UmPerPix, YY/UmPerPix, ls='', marker='.',  markersize=2, color='red')
         ax.set_xlabel(r'$x\ (px)$')
         ax.set_ylabel(r'$y\ (px)$')
         ax.set_xlim([0, 511])
@@ -3138,156 +3236,13 @@ for ii in [2]:
         ax.set_xlabel(r'$r\ (\mu m)$')
         ax.set_ylabel(r'$N(r)$')
         
+        fig.suptitle(title_j + ' - points spatial stats')
+        
         # fig.suptitle(title_j)
         # figpath = os.path.join(dstDir, fName_j)
         # fig.savefig(figpath, dpi=500, )
         
-# %%%% GPT
 
-
-def sample_white_pixels(binary_image, M, seed=None):
-    """
-    Randomly select M reference points from all white pixels.
-
-    Parameters
-    ----------
-    binary_image : 2D numpy array
-        Binary image. Non-zero pixels are treated as objects.
-    M : int
-        Number of reference points.
-    seed : int or None
-        Random seed.
-
-    Returns
-    -------
-    selected_points : (M, 2) numpy array
-        Selected coordinates as (x, y).
-    all_points : (N, 2) numpy array
-        All white pixel coordinates as (x, y).
-    """
-
-    rng = np.random.default_rng(seed)
-
-    # All white pixels
-    all_points = np.argwhere(binary_image > 0)
-
-    N = len(all_points)
-
-    if M > N:
-        raise ValueError(
-            f"M={M} is larger than the number of white pixels N={N}."
-        )
-
-    # Random reference points
-    selected_idx = rng.choice(
-        N,
-        size=M,
-        replace=False
-    )
-
-    # Convert (row, col) = (y, x) to (x, y)
-    all_points = all_points[:, ::-1].astype(float)
-
-    selected_points = all_points[selected_idx]
-
-    return selected_points, all_points
-
-
-def ripley_K_sampled_references(
-    selected_points,
-    all_points,
-    image_shape,
-    r_values
-):
-    """
-    Compute local Ripley's K around M selected reference points,
-    using ALL N white pixels as neighbors.
-
-    Translation edge correction is applied.
-
-    Parameters
-    ----------
-    selected_points : (M, 2) numpy array
-        Reference points (x, y).
-    all_points : (N, 2) numpy array
-        Full point pattern (x, y).
-    image_shape : tuple
-        (height, width).
-    r_values : 1D numpy array
-        Radii.
-
-    Returns
-    -------
-    K_local : (M, len(r_values)) numpy array
-        Local K function for each reference point.
-
-    K_global : (len(r_values),) numpy array
-        Estimated global Ripley's K using M reference points.
-
-    """
-
-    H, W = image_shape
-
-    N = len(all_points)
-    M = len(selected_points)
-
-    area = W * H
-
-    # Intensity estimated using ALL points
-    lambda_hat = N / area
-
-    # Pairwise differences:
-    # selected points vs all points
-    dx = (
-        selected_points[:, None, 0]
-        - all_points[None, :, 0]
-    )
-
-    dy = (
-        selected_points[:, None, 1]
-        - all_points[None, :, 1]
-    )
-
-    distances = np.sqrt(dx**2 + dy**2)
-
-    # Translation edge correction
-    overlap = (
-        (W - np.abs(dx))
-        *
-        (H - np.abs(dy))
-    )
-
-    weights = np.zeros_like(overlap)
-
-    valid = overlap > 0
-
-    weights[valid] = area / overlap[valid]
-
-    # Remove self-pairs:
-    # A reference point is also present in all_points.
-    #
-    # We identify exact coordinate matches.
-    self_pairs = distances == 0
-
-    weights[self_pairs] = 0
-
-    # Local K for each reference point
-    K_local = np.zeros((M, len(r_values)))
-
-    for k, r in enumerate(r_values):
-
-        neighbors = distances <= r
-
-        K_local[:, k] = np.sum(
-            weights * neighbors,
-            axis=1
-        ) / lambda_hat
-
-    # Average over sampled reference points
-    K_global = K_local.mean(axis=0)
-
-    return K_local, K_global
-        
 # %%%% Import image, treat and & run pcf2d
 
 pm.setGraphicOptions(mode='screen')
@@ -3297,10 +3252,10 @@ for ii in [2]:
     df = pd.read_csv(os.path.join(dstDir, dfName), sep='\t')
     title = '_'.join(dfName.split('_')[:5])
     
-    for jj in [750]:
+    for jj in [1750]:
         # df_j = df[df['frame'] == jj+1]
         im = ufun.load_stack_region(tifPaths[ii], time_indices=[jj])[0]
-        title_j = title + f' - Frame no {jj+1:.0f}'
+        title_j = title + f' - F {jj+1:.0f}'
         fName_j = title + f'_Fn{jj+1:.0f}_PCF.png'
         # XX, YY = df_j.x*UmPerPix, df_j.y*UmPerPix
         # XXYY = np.array([XX, YY]).T
@@ -3326,57 +3281,46 @@ for ii in [2]:
         k = 3
         im_bin = ndi.binary_opening(im_bin)
         
+        # PLOT PRETREATMENT
         
-        M = 150
-
-        selected_points, all_points = sample_white_pixels(
-            im_bin,
-            M=M,
-            seed=41
-        )
-        
-        r_values = np.linspace(1, 100, 200)
-        
-        K_local, K_global = ripley_K_sampled_references(
-            selected_points,
-            all_points,
-            im_bin.shape,
-            r_values
-        )
-        
-        
-        
-
-        fig, axes = plt.subplots(1, 3, figsize=(12, 4), layout='compressed',
-                                 sharex=True, sharey=True)
+        fig, axes = plt.subplots(1, 3, figsize=(12, 4), layout='compressed')
         axes_f = axes.flatten()
-        
         ax = axes_f[0]
-        ax.set_aspect('equal', adjustable='box')
         ax.imshow(im, cmap='gray')
         ax.set_xlabel(r'$x\ (px)$')
         ax.set_ylabel(r'$y\ (px)$')
-        ax.set_xlim([0, 511])
-        ax.set_ylim([0, 511])
         
         ax = axes_f[1]
-        ax.set_aspect('equal', adjustable='box')
         ax.imshow(im_pt, cmap='gray')
-        ax.set_xlabel(r'$x\ (\mu m)$')
-        ax.set_ylabel(r'$y\ (\mu m)$')
-        ax.set_xlim([0, 511])
-        ax.set_ylim([0, 511])
+        ax.set_xlabel(r'$x\ (px)$')
+        ax.set_ylabel(r'$y\ (px)$')
         
         ax = axes_f[2]
-        ax.set_aspect('equal', adjustable='box')
         ax.imshow(im_bin, cmap='gray')
-        ax.set_xlabel(r'$x\ (\mu m)$')
-        ax.set_ylabel(r'$y\ (\mu m)$')
-        ax.set_xlim([0, 511])
-        ax.set_ylim([0, 511])
+        ax.set_xlabel(r'$x\ (px)$')
+        ax.set_ylabel(r'$y\ (px)$')
+        
+        fig.suptitle(title_j + ' - pretreatment')
+        plt.show()
         
         
-        fig, axes = plt.subplots(1, 3, figsize=(12, 4), layout='compressed')
+        # COMPUTE SPATIAL STATS
+        M = 150
+        r_values = np.linspace(1, 300, 300)
+        selected_points, all_points = tbsa.sample_white_pixels(im_bin, M=M, seed=40)
+        
+        K_local, K_global = tbsa.ripley_K_sampled_references(selected_points,
+                                                             all_points,
+                                                             im_bin.shape,
+                                                             r_values)
+        L_global = (K_global/np.pi)**0.5
+        
+        spline_Kg = make_splrep(r_values, K_global, s=6)
+        Kg_splinified = spline_Kg(r_values)
+        spline_Kg_der = spline_Kg.derivative(nu=1)
+        G = spline_Kg_der(r_values) * 1/(2*np.pi*r_values)
+        
+        fig, axes = plt.subplots(2, 2, figsize=(8, 8), layout='compressed')
         axes_f = axes.flatten()
         ax = axes_f[0]
         ax.imshow(im_bin, cmap='gray')
@@ -3384,16 +3328,12 @@ for ii in [2]:
             selected_points[:,0], selected_points[:,1],
             ls='', marker='.',  markersize=3, color='red',
         )
-        ax.set_xlabel(r'$x\ (\mu m)$')
-        ax.set_ylabel(r'$y\ (\mu m)$')
+        ax.set_xlabel(r'$x\ (px)$')
+        ax.set_ylabel(r'$y\ (px)$')
         
         ax = axes_f[1]
         for i in range(M):
-            ax.plot(
-                r_values,
-                K_local[i, :],
-                alpha=0.05
-            )
+            ax.plot(r_values, K_local[i, :], alpha=0.05)
         ax.grid()
         ax.set_xscale('log')
         ax.set_yscale('log')
@@ -3401,28 +3341,42 @@ for ii in [2]:
         ax.set_ylabel("Local Ripley K(r)")
         
         ax = axes_f[2]
-        ax.plot(
-            r_values,
-            K_global,
-            linewidth=2
-        )
+        ax.plot(r_values, K_global, ls='', marker='.', label='K(r)')
+        ax.plot(r_values, Kg_splinified, linewidth=1.5, ls='-', label='spline rep', color='k')
         ax.set_xscale('log')
         ax.set_yscale('log')
         ax.set_xlabel("Radius r")
         ax.set_ylabel("Ripley K(r)")
-        
-        
-        idx_start_fit = 10
+        idx_start_fit = 30
         xfit = np.log(r_values[idx_start_fit:])
         yfit = np.log(K_global[idx_start_fit:])
         parms, res = ufun.fitLineHuber(xfit, yfit)
         b, a = parms
         k, A = a, np.exp(b)
         xx = r_values[idx_start_fit:]
-        ax.plot(xx, A*xx**k, lw=1.5,
-                label=r'Fit $y=Ax^k$' + f'\nk={k:.2f}')
+        ax.plot(xx, A*xx**k, lw=1.5, ls='--', color='red',
+                label=r'Fit $y=Ax^k$' + f'\nk={k:.2f}')        
         ax.legend()
         ax.grid()
+        
+
+        ax = axes_f[3]
+        ax.axhline(1, linestyle='--', color='gray', alpha=1)
+        ax.plot(r_values, G, linewidth=2, ls='-', label='g(r)')
+        # ax.set_xscale('log')
+        # ax.set_yscale('log')
+        ax.set_xlabel("Radius r")
+        ax.set_ylabel(r"$g(r)$")
+        
+        # ax = axes_f[4]
+        # ax.plot(r_values, L_global - r_values, linewidth=2, label='K(r)')
+        # # ax.set_xscale('log')
+        # # ax.set_yscale('log')
+        # ax.set_xlabel("Radius r")
+        # ax.set_ylabel(r"$\sqrt{K(r)/\pi} - r$")
+
+        fig.suptitle(title_j + ' - spatial stats')
+        plt.show()
 
         
         # array_positions = XXYY
@@ -3468,6 +3422,132 @@ for ii in [2]:
         # fig.suptitle(title_j)
         # figpath = os.path.join(dstDir, fName_j)
         # fig.savefig(figpath, dpi=500, )
+        
+        
+# %%%% Import FAKE image, treat and & run pcf2d
+
+pm.setGraphicOptions(mode='screen')
+
+srcDir = os.path.join(up.Path_IntraCellTracking, '26-09-11_FakeImages')
+fileNames = ['dots.tiff', 'branches.tiff', 'clustered_dots.tiff']
+filePaths = [os.path.join(srcDir, fN) for fN in fileNames]
+
+for ii in range(len(fileNames)):   
+    fN = fileNames[ii]
+    fP = filePaths[ii]
+    
+    # df_j = df[df['frame'] == jj+1]
+    im = skm.io.imread(fP, as_gray=True)
+    im = skm.util.img_as_ubyte(im)
+    title_j = f'{fN}'
+    fName_j = f'{fN}_KRF.png'
+    # XX, YY = df_j.x*UmPerPix, df_j.y*UmPerPix
+    # XXYY = np.array([XX, YY]).T
+    
+    #### EQUALIZE
+    # p1, p99 = np.percentile(im, (1, 99))
+    # im_pt = skm.exposure.rescale_intensity(im, in_range=(p1, p99))   
+        
+    #### FILTER
+    # k = 3
+    # im_pt = cv2.medianBlur(im_pt, k)
+    
+    #### TOP_HAT
+    # filterSize = (12, 12)
+    # kernel = cv2.getStructuringElement(cv2.MORPH_RECT, filterSize)
+    # im_pt = cv2.morphologyEx(im_pt, cv2.MORPH_TOPHAT, kernel)
+    # p1, p99 = np.percentile(im_pt, (1, 99))
+    # im_pt = skm.exposure.rescale_intensity(im_pt, in_range=(p1, p99))
+
+    #### BINARIZE
+    # th = skm.filters.threshold_li(im_pt)
+    # im_bin = (im_pt >= th)
+    im_bin = ndi.binary_opening(im)
+    
+    
+    M = 150
+
+    selected_points, all_points = tbsa.sample_white_pixels(im_bin, M=M, seed=40)
+    
+    r_values = np.linspace(1, 300, 300)
+    
+    K_local, K_global = tbsa.ripley_K_sampled_references(selected_points,
+                                                         all_points,
+                                                         im_bin.shape,
+                                                         r_values)
+    L_global = (K_global/np.pi)**0.5
+    
+    spline_Kg = make_splrep(r_values, K_global, s=6)
+    Kg_splinified = spline_Kg(r_values)
+    spline_Kg_der = spline_Kg.derivative(nu=1)
+    G = spline_Kg_der(r_values) * 1/(2*np.pi*r_values)
+    
+    fig, axes = plt.subplots(2, 2, figsize=(8, 8), layout='compressed')
+    axes_f = axes.flatten()
+    ax = axes_f[0]
+    ax.imshow(im_bin, cmap='gray')
+    ax.plot(
+        selected_points[:,0], selected_points[:,1],
+        ls='', marker='.',  markersize=3, color='red',
+    )
+    ax.set_xlabel(r'$x\ (\mu m)$')
+    ax.set_ylabel(r'$y\ (\mu m)$')
+    
+    ax = axes_f[1]
+    for i in range(M):
+        ax.plot(r_values, K_local[i, :], alpha=0.05)
+    ax.grid()
+    ax.set_xscale('log')
+    ax.set_yscale('log')
+    ax.set_xlabel("Radius r")
+    ax.set_ylabel("Local Ripley K(r)")
+    
+    ax = axes_f[2]
+    ax.plot(r_values, K_global, linewidth=2, label='K(r)')
+    ax.plot(r_values, Kg_splinified, linewidth=1, ls='--', label='spline rep')
+    ax.set_xscale('log')
+    ax.set_yscale('log')
+    ax.set_xlabel("Radius r")
+    ax.set_ylabel("Ripley K(r)")
+    
+    idx_start_fit = 30
+    xfit = np.log(r_values[idx_start_fit:])
+    yfit = np.log(K_global[idx_start_fit:])
+    parms, res = ufun.fitLineHuber(xfit, yfit)
+    b, a = parms
+    k, A = a, np.exp(b)
+    xx = r_values[idx_start_fit:]
+    ax.plot(xx, A*xx**k, lw=1.5,
+            label=r'Fit $y=Ax^k$' + f'\nk={k:.2f}')
+    
+    ax.legend()
+    ax.grid()
+    
+    
+    
+    # ax = axes_f[3]
+    # ax.plot(r_values, L_global - r_values, linewidth=2, label='K(r)')
+    # # ax.set_xscale('log')
+    # # ax.set_yscale('log')
+    # ax.set_xlabel("Radius r")
+    # ax.set_ylabel(r"$\sqrt{K(r)/\pi} - r$")
+    
+    ax = axes_f[3]
+    ax.axhline(1, linestyle=':', color='gray', alpha=0.7)
+    ax.plot(r_values, G, linewidth=2, ls='-', label='g(r)')
+    # ax.set_xscale('log')
+    # ax.set_yscale('log')
+    ax.set_xlabel("Radius r")
+    ax.set_ylabel(r"$g(r)$")
+    
+    
+    
+    
+    
+
+    plt.show()
+        
+        
     
 # %%% Compare MSD for DDM and SPT
 

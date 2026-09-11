@@ -248,3 +248,152 @@ def pcf2d(array_positions, bins_distances,
         print('Total time: %f s for %i points '%(t5,nb_part))
     
     return results
+
+
+# %% Ripley K function
+
+# Made with Chat GPT
+
+def sample_white_pixels(binary_image, M, seed=None):
+    """
+    Randomly select M reference points from all white pixels.
+
+    Parameters
+    ----------
+    binary_image : 2D numpy array
+        Binary image. Non-zero pixels are treated as objects.
+    M : int
+        Number of reference points.
+    seed : int or None
+        Random seed.
+
+    Returns
+    -------
+    selected_points : (M, 2) numpy array
+        Selected coordinates as (x, y).
+    all_points : (N, 2) numpy array
+        All white pixel coordinates as (x, y).
+    """
+
+    rng = np.random.default_rng(seed)
+
+    # All white pixels
+    all_points = np.argwhere(binary_image > 0)
+
+    N = len(all_points)
+
+    if M > N:
+        raise ValueError(
+            f"M={M} is larger than the number of white pixels N={N}."
+        )
+
+    # Random reference points
+    selected_idx = rng.choice(
+        N,
+        size=M,
+        replace=False
+    )
+
+    # Convert (row, col) = (y, x) to (x, y)
+    all_points = all_points[:, ::-1].astype(float)
+
+    selected_points = all_points[selected_idx]
+
+    return selected_points, all_points
+
+
+def ripley_K_sampled_references(
+    selected_points,
+    all_points,
+    image_shape,
+    r_values
+):
+    """
+    Compute local Ripley's K around M selected reference points,
+    using ALL N white pixels as neighbors.
+
+    Translation edge correction is applied.
+
+    Parameters
+    ----------
+    selected_points : (M, 2) numpy array
+        Reference points (x, y).
+    all_points : (N, 2) numpy array
+        Full point pattern (x, y).
+    image_shape : tuple
+        (height, width).
+    r_values : 1D numpy array
+        Radii.
+
+    Returns
+    -------
+    K_local : (M, len(r_values)) numpy array
+        Local K function for each reference point.
+
+    K_global : (len(r_values),) numpy array
+        Estimated global Ripley's K using M reference points.
+
+    """
+
+    H, W = image_shape
+
+    N = len(all_points)
+    M = len(selected_points)
+
+    area = W * H
+
+    # Intensity estimated using ALL points
+    lambda_hat = N / area
+
+    # Pairwise differences:
+    # selected points vs all points
+    dx = (
+        selected_points[:, None, 0]
+        - all_points[None, :, 0]
+    )
+
+    dy = (
+        selected_points[:, None, 1]
+        - all_points[None, :, 1]
+    )
+
+    distances = np.sqrt(dx**2 + dy**2)
+
+    # Translation edge correction
+    overlap = (
+        (W - np.abs(dx))
+        *
+        (H - np.abs(dy))
+    )
+
+    weights = np.zeros_like(overlap)
+
+    valid = overlap > 0
+
+    weights[valid] = area / overlap[valid]
+
+    # Remove self-pairs:
+    # A reference point is also present in all_points.
+    #
+    # We identify exact coordinate matches.
+    self_pairs = distances == 0
+
+    weights[self_pairs] = 0
+
+    # Local K for each reference point
+    K_local = np.zeros((M, len(r_values)))
+
+    for k, r in enumerate(r_values):
+
+        neighbors = distances <= r
+
+        K_local[:, k] = np.sum(
+            weights * neighbors,
+            axis=1
+        ) / lambda_hat
+
+    # Average over sampled reference points
+    K_global = K_local.mean(axis=0)
+
+    return K_local, K_global
+        
