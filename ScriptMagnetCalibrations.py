@@ -306,6 +306,12 @@ expLabel_1 = expLabel + '_dX0-86um'
 tbcv.runCalibration(mainDir, SCALE, Rb, Mag_dX0, visco, filesInfo, 
                     saveDir, expLabel_1, saveResults, savePlots)
 
+# %%%%% Run the calibration
+Mag_dX0 = 0
+expLabel_1 = expLabel + '_dX0-0um'
+tbcv.runCalibration(mainDir, SCALE, Rb, Mag_dX0, visco, filesInfo, 
+                    saveDir, expLabel_1, False, False)
+
 # %%%% M1 & M2 - Magnet_JV01, MyOne, compare Gly80% and Gly 75%
 
 

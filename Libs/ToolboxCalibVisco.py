@@ -414,6 +414,8 @@ def tracks_calibration(tracks_data, expLabel = '',
     V_popt_pL, V_pcov_pL = optimize.curve_fit(powerLaw, all_D, all_V, 
                            p0 = [1000, -2], 
                            bounds=([0, -10], [np.inf, 0]))
+    print(V_popt_pL)
+    print(V_pcov_pL)
     V_fit_pL = powerLaw(D_plot, *V_popt_pL)
     V_label_pL = r'$\bf{A \cdot x^k}$' + '\n'
     V_label_pL += '$A$ = {:.2e} | $k$ = {:.2f}'.format(*V_popt_pL)

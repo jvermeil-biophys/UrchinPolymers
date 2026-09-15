@@ -103,7 +103,51 @@ def getGlycerolViscosity(ratio, T):
 # df_Visco.index = truncArray(RR*100, 0)
 # df_Visco2 = df_Visco.transpose()
 
+# %% Little calculation for uncertainties
 
+# T_ideal = 22
+# R_ideal = 0.8
+
+# dT = 0.2
+# dR = 0.001
+
+# V = getGlycerolViscosity(R_ideal, T_ideal)
+
+# print('Real')
+# print(f'{getGlycerolViscosity(R_ideal, T_ideal):.3f}')
+# print('Only R')
+# print(f'{getGlycerolViscosity(R_ideal+dR, T_ideal):.3f}')
+# print(f'{getGlycerolViscosity(R_ideal-dR, T_ideal):.3f}')
+# print('Only T')
+# print(f'{getGlycerolViscosity(R_ideal, T_ideal+dT):.3f}')
+# print(f'{getGlycerolViscosity(R_ideal, T_ideal-dT):.3f}')
+# print('Both')
+# print(f'{getGlycerolViscosity(R_ideal+dR, T_ideal+dT):.3f}')
+# print(f'{getGlycerolViscosity(R_ideal+dR, T_ideal-dT):.3f}')
+# print(f'{getGlycerolViscosity(R_ideal-dR, T_ideal+dT):.3f}')
+# print(f'{getGlycerolViscosity(R_ideal-dR, T_ideal-dT):.3f}')
+
+
+# print('\n Deltas')
+# print('Only R')
+# print(f'{getGlycerolViscosity(R_ideal+dR, T_ideal)-V:.3f}')
+# print(f'{getGlycerolViscosity(R_ideal-dR, T_ideal)-V:.3f}')
+# print('Only T')
+# print(f'{getGlycerolViscosity(R_ideal, T_ideal+dT)-V:.3f}')
+# print(f'{getGlycerolViscosity(R_ideal, T_ideal-dT)-V:.3f}')
+# print('Both')
+# print(f'{getGlycerolViscosity(R_ideal+dR, T_ideal+dT)-V:.3f}')
+# print(f'{getGlycerolViscosity(R_ideal+dR, T_ideal-dT)-V:.3f}')
+# print(f'{getGlycerolViscosity(R_ideal-dR, T_ideal+dT)-V:.3f}')
+# print(f'{getGlycerolViscosity(R_ideal-dR, T_ideal-dT)-V:.3f}')
+
+
+# print('\n Rel Err')
+# print('Both Parms')
+# print(f'{(getGlycerolViscosity(R_ideal+dR, T_ideal+dT)-V)/V:.5f}')
+# print(f'{(getGlycerolViscosity(R_ideal+dR, T_ideal-dT)-V)/V:.5f}')
+# print(f'{(getGlycerolViscosity(R_ideal-dR, T_ideal+dT)-V)/V:.5f}')
+# print(f'{(getGlycerolViscosity(R_ideal-dR, T_ideal-dT)-V)/V:.5f}')
 
 
 # %% Deprecated
