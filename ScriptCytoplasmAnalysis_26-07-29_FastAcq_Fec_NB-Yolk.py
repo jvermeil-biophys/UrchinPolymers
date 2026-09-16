@@ -2836,7 +2836,7 @@ plt.show()
 
 # %%%% Import tracks & analyse shape of explored zone
 
-idx_films = [0, 1, 2, 3]
+idx_films = [2, 3]
 
 pm.setGraphicOptions(mode='screen')
 fig, axes = plt.subplots(2, len(idx_films), figsize=(len(idx_films)*3, 6),
@@ -2846,7 +2846,9 @@ colors = pm.cL_Set21
 dict_res = {'label':[],
             'AngleDiffs':[]}
 
-for ii in idx_films:
+GEOM_DATA = []
+
+for k, ii in enumerate(idx_films):
     dfName = dfNames[ii]
     title = '_'.join(dfName.split('_')[1:3])
     df = pd.read_csv(os.path.join(dstDir, dfName), sep='\t')
@@ -2861,7 +2863,7 @@ for ii in idx_films:
                  'AR':[],
                  'phi':[],}
     
-    ax = axes[0, ii]
+    ax = axes[0, k]
     ax.set_xlim([0, 511])
     ax.set_ylim([0, 511])
     ax.set_aspect('equal', adjustable='box')
@@ -2935,12 +2937,15 @@ for ii in idx_films:
     
     
     df_geom = pd.DataFrame(dict_geom)
+    
+    GEOM_DATA.append(df_geom)
+    
     df_geom['theta_bin'] = (df_geom['theta'].values * 18/np.pi).astype(int) * 10 + 5
     
     C = np.cos(df_geom['theta'].values) * np.cos(df_geom['phi'].values) + np.sin(df_geom['theta'].values) * np.sin(df_geom['phi'].values)
     DA = np.acos(C)
     
-    ax = axes[1, ii]
+    ax = axes[1, k]
     ax.hist(DA, bins=40)
     ax.set_ylabel('N trajectories')
     ax.set_xlabel(r'$|\theta - \phi|$ (rad)')
@@ -2953,7 +2958,6 @@ for ii in idx_films:
     dict_res['AngleDiffs'].append(DA)
 
 plt.show()
-
 
 # fig, ax = plt.subplots(1, 1, figsize=(6, 6),
 #                          layout='compressed')
@@ -2982,6 +2986,39 @@ ax.set_xticks([0, np.pi/8, np.pi/4, 3*np.pi/8, np.pi/2])
 ax.set_xticklabels(['0', r'$\pi/8$', r'$\pi/4$', r'$3\pi/8$', r'$\pi/2$'])
 ax.grid()
 plt.show()
+
+# %%%% Plot the inferred center ?
+
+df_geom = GEOM_DATA[0]
+
+im = ufun.load_stack_region(tifPaths[2], time_indices=[1000])[0]
+
+Filters = [(df_geom['AR'] > 4)]
+
+df_f = pm.filterDf(df_geom, Filters).reset_index()
+
+fig, axes = plt.subplots(1, 2, figsize=(8, 4))
+ax = axes[0]
+ax.set_aspect('equal', adjustable='box')
+ax.set_xlim([0, 511])
+ax.set_ylim([0, 511])
+ax.imshow(im, cmap='gray')
+
+ax = axes[1]
+ax.set_aspect('equal', adjustable='box')
+ax.set_xlim([0, 511])
+ax.set_ylim([0, 511])
+ax.scatter(df_f['xc'], df_f['yc'], s=6, marker='.', color='c', alpha = 0.05)
+
+for i in range(len(df_f)):
+    xc, yc, phi = df_f.loc[i, 'xc'], df_f.loc[i, 'yc'], df_f.loc[i, 'phi']
+    S = np.tan(phi)
+    ax.axline((xc, yc), slope=S, linestyle='-', color='c', alpha = 0.04, lw=10)
+
+
+plt.show()
+
+
 
 # %%%% Import tracks & run pcf2d
 
