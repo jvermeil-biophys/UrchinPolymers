@@ -96,8 +96,6 @@ def df_2_heatmap(df, ax, parmCol='k', boxCol='Bxy', y_ascending=False,
     """
     
     M = np.max(np.array(df[boxCol].tolist())) + 1
-    print(M)
-
     
     # Extract coordinates
     coords = pd.DataFrame(
@@ -164,6 +162,130 @@ def df_2_heatmap(df, ax, parmCol='k', boxCol='Bxy', y_ascending=False,
     return(ax)
 
 
+
+
+
+
+
+def autocorr_fft(x):
+    N = len(x)
+    F = np.fft.fft(x, n = 2*N)  # 2*N because of zero-padding
+    PSD = F * F.conjugate()
+    res = np.fft.ifft(PSD)
+    res = (res[:N]).real  # now we have the autocorrelation in convention B
+    n = N * np.ones(N) - np.arange(0, N) # divide res(m) by (N-m)
+    return(res / n)  # this is the autocorrelation in convention A
+
+def msd_fft_trackpyStyle(traj, mpp, fps, max_lagtime=100, pos_columns=['x', 'y']):
+    """
+    https://github.com/hadim/Public-Notebooks/blob/master/Code/Quick_MSD/notebook.ipynb
+    """
+    
+    r = traj[pos_columns].values
+    r *= mpp
+
+    t = traj['frame']
+
+    max_lagtime = min(max_lagtime, len(t))  # checking to be safe
+    lagtimes = 1 + np.arange(max_lagtime - 1)    
+
+    N = len(r)
+
+    D = np.square(r).sum(axis=1) 
+    D = np.append(D, 0)
+    S2 = sum([autocorr_fft(r[:, i]) for i in range(len(pos_columns))])
+
+    Q = 2 * D.sum()
+    S1 = np.zeros(max_lagtime)
+
+    for m in range(max_lagtime):
+        Q = Q - D[m - 1] - D[N - m]
+        S1[m] = Q / (N - m)
+
+    msd = S1 - 2 * S2[:max_lagtime]
+    msd = msd[1:]
+
+    lagt = lagtimes / fps
+
+    results = pd.DataFrame(np.array([msd, lagt]).T, columns=['msd', 'lagt'])
+    results.index = 1 + np.arange(max_lagtime - 1)
+    results.index.name = 'lagt'
+    
+    return(results)
+
+
+def msd_fft_1D(pos, mpp, fps, max_lagtime=100):
+    """
+    https://stackoverflow.com/questions/34222272/computing-mean-square-displacement-using-python-and-fft/34222273#34222273
+    """
+    
+    r = pos
+    r *= mpp
+
+    t = np.arange(len(pos))
+
+    max_lagtime = min(max_lagtime, len(t))  # checking to be safe
+    lagtimes = 1 + np.arange(max_lagtime)    
+
+    N = len(r)
+
+    D = np.square(r)
+    D = np.append(D, 0)
+    S2 = sum([autocorr_fft(r[:])])
+
+    Q = 2 * D.sum()
+    S1 = np.zeros(max_lagtime+1)
+
+    for m in range(max_lagtime+1):
+        Q = Q - D[m - 1] - D[N - m]
+        S1[m] = Q / (N - m)
+
+    msd = S1 - 2 * S2[:max_lagtime+1]
+    msd = msd[1:]
+
+    lagt = lagtimes / fps
+
+    results = pd.DataFrame(np.array([msd, lagt]).T, columns=['msd', 'lagt'])
+    results.index = 1 + np.arange(max_lagtime)
+    results.index.name = 'lagt'
+    
+    return(results)
+
+
+# %% Test MSD computation
+
+mainDir = os.path.join(up.Path_IntraCellTracking, '26-07-29_FastAcq_Fec_NB-Yolk')
+srcDir = os.path.join(mainDir, 'Crops')
+dstDir = os.path.join(mainDir, 'SPT_results')
+
+tifNames = ['26-07-29_PostF_2min_Pos11_10fps_Texp100ms_CSU642_crop.tif',
+             ]
+
+tifPaths = [os.path.join(srcDir, tifName) for tifName in tifNames]
+dfNames = [tifName.split('.')[0] + '_PyTracks.csv' for tifName in tifNames]
+
+UmPerPix = cd.UmPerPix_60X_W1
+SCALE = 1/UmPerPix
+nbimages = 2000
+FPS = 10
+
+N_pix = 512
+C_pix = np.median(np.arange(N_pix)) # Center (pixels)
+L_um = N_pix*UmPerPix
+
+
+dfName = dfNames[0]
+
+df = pd.read_csv(os.path.join(dstDir, dfName), sep='\t')
+PIDs = df.particle.unique().astype(int)
+
+for p in PIDs[:3]:
+    
+    df_p = df[df['particle'] == p]
+    
+    MSD_tpRes = tp.motion.msd(df_p, UmPerPix, FPS, max_lagtime=30, detail=True, pos_columns=None)
+
+    MSD_1DRes = msd_fft_1D(df_p.x, UmPerPix, FPS, max_lagtime=30)
 
 # %% Film NB-Yolk
 
@@ -1914,7 +2036,7 @@ for ii in range(6): # len(dfNames)
 # %%%% Import tracks & run imsd -> Diffusion Map
 
 
-for ii in [3]: # len(dfNames)
+for ii in [2]: # len(dfNames)
     im = ufun.load_stack_region(tifPaths[ii], time_indices=[0])[0]
     dfName = dfNames[ii]
     df = pd.read_csv(os.path.join(dstDir, dfName), sep='\t')
@@ -1940,7 +2062,7 @@ for ii in [3]: # len(dfNames)
     # ax.set_yscale('log')
     
     Pid_list = df.particle.unique()
-    for p in Pid_list[:]:
+    for p in Pid_list[:3]:
         dfp = df[df['particle']==p]
         msd = res_imsd.loc[:, p]
         # ax.plot(dt, msd, 'o', markersize=4, alpha=0.02, 
@@ -1957,8 +2079,8 @@ for ii in [3]: # len(dfNames)
         
         fmin, fmax = np.min(dfp.frame), np.max(dfp.frame)
         X, Y = dfp.x, dfp.y
-        points = np.array([X, Y]).T
-        CvxHull = MultiPoint(points).convex_hull
+        XY = np.array([X, Y]).T
+        CvxHull = MultiPoint(XY).convex_hull
         Xc, Yc = CvxHull.centroid.coords[0]
         theta = np.atan2(Yc - C_pix, Xc - C_pix)
         
@@ -1974,13 +2096,7 @@ for ii in [3]: # len(dfNames)
         
     df_particle_MSD = pd.DataFrame(dict_particle_MSD)
     
-    M_boxes = 15
-    L_box = N_pix/M_boxes
-    
-    df_particle_MSD['Xb'] = (df_particle_MSD['Xc'].values//L_box).astype(int)
-    df_particle_MSD['Yb'] = (df_particle_MSD['Yc'].values//L_box).astype(int)
-    
-    df_particle_MSD['Bxy'] = [(x,y) for x, y in zip(df_particle_MSD['Xb'], df_particle_MSD['Yb'])]
+
     
     # dict_boxes = distribute_in_boxes(dict_particle_MSD, N_pix, M_boxes, 
     #                     str_Id = 'Pid', str_X = 'Xc', str_Y = 'Yc')
@@ -1992,6 +2108,14 @@ for ii in [3]: # len(dfNames)
     
 # %%%% Plot the Map
 
+M_boxes = 10
+L_box = N_pix/M_boxes
+
+df_particle_MSD['Xb'] = (df_particle_MSD['Xc'].values//L_box).astype(int)
+df_particle_MSD['Yb'] = (df_particle_MSD['Yc'].values//L_box).astype(int)
+
+df_particle_MSD['Bxy'] = [(x,y) for x, y in zip(df_particle_MSD['Xb'], df_particle_MSD['Yb'])]
+
 grouped = df_particle_MSD.groupby('Bxy')
 df_grid_MSD = grouped.agg({'Pid':'count',
                            'D_lin':'mean',
@@ -2002,8 +2126,10 @@ df_grid_MSD = grouped.agg({'Pid':'count',
 df_grid_MSD = df_grid_MSD[df_grid_MSD['count'] >= 10]
 
 lims = np.linspace(0, N_pix-1, (M_boxes+1))
-fig, axes = plt.subplots(1, 2, figsize = (10, 5), layout='compressed')
-ax = axes[0]
+fig, axes = plt.subplots(2, 2, figsize = (8, 6), layout='compressed')
+axes_f = axes.flatten()
+
+ax = axes_f[0]
 vmin, vmax = np.percentile(im, 0.5), np.percentile(im, 99.5)
 ax.imshow(im, cmap='gray', vmin=vmin, vmax=vmax)
 ax.hlines(lims, 0, N_pix, linestyle=':', color='w', lw=0.75)
@@ -2012,8 +2138,14 @@ ax.set_xlim([0, 511])
 ax.set_ylim([0, 511])
 ax.set_title('Tiled image')
 
-df_2_heatmap(df_grid_MSD, axes[1], parmCol='k_full', boxCol='Bxy', 
-             y_ascending=True, cmap="viridis", annotate=False, colorScale='log')
+df_2_heatmap(df_grid_MSD, axes_f[1], parmCol='k_full', boxCol='Bxy', 
+             y_ascending=True, cmap="viridis", annotate=False, colorScale='linear')
+
+df_2_heatmap(df_grid_MSD, axes_f[2], parmCol='D_lin', boxCol='Bxy', 
+             y_ascending=True, cmap="viridis", annotate=False, colorScale='linear')
+
+df_2_heatmap(df_grid_MSD, axes_f[3], parmCol='D_full', boxCol='Bxy', 
+             y_ascending=True, cmap="viridis", annotate=False, colorScale='linear')
 
 
 plt.show()
@@ -2033,7 +2165,7 @@ ax.imshow(im, cmap='gray', vmin=vmin, vmax=vmax)
 # ax.vlines(lims, 0, N_pix, linestyle=':', color='w', lw=0.75)
 ax.set_xlim([0, 511])
 ax.set_ylim([0, 511])
-ax.set_title('Tiled image')
+ax.set_title('Original image')
 
 ax = axes_f[1]
 parm = 'k_full' # 'D_full', 'k_full'
@@ -2086,7 +2218,499 @@ ax.set_title(parm)
 
 
 plt.show()
+        
+
+
     
+# %%%% Radial / OrthoRadial
+
+
+N_lagT = 30
+lagT = np.arange(1, 31) / FPS
+
+
+for ii in [2]: # len(dfNames)
+    im = ufun.load_stack_region(tifPaths[ii], time_indices=[0])[0]
+    dfName = dfNames[ii]
+    df = pd.read_csv(os.path.join(dstDir, dfName), sep='\t')
+    df.particle = df.particle.astype(int)
+    
+    dict_particle_MSD = {
+                        'Pid':[],
+                        'Xc':[],
+                        'Yc':[],
+                        'theta':[],
+                        'fmin':[],
+                        'fmax':[],
+                        'D_r_lin':[],
+                        'D_r_full':[],
+                        'k_r_full':[],
+                        'D_r_highDt':[],
+                        'k_r_highDt':[],
+                        'D_r_lowDt':[],
+                        'k_r_lowDt':[],
+                        'D_or_lin':[],
+                        'D_or_full':[],
+                        'k_or_full':[],
+                        'D_or_highDt':[],
+                        'k_or_highDt':[],
+                        'D_or_lowDt':[],
+                        'k_or_lowDt':[],
+                        }
+
+    Pid_list = df.particle.unique()
+    for p in Pid_list[:]:
+        dfp = df[df['particle']==p]
+        
+        # msd = res_imsd.loc[:, p]
+        # # ax.plot(dt, msd, 'o', markersize=4, alpha=0.02, 
+        # #         color='navy', mec='None')
+                
+        # parms, results = ufun.fitLineHuber(dt, msd, with_intercept = False)
+        # D_linear = parms.values[0]/4
+        
+        # parms, results = ufun.fitLineHuber(np.log(dt), np.log(msd), 
+        #                                    with_intercept = True)
+        # b, a = parms
+        # k_full = a
+        # D_full = np.exp(b)/4
+        
+        fmin, fmax = np.min(dfp.frame), np.max(dfp.frame)
+        X, Y = dfp.x, dfp.y
+        XY = np.array([X, Y]).T
+        CvxHull = MultiPoint(XY).convex_hull
+        Xc, Yc = CvxHull.centroid.coords[0]
+        theta = np.atan2(Yc - C_pix, Xc - C_pix)
+        
+        RM = np.array([[np.cos(theta), - np.sin(theta)], 
+                       [np.sin(theta),   np.cos(theta)]])
+        XY_center = np.array([C_pix, C_pix])
+        XY_r = ((XY - XY_center) @ RM) + XY_center
+        
+        # PLOT A ROTATED TRAJECTORY
+        # fig, axes = plt.subplots(1, 3, figsize=(7.5, 2.5))
+        # ax = axes[0]
+        # ax.set_aspect('equal', adjustable='box')
+        # ax.plot(XY[:,0]-C_pix, XY[:,1]-C_pix, lw=1)
+        # ax.plot(XY_r[:,0]-C_pix, XY_r[:,1]-C_pix, lw=1)
+        # ax.set_xlim([-C_pix, C_pix])
+        # ax.set_ylim([-C_pix, C_pix])
+        # ax.grid()
+        
+        # ax = axes[1]
+        # ax.set_aspect('equal', adjustable='box')
+        # ax.plot(XY[:,0]-C_pix, XY[:,1]-C_pix, lw=1)
+        # ax.grid()
+        
+        # ax = axes[2]
+        # ax.set_aspect('equal', adjustable='box')
+        # ax.plot(XY_r[:,0]-C_pix, XY_r[:,1]-C_pix, lw=1)
+        # ax.grid()
+        
+        # plt.show()
+        
+        # Radial / Orthoradial coordinates
+        Rd, ORd = XY_r[:, 0], XY_r[:, 1]
+        
+        # MSD 1D for each
+        # lagT
+        MSD_r = (msd_fft_1D(Rd, UmPerPix, FPS, max_lagtime=N_lagT))['msd']
+        MSD_or = (msd_fft_1D(ORd, UmPerPix, FPS, max_lagtime=N_lagT))['msd']
+        
+        
+        # Fits for D and k
+        # Radial
+        parms, results = ufun.fitLineHuber(lagT, MSD_r, with_intercept = False)
+        D_r_linear = parms.values[0]/4
+        
+        parms, results = ufun.fitLineHuber(np.log(lagT), np.log(MSD_r), 
+                                           with_intercept = True)
+        b, a = parms
+        k_r_full = a
+        D_r_full = np.exp(b)/4
+        
+        parms, results = ufun.fitLineHuber(np.log(lagT[10:]), np.log(MSD_r[10:]), 
+                                           with_intercept = True)
+        b, a = parms
+        k_r_highDt = a
+        D_r_highDt = np.exp(b)/4
+        
+        parms, results = ufun.fitLineHuber(np.log(lagT[:10]), np.log(MSD_r[:10]), 
+                                           with_intercept = True)
+        b, a = parms
+        k_r_lowDt = a
+        D_r_lowDt = np.exp(b)/4
+        
+        
+        # OrthoRadial
+        parms, results = ufun.fitLineHuber(lagT, MSD_or, with_intercept = False)
+        D_or_linear = parms.values[0]/4
+        
+        parms, results = ufun.fitLineHuber(np.log(lagT), np.log(MSD_or), 
+                                           with_intercept = True)
+        b, a = parms
+        k_or_full = a
+        D_or_full = np.exp(b)/4
+        
+        parms, results = ufun.fitLineHuber(np.log(lagT[10:]), np.log(MSD_or[10:]), 
+                                           with_intercept = True)
+        b, a = parms
+        k_or_highDt = a
+        D_or_highDt = np.exp(b)/4
+        
+        parms, results = ufun.fitLineHuber(np.log(lagT[:10]), np.log(MSD_or[:10]), 
+                                           with_intercept = True)
+        b, a = parms
+        k_or_lowDt = a
+        D_or_lowDt = np.exp(b)/4
+        
+        
+        # Save
+        dict_particle_MSD['Pid'].append(p)
+        dict_particle_MSD['Xc'].append(Xc)
+        dict_particle_MSD['Yc'].append(Yc)
+        dict_particle_MSD['theta'].append(theta) # *180/np.pi
+        dict_particle_MSD['fmin'].append(fmin)
+        dict_particle_MSD['fmax'].append(fmax)
+        dict_particle_MSD['D_r_lin'].append(D_r_linear)
+        dict_particle_MSD['D_r_full'].append(D_r_full)
+        dict_particle_MSD['k_r_full'].append(k_r_full)
+        dict_particle_MSD['D_r_highDt'].append(D_r_highDt)
+        dict_particle_MSD['k_r_highDt'].append(k_r_highDt)
+        dict_particle_MSD['D_r_lowDt'].append(D_r_lowDt)
+        dict_particle_MSD['k_r_lowDt'].append(k_r_lowDt)
+        dict_particle_MSD['D_or_lin'].append(D_or_linear)
+        dict_particle_MSD['D_or_full'].append(D_or_full)
+        dict_particle_MSD['k_or_full'].append(k_or_full)
+        dict_particle_MSD['D_or_highDt'].append(D_or_highDt)
+        dict_particle_MSD['k_or_highDt'].append(k_or_highDt)
+        dict_particle_MSD['D_or_lowDt'].append(D_or_lowDt)
+        dict_particle_MSD['k_or_lowDt'].append(k_or_lowDt)
+        
+    df_particle_MSD_CylCoo = pd.DataFrame(dict_particle_MSD)
+    
+
+    
+    # dict_boxes = distribute_in_boxes(dict_particle_MSD, N_pix, M_boxes, 
+    #                     str_Id = 'Pid', str_X = 'Xc', str_Y = 'Yc')
+    # L = [len(dict_boxes[k]) for k in dict_boxes.keys()]
+
+    
+
+    # plt.show()
+    
+    
+# %%%% Plot the Map
+
+df = df_particle_MSD_CylCoo
+
+M_boxes = 15
+L_box = N_pix/M_boxes
+
+df['Xb'] = (df['Xc'].values//L_box).astype(int)
+df['Yb'] = (df['Yc'].values//L_box).astype(int)
+
+df['Bxy'] = [(x,y) for x, y in zip(df['Xb'], df['Yb'])]
+
+grouped = df.groupby('Bxy')
+df_grid_MSD = grouped.agg({'Pid':'count',
+                           'D_r_lin':'mean',
+                           'D_r_full':'mean',
+                           'k_r_full':'mean',
+                           'D_or_lin':'mean',
+                           'D_or_full':'mean',
+                           'k_or_full':'mean',
+                           }).rename(columns={'Pid':'count'}).reset_index()
+
+df_grid_MSD = df_grid_MSD[df_grid_MSD['count'] >= 10]
+
+lims = np.linspace(0, N_pix-1, (M_boxes+1))
+fig, axes = plt.subplots(2, 3, figsize = (12, 8), layout='compressed')
+axes_f = axes.flatten()
+
+ax = axes_f[0]
+vmin, vmax = np.percentile(im, 0.5), np.percentile(im, 99.5)
+ax.imshow(im, cmap='gray', vmin=vmin, vmax=vmax)
+ax.hlines(lims, 0, N_pix, linestyle=':', color='w', lw=0.75)
+ax.vlines(lims, 0, N_pix, linestyle=':', color='w', lw=0.75)
+ax.set_xlim([0, 511])
+ax.set_ylim([0, 511])
+ax.set_title('Tiled image')
+
+df_2_heatmap(df_grid_MSD, axes_f[1], parmCol='k_r_full', boxCol='Bxy', 
+             y_ascending=True, cmap="viridis", annotate=False, colorScale='linear')
+
+df_2_heatmap(df_grid_MSD, axes_f[2], parmCol='k_or_full', boxCol='Bxy', 
+             y_ascending=True, cmap="viridis", annotate=False, colorScale='linear')
+
+df_2_heatmap(df_grid_MSD, axes_f[4], parmCol='D_r_full', boxCol='Bxy', 
+             y_ascending=True, cmap="viridis", annotate=False, colorScale='log')
+
+df_2_heatmap(df_grid_MSD, axes_f[5], parmCol='D_or_full', boxCol='Bxy', 
+             y_ascending=True, cmap="viridis", annotate=False, colorScale='log')
+
+
+plt.show()
+
+
+# lims = np.linspace(0, N_pix-1, (M_boxes+1))
+# fig, axes = plt.subplots(2, 3, figsize = (12, 8), layout='compressed')
+# axes_f = axes.flatten()
+
+# ax = axes_f[0]
+# vmin, vmax = np.percentile(im, 0.5), np.percentile(im, 99.5)
+# ax.imshow(im, cmap='gray', vmin=vmin, vmax=vmax)
+# ax.hlines(lims, 0, N_pix, linestyle=':', color='w', lw=0.75)
+# ax.vlines(lims, 0, N_pix, linestyle=':', color='w', lw=0.75)
+# ax.set_xlim([0, 511])
+# ax.set_ylim([0, 511])
+# ax.set_title('Tiled image')
+
+# df_2_heatmap(df_grid_MSD, axes_f[1], parmCol='k_r_full', boxCol='Bxy', 
+#              y_ascending=True, cmap="viridis", annotate=False, colorScale='linear')
+
+# df_2_heatmap(df_grid_MSD, axes_f[2], parmCol='k_or_full', boxCol='Bxy', 
+#              y_ascending=True, cmap="viridis", annotate=False, colorScale='linear')
+
+# df_2_heatmap(df_grid_MSD, axes_f[4], parmCol='D_r_full', boxCol='Bxy', 
+#              y_ascending=True, cmap="viridis", annotate=False, colorScale='log')
+
+# df_2_heatmap(df_grid_MSD, axes_f[5], parmCol='D_or_full', boxCol='Bxy', 
+#              y_ascending=True, cmap="viridis", annotate=False, colorScale='log')
+
+
+# plt.show()
+
+# %%%% Plot the points
+
+pm.setGraphicOptions(mode='print')
+
+df = df_particle_MSD_CylCoo
+
+lims = np.linspace(0, N_pix-1, (M_boxes+1))
+fig, axes = plt.subplots(1, 4, figsize = (12, 4), layout='compressed')
+axes_f = axes.flatten()
+
+ax = axes_f[0]
+vmin, vmax = np.percentile(im, 0.5), np.percentile(im, 99.5)
+ax.imshow(im, cmap='gray', vmin=vmin, vmax=vmax)
+# ax.hlines(lims, 0, N_pix, linestyle=':', color='w', lw=0.75)
+# ax.vlines(lims, 0, N_pix, linestyle=':', color='w', lw=0.75)
+ax.set_xlim([0, 511])
+ax.set_ylim([0, 511])
+ax.set_title('Original image')
+
+ax = axes_f[1]
+parm1 = 'D_r_full' # 'D_r_full', 'k_r_full'
+v_high1 = np.percentile(df[parm1], 98)
+df_f = df[df[parm1] < v_high1]
+
+g = ax.scatter(df_f['Xc'], df_f['Yc'], 
+               c=df_f[parm1], cmap='viridis',
+               s = 5, alpha = 1, edgecolor='None',
+               norm=mpl.colors.Normalize(), # LogNorm
+               )
+cbar = fig.colorbar(g)
+ax.set_xlim([0, 511])
+ax.set_ylim([0, 511])
+ax.set_title(parm1)
+
+
+ax = axes_f[2]
+parm2 = 'D_or_full' # 'D_or_full', 'k_or_full'
+v_high2 = np.percentile(df[parm2], 98)
+df_f = df[df[parm2] < v_high2]
+
+g = ax.scatter(df_f['Xc'], df_f['Yc'], 
+               c=df_f[parm2], cmap='PuRd',
+               s = 5, alpha = 1, edgecolor='None',
+               norm=mpl.colors.Normalize(),
+               )
+cbar = fig.colorbar(g)
+ax.set_xlim([0, 511])
+ax.set_ylim([0, 511])
+ax.set_title(parm2)
+
+
+ax = axes_f[3]
+df_f = df[(df[parm1] < v_high1) & (df[parm2] < v_high2)]
+df_f['delta'] = df_f[parm1] - df_f[parm2] 
+g = ax.scatter(df_f['Xc'], df_f['Yc'], 
+               c=df_f['delta'], cmap='BuPu',
+               s = 5, alpha = 1, edgecolor='None',
+               norm=mpl.colors.Normalize(),
+               )
+cbar = fig.colorbar(g)
+ax.set_xlim([0, 511])
+ax.set_ylim([0, 511])
+ax.set_title(f'{parm1} - {parm2}')
+
+# Remove the legend and add a colorbar
+
+plt.show()
+
+
+
+fig, axes = plt.subplots(3, 3, figsize = (9, 7), layout='compressed', sharex='col')
+axes_f = axes.flatten()
+
+ax = axes_f[0]
+vmin, vmax = np.percentile(im, 0.5), np.percentile(im, 99.5)
+ax.imshow(im, cmap='gray', vmin=vmin, vmax=vmax)
+# ax.hlines(lims, 0, N_pix, linestyle=':', color='w', lw=0.75)
+# ax.vlines(lims, 0, N_pix, linestyle=':', color='w', lw=0.75)
+ax.set_xlim([0, 511])
+ax.set_ylim([0, 511])
+ax.set_title('Original image')
+
+ax = axes_f[1]
+parm1 = 'D_r_full' # 'D_r_full', 'k_r_full'
+v_high1 = np.percentile(df[parm1], 98)
+df_f = df[df[parm1] < v_high1]
+ax.hist(df_f[parm1].values, bins=60, alpha=0.4, label=parm1)
+
+parm2 = 'D_or_full' # 'D_or_full', 'k_or_full'
+v_high2 = np.percentile(df[parm2], 98)
+df_f = df[df[parm2] < v_high2]
+ax.hist(df_f[parm2].values, bins=60, alpha=0.4, label=parm2)
+ax.legend()
+ax.set_title(f'{parm1} & {parm2}')
+
+ax = axes_f[2]
+df_f = df[(df[parm1] < v_high1) & (df[parm2] < v_high2)]
+df_f['delta'] = df_f[parm1] - df_f[parm2] 
+ax.hist(df_f['delta'].values, bins=60)
+ax.axvline(0, color='gray', ls='-', lw=0.75, alpha=0.8)
+ax.set_title(f'{parm1} - {parm2}')
+
+
+ax = axes_f[3+1]
+parm1 = 'D_r_lowDt' # 'D_r_full', 'k_r_full'
+v_high1 = np.percentile(df[parm1], 98)
+df_f = df[df[parm1] < v_high1]
+ax.hist(df_f[parm1].values, bins=60, alpha=0.4, label=parm1)
+
+parm2 = 'D_or_lowDt' # 'D_or_full', 'k_or_full'
+v_high2 = np.percentile(df[parm2], 98)
+df_f = df[df[parm2] < v_high2]
+ax.hist(df_f[parm2].values, bins=60, alpha=0.4, label=parm2)
+ax.legend()
+ax.set_title(f'{parm1} & {parm2}')
+
+ax = axes_f[3+2]
+df_f = df[(df[parm1] < v_high1) & (df[parm2] < v_high2)]
+df_f['delta'] = df_f[parm1] - df_f[parm2] 
+ax.hist(df_f['delta'].values, bins=60)
+ax.axvline(0, color='gray', ls='-', lw=0.75, alpha=0.8)
+ax.set_title(f'{parm1} - {parm2}')
+
+
+ax = axes_f[6+1]
+parm1 = 'D_r_highDt' # 'D_r_full', 'k_r_full'
+v_high1 = np.percentile(df[parm1], 98)
+df_f = df[df[parm1] < v_high1]
+ax.hist(df_f[parm1].values, bins=60, alpha=0.4, label=parm1)
+
+parm2 = 'D_or_highDt' # 'D_or_full', 'k_or_full'
+v_high2 = np.percentile(df[parm2], 98)
+df_f = df[df[parm2] < v_high2]
+ax.hist(df_f[parm2].values, bins=60, alpha=0.4, label=parm2)
+ax.legend()
+ax.set_title(f'{parm1} & {parm2}')
+
+ax = axes_f[6+2]
+df_f = df[(df[parm1] < v_high1) & (df[parm2] < v_high2)]
+df_f['delta'] = df_f[parm1] - df_f[parm2] 
+ax.hist(df_f['delta'].values, bins=60)
+ax.axvline(0, color='gray', ls='-', lw=0.75, alpha=0.8)
+ax.set_title(f'{parm1} - {parm2}')
+
+
+plt.show()
+    
+
+
+
+fig, axes = plt.subplots(3, 3, figsize = (9, 7), layout='compressed', sharex='col')
+axes_f = axes.flatten()
+
+ax = axes_f[0]
+vmin, vmax = np.percentile(im, 0.5), np.percentile(im, 99.5)
+ax.imshow(im, cmap='gray', vmin=vmin, vmax=vmax)
+# ax.hlines(lims, 0, N_pix, linestyle=':', color='w', lw=0.75)
+# ax.vlines(lims, 0, N_pix, linestyle=':', color='w', lw=0.75)
+ax.set_xlim([0, 511])
+ax.set_ylim([0, 511])
+ax.set_title('Original image')
+
+ax = axes_f[1]
+parm1 = 'k_r_full' # 'D_r_full', 'k_r_full'
+v_high1 = np.percentile(df[parm1], 98)
+df_f = df[df[parm1] < v_high1]
+ax.hist(df_f[parm1].values, bins=60, alpha=0.4, label=parm1)
+
+parm2 = 'k_or_full' # 'D_or_full', 'k_or_full'
+v_high2 = np.percentile(df[parm2], 98)
+df_f = df[df[parm2] < v_high2]
+ax.hist(df_f[parm2].values, bins=60, alpha=0.4, label=parm2)
+ax.legend()
+ax.set_title(f'{parm1} & {parm2}')
+
+ax = axes_f[2]
+df_f = df[(df[parm1] < v_high1) & (df[parm2] < v_high2)]
+df_f['delta'] = df_f[parm1] - df_f[parm2] 
+ax.hist(df_f['delta'].values, bins=60)
+ax.axvline(0, color='gray', ls='-', lw=0.75, alpha=0.8)
+ax.set_title(f'{parm1} - {parm2}')
+
+
+ax = axes_f[3+1]
+parm1 = 'k_r_lowDt' # 'D_r_full', 'k_r_full'
+v_high1 = np.percentile(df[parm1], 98)
+df_f = df[df[parm1] < v_high1]
+ax.hist(df_f[parm1].values, bins=60, alpha=0.4, label=parm1)
+
+parm2 = 'k_or_lowDt' # 'D_or_full', 'k_or_full'
+v_high2 = np.percentile(df[parm2], 98)
+df_f = df[df[parm2] < v_high2]
+ax.hist(df_f[parm2].values, bins=60, alpha=0.4, label=parm2)
+ax.legend()
+ax.set_title(f'{parm1} & {parm2}')
+
+ax = axes_f[3+2]
+df_f = df[(df[parm1] < v_high1) & (df[parm2] < v_high2)]
+df_f['delta'] = df_f[parm1] - df_f[parm2] 
+ax.hist(df_f['delta'].values, bins=60)
+ax.axvline(0, color='gray', ls='-', lw=0.75, alpha=0.8)
+ax.set_title(f'{parm1} - {parm2}')
+
+
+ax = axes_f[6+1]
+parm1 = 'k_r_highDt' # 'D_r_full', 'k_r_full'
+v_high1 = np.percentile(df[parm1], 98)
+df_f = df[df[parm1] < v_high1]
+ax.hist(df_f[parm1].values, bins=60, alpha=0.4, label=parm1)
+
+parm2 = 'k_or_highDt' # 'D_or_full', 'k_or_full'
+v_high2 = np.percentile(df[parm2], 98)
+df_f = df[df[parm2] < v_high2]
+ax.hist(df_f[parm2].values, bins=60, alpha=0.4, label=parm2)
+ax.legend()
+ax.set_title(f'{parm1} & {parm2}')
+
+ax = axes_f[6+2]
+df_f = df[(df[parm1] < v_high1) & (df[parm2] < v_high2)]
+df_f['delta'] = df_f[parm1] - df_f[parm2] 
+ax.hist(df_f['delta'].values, bins=60)
+ax.axvline(0, color='gray', ls='-', lw=0.75, alpha=0.8)
+ax.set_title(f'{parm1} - {parm2}')
+
+
+plt.show()
+    
+
+
+
 
 # %%%% Import MSD & plot
 

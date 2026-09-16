@@ -20,6 +20,7 @@ COMPUTERNAME = os.environ['COMPUTERNAME']
 
 if COMPUTERNAME == 'PROCYON-PC': # Ordi Perso
     Path_AnalysisPulls = "C:\\Users\\josep\\Desktop\\Seafile\\DownloadedFromSeafile\\"
+    Path_IntraCellTracking = "C:\\Users\\josep\\Desktop\\Seafile\\DownloadedFromSeafile\\IntraCellTracking\\"
     Path_WorkingData = "E:\\WorkingData\\"
     Path_Fiji = "C:\\Users\\josep\\Desktop\\Fiji.app\\"
     Path_JAVA_HOME = "C:\\Users\\josep\\miniforge3\\envs\\pyimagej-env\\Library\\lib\\jvm"
