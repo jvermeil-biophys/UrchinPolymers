@@ -1934,13 +1934,6 @@ L_um = N_pix*UmPerPix
 
 
 
-
-
-
-
-
-
-
 # %%%% Run Trackmate
 
 for tifPath, xmlName in zip(tifPaths, xmlNames):
@@ -2019,7 +2012,7 @@ for ii in range(len(dfNames)):
     ufun.dict2json(dict_MSDfits, dstDir, jsonName)
     
 
-# %%%% Import tracks & run imsd -> Diffusion Map
+# %%%% Import tracks -> run imsd
 
 IMSD = []
 
@@ -2033,7 +2026,7 @@ for ii in range(6): # len(dfNames)
 
 
 
-# %%%% Import tracks & run imsd -> Diffusion Map
+# %%%% From imsd -> Diffusion Map
 
 
 for ii in [2]: # len(dfNames)
@@ -2105,6 +2098,12 @@ for ii in [2]: # len(dfNames)
     
 
     # plt.show()
+    
+    
+
+    
+    
+    
     
 # %%%% Plot the Map
 
@@ -2813,16 +2812,16 @@ df_Diffusion = pd.DataFrame(dict_res)
 fig, axes = plt.subplots(2, 1, figsize=(7, 6), sharex = True, layout='compressed')
 ax = axes[0]
 ax.plot(np.arange(len(df_Diffusion)), df_Diffusion.D_full, ls='-', marker='o', label=r'$D_{full}$')
-ax.plot(np.arange(len(df_Diffusion)), df_Diffusion.D_f4, ls='-', marker='o', label=r'$D_{first4}$')
-ax.plot(np.arange(len(df_Diffusion)), df_Diffusion.D_l15, ls='-', marker='o', label=r'$D_{last15}$')
+ax.plot(np.arange(len(df_Diffusion)), df_Diffusion.D_f4,   ls='-', marker='o', label=r'$D_{first4}$')
+ax.plot(np.arange(len(df_Diffusion)), df_Diffusion.D_l15,  ls='-', marker='o', label=r'$D_{last15}$')
 ax.set_ylabel(r'$D\ (\mu m^2/s)$')
 ax.legend(loc='center left', bbox_to_anchor=(1, 0.5))
 ax.grid()
 
 ax = axes[1]
 ax.plot(np.arange(len(df_Diffusion)), df_Diffusion.k_full, ls='-', marker='o', label=r'$\alpha_{full}$')
-ax.plot(np.arange(len(df_Diffusion)), df_Diffusion.k_f4, ls='-', marker='o', label=r'$\alpha_{first4}$')
-ax.plot(np.arange(len(df_Diffusion)), df_Diffusion.k_l15, ls='-', marker='o', label=r'$\alpha_{last15}$')
+ax.plot(np.arange(len(df_Diffusion)), df_Diffusion.k_f4,   ls='-', marker='o', label=r'$\alpha_{first4}$')
+ax.plot(np.arange(len(df_Diffusion)), df_Diffusion.k_l15,  ls='-', marker='o', label=r'$\alpha_{last15}$')
 ax.set_ylabel(r'$\alpha$')
 ax.set_xticks(np.arange(len(df_Diffusion)))
 ax.set_xticklabels(df_Diffusion['label'].values, rotation = 20)
@@ -2831,6 +2830,175 @@ ax.legend(loc='center left', bbox_to_anchor=(1, 0.5))
 ax.grid()
 
 plt.show()
+
+
+# %%%% Dev MRSD (Pairwise MSD)
+
+pm.setGraphicOptions('print')
+
+Nframe_per_chunk = 100
+Nc = nbimages//Nframe_per_chunk
+Fi = np.arange(0, 2000, step = Nframe_per_chunk)
+Ff = Fi + Nframe_per_chunk
+Dict_TRanges = {}
+
+for ii in [2]: # len(dfNames)
+    dfName = dfNames[ii]
+    df = pd.read_csv(os.path.join(dstDir, dfName), sep='\t')
+    df.particle = df.particle.astype(int)
+    df.frame = df.frame.astype(int)
+    
+    PIDs = df.particle.unique()
+    dict_fi_ff = {}
+    
+    for pid in PIDs:
+        pfi = np.min(df[df['particle'] == pid]['frame'].values) - 1
+        pff = np.max(df[df['particle'] == pid]['frame'].values) - 1
+        dict_fi_ff[pid] = [pfi, pff]
+    
+    
+for ii in [2]: # len(dfNames)
+    dfName = dfNames[ii]
+    df = pd.read_csv(os.path.join(dstDir, dfName), sep='\t')
+    df.particle = df.particle.astype(int)
+    df.frame = df.frame.astype(int)
+    
+    PIDs = df.particle.unique()
+    for jj in range(Nc):
+        fi, ff = Fi[jj], Ff[jj]
+        TRange = []
+        # print('bounds', fi, ff)
+        
+        for pid in PIDs[:]:
+            pfi, pff = dict_fi_ff[pid]
+            if (pfi <= fi) and (ff-1 <= pff):
+                # print(pfi, pff)
+                TRange.append(pid)
+                
+        Dict_TRanges[fi] = TRange
+        
+ncols = 5
+nrows = ((Nc - 1)//ncols) + 1
+
+fig, axes = plt.subplots(nrows, ncols, figsize=(2.0*ncols, 2.0*nrows))
+axes_f = axes.flatten()
+
+for k in range(Nc):
+    print(k)
+    ax = axes_f[k]
+    fi, ff = Fi[k], Ff[k]
+    TRange = Dict_TRanges[fi]
+    df_TRange = df[df['particle'].apply(lambda x : x in TRange)]
+    sns.lineplot(ax=ax,
+                 data=df_TRange, x=df_TRange.x, y=df_TRange.y,
+                 hue=df_TRange.particle, palette=pm.cL_Set21,
+                 ls='-', lw=1, 
+                 legend=False)
+    ax.set_xlabel('')
+    ax.set_ylabel('')
+    
+    # for p in df_chunk.particle.unique():
+    #     df_chunk_p = df_chunk[df_chunk['particle'] == p]
+    #     ax.plot(df_chunk_p.x, df_chunk_p.y, ls='-', lw=1)
+
+
+
+for k in range(Nc):
+    print(k)
+    ax = axes_f[k]
+    fi, ff = Fi[k], Ff[k]
+    TRange = Dict_TRanges[fi]
+    df_TRange = df[df['particle'].apply(lambda x : x in TRange)]
+    
+
+# %%%% MSRD functions
+
+
+
+def get_pairs_for_TRanges(df, SCALE, FPS, Nframes,
+                          len_TRanges = 200, delta_TRanges = -1,
+                          dist_th_um = 5):
+    df.frame = df.frame.astype(int)
+    df.particle = df.particle.astype(int)
+    dist_th = dist_th_um * SCALE
+    
+    if delta_TRanges < 0:
+        delta_TRanges = len_TRanges
+    FI = np.arange(0, Nframes, step=delta_TRanges)
+    FF = FI + len_TRanges
+    valid = (FF <= Nframes)
+    if valid[-1]:
+        pass
+    else:
+        i_stop = ufun.findFirst(True, (FF>Nframes))
+        FI = FI[:i_stop]
+        FF = FF[:i_stop]
+    
+    dict_TRanges2particles = {f'{fi}_{ff}':{'pid':[],'xm':[],'ym':[]} \
+                              for fi, ff in zip(FI, FF)}
+    dict_TRanges2pairs = {f'{fi}_{ff}':[] for fi, ff in zip(FI, FF)}
+    
+    PIDs = df.particle.unique()
+    for pid in PIDs:
+        pfi = np.min(df[df['particle'] == pid]['frame'].values) - 1
+        pff = np.max(df[df['particle'] == pid]['frame'].values) - 1
+        
+        for fi, ff in zip(FI, FF):
+            if (pfi <= fi) and (ff-1 <= pff):
+                xm = np.median(df[df['particle'] == pid]['x'].values)
+                ym = np.median(df[df['particle'] == pid]['y'].values)
+                dict_TRanges2particles[f'{fi}_{ff}']['pid'].append(pid)
+                dict_TRanges2particles[f'{fi}_{ff}']['xm'].append(xm)
+                dict_TRanges2particles[f'{fi}_{ff}']['ym'].append(ym)
+    
+    for TRange in dict_TRanges2particles.keys():
+        df_parts = pd.DataFrame(dict_TRanges2particles[TRange])
+        listPairs = []
+        while len(df_parts)>1:
+            p1 = df_parts['pid'].values[0]
+            XY1 = np.array([df_parts['xm'].values[0],
+                            df_parts['ym'].values[0]])
+            XYothers = np.array([df_parts['xm'].values[1:],
+                                 df_parts['ym'].values[1:]]).T
+            dists = np.power((np.sum((XYothers - XY1)**2, axis=1)), 0.5)
+            min_d = np.min(dists)
+            if min_d > dist_th:
+                idx_to_drop = df_parts[(df_parts["pid"] == p1)].index
+                df_parts.drop(axis=0, index=idx_to_drop, inplace=True)
+            else:
+                idx_min = np.argmin(dists) + 1
+                p2 = df_parts['pid'].values[idx_min]
+                listPairs.append((p1, p2))
+                idx_to_drop = df_parts[(df_parts["pid"] == p1) | (df_parts["pid"] == p2)].index
+                df_parts.drop(axis=0, index=idx_to_drop, inplace=True)
+                # except:
+                #     print(df_parts)
+                
+        dict_TRanges2pairs[TRange] = np.array(listPairs)
+            
+    return(dict_TRanges2pairs)
+
+
+
+
+
+
+
+# Test run
+dfName = dfNames[2]
+df = pd.read_csv(os.path.join(dstDir, dfName), sep='\t')
+
+UmPerPix = cd.UmPerPix_60X_W1
+SCALE = 1/UmPerPix
+Nframes = 2000
+FPS = 10
+
+dict_TRanges2pairs = get_pairs_for_TRanges(df, SCALE, FPS, Nframes,
+                      len_TRanges = 100, delta_TRanges = -1,
+                      dist_th_um = 5)
+
+
+
 
 # %%% 3. Tracking and structure analysis
 
