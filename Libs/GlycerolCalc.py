@@ -38,11 +38,11 @@ def getGlycerolViscosity(ratio, T):
 
     #Fraction cacluator ----------------
 
-    glycerolMass=glycerolDen*glycerolVol
-    waterMass=waterDen*waterVol
-    totalMass=glycerolMass+waterMass
-    mass_fraction=glycerolMass/totalMass
-    vol_fraction= glycerolVol/(glycerolVol+waterVol)
+    glycerolMass = glycerolDen*glycerolVol
+    waterMass = waterDen * waterVol
+    totalMass = glycerolMass + waterMass
+    mass_fraction = glycerolMass/totalMass
+    vol_fraction = glycerolVol/(glycerolVol+waterVol)
      
     # print ("Mass fraction of mixture =", round(mass_fraction,5))
     # print ("Volume fraction of mixture =", round(vol_fraction,5))
@@ -67,8 +67,8 @@ def getGlycerolViscosity(ratio, T):
 
     #Viscosity calcualtor ----------------
 
-    glycerolVisc = 0.001*12100*np.exp((-1233 + T)*T/(9900+70*T))
-    waterVisc    = 0.001*1.790*np.exp((-1230 - T)*T/(36100+360*T))
+    glycerolVisc = 0.001*12100*np.exp((-1233 + T)*T/(9900 + 70*T))
+    waterVisc    = 0.001*1.790*np.exp((-1230 - T)*T/(36100+ 360*T))
 
     a     = 0.705 - 0.0017 * T
     b     = (4.9 + 0.036 * T) * np.power(a, 2.5)
@@ -105,49 +105,61 @@ def getGlycerolViscosity(ratio, T):
 
 # %% Little calculation for uncertainties
 
-# T_ideal = 22
-# R_ideal = 0.8
+T_ideal = 22
+R_ideal = 0.8
 
-# dT = 0.2
-# dR = 0.001
+dT = 0.2
+dR = 0.005
 
-# V = getGlycerolViscosity(R_ideal, T_ideal)
+V = getGlycerolViscosity(R_ideal, T_ideal)
 
-# print('Real')
-# print(f'{getGlycerolViscosity(R_ideal, T_ideal):.3f}')
-# print('Only R')
-# print(f'{getGlycerolViscosity(R_ideal+dR, T_ideal):.3f}')
-# print(f'{getGlycerolViscosity(R_ideal-dR, T_ideal):.3f}')
-# print('Only T')
-# print(f'{getGlycerolViscosity(R_ideal, T_ideal+dT):.3f}')
-# print(f'{getGlycerolViscosity(R_ideal, T_ideal-dT):.3f}')
-# print('Both')
-# print(f'{getGlycerolViscosity(R_ideal+dR, T_ideal+dT):.3f}')
-# print(f'{getGlycerolViscosity(R_ideal+dR, T_ideal-dT):.3f}')
-# print(f'{getGlycerolViscosity(R_ideal-dR, T_ideal+dT):.3f}')
-# print(f'{getGlycerolViscosity(R_ideal-dR, T_ideal-dT):.3f}')
-
-
-# print('\n Deltas')
-# print('Only R')
-# print(f'{getGlycerolViscosity(R_ideal+dR, T_ideal)-V:.3f}')
-# print(f'{getGlycerolViscosity(R_ideal-dR, T_ideal)-V:.3f}')
-# print('Only T')
-# print(f'{getGlycerolViscosity(R_ideal, T_ideal+dT)-V:.3f}')
-# print(f'{getGlycerolViscosity(R_ideal, T_ideal-dT)-V:.3f}')
-# print('Both')
-# print(f'{getGlycerolViscosity(R_ideal+dR, T_ideal+dT)-V:.3f}')
-# print(f'{getGlycerolViscosity(R_ideal+dR, T_ideal-dT)-V:.3f}')
-# print(f'{getGlycerolViscosity(R_ideal-dR, T_ideal+dT)-V:.3f}')
-# print(f'{getGlycerolViscosity(R_ideal-dR, T_ideal-dT)-V:.3f}')
+print('Real')
+print(f'{getGlycerolViscosity(R_ideal, T_ideal):.3f}')
+print('Only R')
+print(f'{getGlycerolViscosity(R_ideal+dR, T_ideal):.3f}')
+print(f'{getGlycerolViscosity(R_ideal-dR, T_ideal):.3f}')
+print('Only T')
+print(f'{getGlycerolViscosity(R_ideal, T_ideal+dT):.3f}')
+print(f'{getGlycerolViscosity(R_ideal, T_ideal-dT):.3f}')
+print('Both')
+print(f'{getGlycerolViscosity(R_ideal+dR, T_ideal+dT):.3f}')
+print(f'{getGlycerolViscosity(R_ideal+dR, T_ideal-dT):.3f}')
+print(f'{getGlycerolViscosity(R_ideal-dR, T_ideal+dT):.3f}')
+print(f'{getGlycerolViscosity(R_ideal-dR, T_ideal-dT):.3f}')
 
 
-# print('\n Rel Err')
-# print('Both Parms')
-# print(f'{(getGlycerolViscosity(R_ideal+dR, T_ideal+dT)-V)/V:.5f}')
-# print(f'{(getGlycerolViscosity(R_ideal+dR, T_ideal-dT)-V)/V:.5f}')
-# print(f'{(getGlycerolViscosity(R_ideal-dR, T_ideal+dT)-V)/V:.5f}')
-# print(f'{(getGlycerolViscosity(R_ideal-dR, T_ideal-dT)-V)/V:.5f}')
+print('\n Deltas')
+print('Only R')
+print(f'{getGlycerolViscosity(R_ideal+dR, T_ideal)-V:.3f}')
+print(f'{getGlycerolViscosity(R_ideal-dR, T_ideal)-V:.3f}')
+print('Only T')
+print(f'{getGlycerolViscosity(R_ideal, T_ideal+dT)-V:.3f}')
+print(f'{getGlycerolViscosity(R_ideal, T_ideal-dT)-V:.3f}')
+print('Both')
+print(f'{getGlycerolViscosity(R_ideal+dR, T_ideal+dT)-V:.3f}')
+print(f'{getGlycerolViscosity(R_ideal+dR, T_ideal-dT)-V:.3f}')
+print(f'{getGlycerolViscosity(R_ideal-dR, T_ideal+dT)-V:.3f}')
+print(f'{getGlycerolViscosity(R_ideal-dR, T_ideal-dT)-V:.3f}')
+
+
+print('\n Rel Err')
+print('Both Parms')
+print(f'{(getGlycerolViscosity(R_ideal+dR, T_ideal+dT)-V)/V:.5f}')
+print(f'{(getGlycerolViscosity(R_ideal+dR, T_ideal-dT)-V)/V:.5f}')
+print(f'{(getGlycerolViscosity(R_ideal-dR, T_ideal+dT)-V)/V:.5f}')
+print(f'{(getGlycerolViscosity(R_ideal-dR, T_ideal-dT)-V)/V:.5f}')
+
+
+# %%
+
+a = 2*0.011
+b = 0.0235
+# b = 7.78/100
+c = 0.017
+
+dF = (a*a + b*b + c*c)**0.5
+
+print(f'{dF*100:.2f} %')
 
 
 # %% Deprecated
