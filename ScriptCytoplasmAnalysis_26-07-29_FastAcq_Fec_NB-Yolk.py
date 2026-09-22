@@ -54,6 +54,13 @@ import Libs.ToolboxStructureAnalysis as tbsa
 
 # %% Utility functions
 
+def Tpf_str2num(tpf_str):
+    L = tpf_str.split('min')
+    tpf_num = int(L[0])*60
+    if len(L) > 1 and len(L[1]) > 0:
+        tpf_num += int(L[1])
+    return(tpf_num)
+
 def distribute_in_boxes(df, L, M, 
                         str_Id = 'Id', str_X = 'X', str_Y = 'Y'):
     box_size = L / M
@@ -1900,15 +1907,23 @@ dstDir = os.path.join(mainDir, 'SPT_results')
 tifNames = ['26-07-29_PostF_2min_Pos11_10fps_Texp100ms_CSU642_crop.tif',
             '26-07-29_PostF_6min30_Pos11_10fps_Texp100ms_CSU642_crop.tif',
             '26-07-29_PostF_12min_Pos11_10fps_Texp100ms_CSU642_crop.tif',
+            '26-07-29_PostF_20min_Pos11_10fps_Texp100ms_CSU642_crop.tif',
             '26-07-29_PostF_30min_Pos11_10fps_Texp100ms_CSU642_crop.tif',
             '26-07-29_PostF_45min_Pos11_10fps_Texp100ms_CSU642_crop.tif',
+            '26-07-29_PostF_60min_Pos11_10fps_Texp100ms_CSU642_crop.tif',
             '26-07-29_PostF_70min_Pos11_10fps_Texp100ms_CSU642_crop.tif',
-            '26-07-29_PostF_80min_Pos11_10fps_Texp100ms_CSU642_crop.tif',
-            '26-07-29_PostF_100min_Pos11_10fps_Texp100ms_CSU642_crop.tif',
-            '26-07-29_PostF_120min_Pos11_10fps_Texp100ms_CSU642_crop.tif',
-             ]
-# tifNames = ['26-07-29_PostF_2min_Pos11_10fps_Texp100ms_CSU642_crop.tif',
+            ]
+#             '26-07-29_PostF_80min_Pos11_10fps_Texp100ms_CSU642_crop.tif',
+#             '26-07-29_PostF_100min_Pos11_10fps_Texp100ms_CSU642_crop.tif',
+#             '26-07-29_PostF_120min_Pos11_10fps_Texp100ms_CSU642_crop.tif',
 #              ]
+
+
+# tifNames = [
+#             '26-07-29_PostF_20min_Pos11_10fps_Texp100ms_CSU642_crop.tif',
+#             '26-07-29_PostF_60min_Pos11_10fps_Texp100ms_CSU642_crop.tif',
+#             ]
+
 tifPaths = [os.path.join(srcDir, tifName) for tifName in tifNames]
 xmlNames = [tifName.split('.')[0] + '_PyTracks.xml' for tifName in tifNames]
 xmlPaths = [os.path.join(dstDir, xmlName)  for xmlName in xmlNames]
@@ -1935,7 +1950,9 @@ L_um = N_pix*UmPerPix
 
 
 
-
+max_lagtime = 50
+lowDt_upper = 0.5
+highDt_lower = 1.0
 
 
 
@@ -1979,64 +1996,196 @@ for ii in range(len(xmlPaths)):
 # %%%% Import tracks & run msd
 
 
+
 for ii in range(len(dfNames)):
     dfName = dfNames[ii]
     df = pd.read_csv(os.path.join(dstDir, dfName), sep='\t')
     jsonName = jsonNames[ii]
     msdName = msdNames[ii]
     
-    res_emsd = tp.motion.emsd(df, UmPerPix, FPS, max_lagtime=40).reset_index()
+    res_emsd = tp.motion.emsd(df, UmPerPix, FPS, max_lagtime=max_lagtime).reset_index()
     res_emsd.to_csv(os.path.join(dstDir, msdName), index=False, sep='\t')
     
-    T, MSD = res_emsd['lagt'], res_emsd['msd']
+    T, MSD = res_emsd['lagt'].values, res_emsd['msd'].values
+    iLow = ufun.findFirst(lowDt_upper, T) + 1
+    iHigh = ufun.findFirst(highDt_lower, T)
     
     parms, results = ufun.fitLineHuber(T, MSD, with_intercept = False)
-    D_linear = parms.values[0]/4
+    D_linear = parms[0]/4
     
     parms, results = ufun.fitLineHuber(np.log(T), np.log(MSD), with_intercept = True)
     b, a = parms
     k_full = a
     D_full = np.exp(b)/4
 
-    parms, results = ufun.fitLineHuber(np.log(T[:4]), np.log(MSD[:4]), with_intercept = True)
+    parms, results = ufun.fitLineHuber(np.log(T[:iLow]), np.log(MSD[:iLow]), with_intercept = True)
     b, a = parms
-    k_f4 = a
-    D_f4 = np.exp(b)/4
+    k_lowDt = a
+    D_lowDt = np.exp(b)/4
 
-    parms, results = ufun.fitLineHuber(np.log(T[-15:]), np.log(MSD[-15:]), with_intercept = True)
+    parms, results = ufun.fitLineHuber(np.log(T[iHigh:]), np.log(MSD[iHigh:]), with_intercept = True)
     b, a = parms
-    k_l15 = a
-    D_l15 = np.exp(b)/4
+    k_highDt = a
+    D_highDt = np.exp(b)/4
     
     dict_MSDfits = {'D_linear': D_linear,
                     'k_full': k_full,
                     'D_full': D_full,
-                    'k_f4': k_f4,
-                    'D_f4': D_f4,
-                    'k_l15': k_l15,
-                    'D_l15': D_l15,}
+                    'k_lowDt': k_lowDt,
+                    'D_lowDt': D_lowDt,
+                    'k_highDt': k_highDt,
+                    'D_highDt': D_highDt,}
     
     ufun.dict2json(dict_MSDfits, dstDir, jsonName)
     
+# %%%% Import MSD & plot
+
+# for ii in range(len(msdNames)):
+#     df = pd.read_csv(os.path.join(dstDir, dfNames[ii]), sep='\t')
+#     res_emsd = pd.read_csv(os.path.join(dstDir, msdNames[ii]), sep='\t')
+#     T, MSD = res_emsd['lagt'], res_emsd['msd']
+    
+#     dict_MSDfits = ufun.json2dict(dstDir, jsonNames[ii])
+#     D_linear = dict_MSDfits['D_linear']
+#     k_full = dict_MSDfits['k_full']
+#     D_full = dict_MSDfits['D_full']
+#     k_lowDt = dict_MSDfits['k_lowDt']
+#     D_lowDt = dict_MSDfits['D_lowDt']
+#     k_highDt = dict_MSDfits['k_highDt']
+#     D_highDt = dict_MSDfits['D_highDt']
+    
+#     Tc = (D_lowDt/D_highDt)**(1/(k_highDt-k_lowDt))
+    
+#     fig, ax = plt.subplots(1, 1, figsize=(5, 5))
+#     ax.set_xscale('log')
+#     ax.set_yscale('log')
+
+#     Xp = np.array([1e-2, 1e2])
+
+#     ax.plot(T, MSD, 'wo', mec='k')
+#     # ax.plot(Xp, 4*D_full*(Xp**k_full), ls='-', color=pm.cL_Set21[0], mec='k', label='Full curve')
+#     ax.plot(Xp, 4*D_lowDt*(Xp**k_lowDt), ls='-', color=pm.cL_Set21[1], mec='k', 
+#             label=f'First 4 pts\n$\\alpha$ = {k_lowDt:.2f}')
+#     ax.plot(Xp, 4*D_highDt*(Xp**k_highDt), ls='-', color=pm.cL_Set21[2], mec='k', 
+#             label=f'Last 15 pts\n$\\alpha$ = {k_highDt:.2f}')
+#     ax.axvline(Tc, color='gray', lw=1.5, label=f'$T_c$ = {Tc:.2f}')
+#     ax.legend()
+#     ax.grid()
+#     ax.set_xlim([0.5e-1, 2e1])
+#     ax.set_ylim([0.5e-3, 2e0])
+#     ax.set_ylabel('MSD (um²)')
+#     ax.set_xlabel('T (s)')
+#     plt.show()
+    
+fig, ax = plt.subplots(1, 1, figsize=(5, 5))
+ax.set_xscale('log')
+ax.set_yscale('log')
+
+dict_res = {'label':[],
+            'D_full':[],
+            'k_full':[],
+            'D_lowDt':[],
+            'k_lowDt':[],
+            'D_highDt':[],
+            'k_highDt':[],
+            }
+
+for ii in range(len(msdNames)):
+    df = pd.read_csv(os.path.join(dstDir, dfNames[ii]), sep='\t')
+    res_emsd = pd.read_csv(os.path.join(dstDir, msdNames[ii]), sep='\t')
+    T, MSD = res_emsd['lagt'], res_emsd['msd']
+    
+    dict_MSDfits = ufun.json2dict(dstDir, jsonNames[ii])
+    D_linear = dict_MSDfits['D_linear']
+    k_full = dict_MSDfits['k_full']
+    D_full = dict_MSDfits['D_full']
+    k_lowDt = dict_MSDfits['k_lowDt']
+    D_lowDt = dict_MSDfits['D_lowDt']
+    k_highDt = dict_MSDfits['k_highDt']
+    D_highDt = dict_MSDfits['D_highDt']
+    
+    Tc = (D_lowDt/D_highDt)**(1/(k_highDt-k_lowDt))  
+
+    label = msdNames[ii].split('_')[2]
+
+    ax.plot(T, MSD, label=label, color=pm.cL_Set21[ii], 
+            # ls='-', lw = 1, alpha=0.85,)
+            marker='o', markersize=3, alpha=0.85)
+    
+    dict_res['label'].append(label)
+    dict_res['D_full'].append(D_full)
+    dict_res['k_full'].append(k_full)
+    dict_res['D_lowDt'].append(D_lowDt)
+    dict_res['k_lowDt'].append(k_lowDt)
+    dict_res['D_highDt'].append(D_highDt)
+    dict_res['k_highDt'].append(k_highDt)
+    
+
+Xp1 = np.array([1e-1, 5e-1])
+Xp2 = np.array([1, 2])
+ax.plot(Xp1, 12e-3*Xp1**0.5, color = 'gray', ls=':', label=r'$y \propto x^{1/2}$')
+ax.plot(Xp2, 0.15e-1*Xp2**1, color = 'gray', ls='--', label=r'$y \propto x^{1}$')
+ax.legend(edgecolor='None', title='Tpf')
+ax.grid()
+ax.set_xlim([0.8e-1, 0.6e1])
+ax.set_ylim([2e-3, 0.5e0])
+ax.set_ylabel('MSD (µm²)')
+ax.set_xlabel(r'$\Delta t$ (s)')
+
+plt.show()
+
+
+df_Diffusion = pd.DataFrame(dict_res)
+df_Diffusion['Tpf_s'] = df_Diffusion['label'].apply(lambda x : Tpf_str2num(x))
+df_Diffusion['Tpf_min'] = df_Diffusion['Tpf_s']/60
+
+fig, axes = plt.subplots(2, 1, figsize=(7, 6), sharex = True, layout='compressed')
+ax = axes[0]
+# ax.plot(np.arange(len(df_Diffusion)), df_Diffusion.D_full, ls='-', marker='o', label=r'$D_{full}$')
+# ax.plot(np.arange(len(df_Diffusion)), df_Diffusion.D_lowDt, ls='-', marker='o', label=r'$D_{\Delta t \leq 0.5s}$')
+# ax.plot(np.arange(len(df_Diffusion)), df_Diffusion.D_highDt, ls='-', marker='o', label=r'$D_{\Delta t \geq 1s}$')
+ax.plot(df_Diffusion.Tpf_min, df_Diffusion.D_full, ls='-', marker='o', label=r'All $\Delta t$')
+ax.plot(df_Diffusion.Tpf_min, df_Diffusion.D_lowDt, ls='-', marker='o', label=r'$\Delta t \leq 0.5s$')
+ax.plot(df_Diffusion.Tpf_min, df_Diffusion.D_highDt, ls='-', marker='o', label=r'$\Delta t \geq 1s$')
+ax.set_ylabel(r'$D_{eff}\ (\mu m^2/s^\alpha)$')
+ax.legend(loc='center left', bbox_to_anchor=(1, 0.5))
+ax.grid()
+
+ax = axes[1]
+# ax.plot(np.arange(len(df_Diffusion)), df_Diffusion.k_full, ls='-', marker='o', label=r'$\alpha_{full}$')
+# ax.plot(np.arange(len(df_Diffusion)), df_Diffusion.k_lowDt, ls='-', marker='o', label=r'$\alpha_{\Delta t \leq 0.5s}$')
+# ax.plot(np.arange(len(df_Diffusion)), df_Diffusion.k_highDt, ls='-', marker='o', label=r'$\alpha_{\Delta t \geq 1s}$')
+ax.plot(df_Diffusion.Tpf_min, df_Diffusion.k_full, ls='-', marker='o', label=r'All $\Delta t$')
+ax.plot(df_Diffusion.Tpf_min, df_Diffusion.k_lowDt, ls='-', marker='o', label=r'$\Delta t \leq 0.5s$')
+ax.plot(df_Diffusion.Tpf_min, df_Diffusion.k_highDt, ls='-', marker='o', label=r'$\Delta t \geq 1s$')
+ax.set_ylabel(r'$\alpha$')
+ax.set_xticks(df_Diffusion['Tpf_min'].values)
+ax.set_xticklabels(df_Diffusion['Tpf_min'].values, rotation = 20)
+ax.set_xlabel('Tpf (min)')
+ax.legend(loc='center left', bbox_to_anchor=(1, 0.5))
+ax.grid()
+
+plt.show()
 
 # %%%% Import tracks & run imsd -> Diffusion Map
 
 IMSD = []
 
-for ii in range(6): # len(dfNames)
+for ii in range(len(dfNames)): # len(dfNames)
     dfName = dfNames[ii]
     df = pd.read_csv(os.path.join(dstDir, dfName), sep='\t')
     df.particle = df.particle.astype(int)
     
-    res_imsd = tp.motion.imsd(df, UmPerPix, FPS, max_lagtime=40).reset_index()
+    res_imsd = tp.motion.imsd(df, UmPerPix, FPS, max_lagtime=50).reset_index()
     IMSD.append(res_imsd)
 
 
 
 # %%%% Import tracks & run imsd -> Diffusion Map
 
+DF_PART_MSD = []
 
-for ii in [2]: # len(dfNames)
+for ii in range(len(dfNames)): # range(len(dfNames)) [2]
     im = ufun.load_stack_region(tifPaths[ii], time_indices=[0])[0]
     dfName = dfNames[ii]
     df = pd.read_csv(os.path.join(dstDir, dfName), sep='\t')
@@ -2062,16 +2211,17 @@ for ii in [2]: # len(dfNames)
     # ax.set_yscale('log')
     
     Pid_list = df.particle.unique()
-    for p in Pid_list[:3]:
+    for p in Pid_list[:]:
         dfp = df[df['particle']==p]
-        msd = res_imsd.loc[:, p]
+        msd = res_imsd.loc[:, p].dropna()
         # ax.plot(dt, msd, 'o', markersize=4, alpha=0.02, 
         #         color='navy', mec='None')
                 
-        parms, results = ufun.fitLineHuber(dt, msd, with_intercept = False)
+        parms, results = ufun.fitLineHuber(dt[:len(msd)], msd, 
+                                           with_intercept = False)
         D_linear = parms.values[0]/4
         
-        parms, results = ufun.fitLineHuber(np.log(dt), np.log(msd), 
+        parms, results = ufun.fitLineHuber(np.log(dt[:len(msd)]), np.log(msd), 
                                            with_intercept = True)
         b, a = parms
         k_full = a
@@ -2095,129 +2245,153 @@ for ii in [2]: # len(dfNames)
         dict_particle_MSD['k_full'].append(k_full)
         
     df_particle_MSD = pd.DataFrame(dict_particle_MSD)
-    
+    DF_PART_MSD.append(df_particle_MSD)
 
-    
-    # dict_boxes = distribute_in_boxes(dict_particle_MSD, N_pix, M_boxes, 
-    #                     str_Id = 'Pid', str_X = 'Xc', str_Y = 'Yc')
-    # L = [len(dict_boxes[k]) for k in dict_boxes.keys()]
 
-    
+#### SAVE
 
-    # plt.show()
-    
+tableNames = [tifName.split('.')[0] + '_partTrajData.csv' for tifName in tifNames]
+for ii in range(len(dfNames)):
+    df_particle_MSD = DF_PART_MSD[ii]
+    df_particle_MSD.to_csv(os.path.join(dstDir, tableNames[ii]), sep=';', index=False)
+
+
 # %%%% Plot the Map
 
-M_boxes = 10
-L_box = N_pix/M_boxes
+df_centers = pd.read_csv(os.path.join(srcDir, 'OrganizingCenters.csv'), sep=';')
+tableNames = [tifName.split('.')[0] + '_partTrajData.csv' for tifName in tifNames]
 
-df_particle_MSD['Xb'] = (df_particle_MSD['Xc'].values//L_box).astype(int)
-df_particle_MSD['Yb'] = (df_particle_MSD['Yc'].values//L_box).astype(int)
+for ii in range(len(dfNames)): #
+    t = nbimages//2
+    im = ufun.load_stack_region(tifPaths[ii], time_indices=[t])[0]
+    df_particle_MSD = pd.read_csv(os.path.join(dstDir, tableNames[ii]), sep=';')
+    label = msdNames[ii].split('_')[2]
+    
+    M_boxes = 15
+    L_box = N_pix/M_boxes
+    
+    Xc, Yc = df_centers.loc[ii, 'xc'], df_centers.loc[ii, 'yc']
 
-df_particle_MSD['Bxy'] = [(x,y) for x, y in zip(df_particle_MSD['Xb'], df_particle_MSD['Yb'])]
+    df_particle_MSD['Xb'] = (df_particle_MSD['Xc'].values//L_box).astype(int)
+    df_particle_MSD['Yb'] = (df_particle_MSD['Yc'].values//L_box).astype(int)
 
-grouped = df_particle_MSD.groupby('Bxy')
-df_grid_MSD = grouped.agg({'Pid':'count',
-                           'D_lin':'mean',
-                           'D_full':'mean',
-                           'k_full':'mean',
-                           }).rename(columns={'Pid':'count'}).reset_index()
+    df_particle_MSD['Bxy'] = [(x,y) for x, y in zip(df_particle_MSD['Xb'], df_particle_MSD['Yb'])]
 
-df_grid_MSD = df_grid_MSD[df_grid_MSD['count'] >= 10]
+    grouped = df_particle_MSD.groupby('Bxy')
+    df_grid_MSD = grouped.agg({'Pid':'count',
+                               'D_lin':'mean',
+                               'D_full':'mean',
+                               'k_full':'mean',
+                               }).rename(columns={'Pid':'count'}).reset_index()
 
-lims = np.linspace(0, N_pix-1, (M_boxes+1))
-fig, axes = plt.subplots(2, 2, figsize = (8, 6), layout='compressed')
-axes_f = axes.flatten()
+    df_grid_MSD = df_grid_MSD[df_grid_MSD['count'] >= 5]
 
-ax = axes_f[0]
-vmin, vmax = np.percentile(im, 0.5), np.percentile(im, 99.5)
-ax.imshow(im, cmap='gray', vmin=vmin, vmax=vmax)
-ax.hlines(lims, 0, N_pix, linestyle=':', color='w', lw=0.75)
-ax.vlines(lims, 0, N_pix, linestyle=':', color='w', lw=0.75)
-ax.set_xlim([0, 511])
-ax.set_ylim([0, 511])
-ax.set_title('Tiled image')
+    lims = np.linspace(0, N_pix-1, (M_boxes+1))
+    fig, axes = plt.subplots(2, 2, figsize = (8, 6), layout='compressed')
+    axes_f = axes.flatten()
 
-df_2_heatmap(df_grid_MSD, axes_f[1], parmCol='k_full', boxCol='Bxy', 
-             y_ascending=True, cmap="viridis", annotate=False, colorScale='linear')
+    ax = axes_f[0]
+    vmin, vmax = np.percentile(im, 0.5), np.percentile(im, 99.5)
+    ax.imshow(im, cmap='gray', vmin=vmin, vmax=vmax)
+    ax.hlines(lims, 0, N_pix, linestyle=':', color='w', lw=0.75)
+    ax.vlines(lims, 0, N_pix, linestyle=':', color='w', lw=0.75)
+    ax.plot(Xc, Yc, 'ro', markersize=3)
+    ax.set_xlim([0, 511])
+    ax.set_ylim([0, 511])
+    ax.set_title(f'Tpf {label} - tiled img')
 
-df_2_heatmap(df_grid_MSD, axes_f[2], parmCol='D_lin', boxCol='Bxy', 
-             y_ascending=True, cmap="viridis", annotate=False, colorScale='linear')
+    df_2_heatmap(df_grid_MSD, axes_f[1], parmCol='k_full', boxCol='Bxy', 
+                 y_ascending=True, cmap="viridis", annotate=False, colorScale='linear')
 
-df_2_heatmap(df_grid_MSD, axes_f[3], parmCol='D_full', boxCol='Bxy', 
-             y_ascending=True, cmap="viridis", annotate=False, colorScale='linear')
+    df_2_heatmap(df_grid_MSD, axes_f[2], parmCol='D_lin', boxCol='Bxy', 
+                 y_ascending=True, cmap="viridis", annotate=False, colorScale='log')
+
+    df_2_heatmap(df_grid_MSD, axes_f[3], parmCol='D_full', boxCol='Bxy', 
+                 y_ascending=True, cmap="viridis", annotate=False, colorScale='log')
 
 
-plt.show()
+    plt.show()
+    
+
+
+
 
 
 # %%%% Plot the points
 
-# df_particle_MSD
+df_centers = pd.read_csv(os.path.join(srcDir, 'OrganizingCenters.csv'), sep=';')
+tableNames = [tifName.split('.')[0] + '_partTrajData.csv' for tifName in tifNames]
 
-lims = np.linspace(0, N_pix-1, (M_boxes+1))
-fig, axes = plt.subplots(2, 2, figsize = (10, 8), layout='compressed')
-axes_f = axes.flatten()
-ax = axes_f[0]
-vmin, vmax = np.percentile(im, 0.5), np.percentile(im, 99.5)
-ax.imshow(im, cmap='gray', vmin=vmin, vmax=vmax)
-# ax.hlines(lims, 0, N_pix, linestyle=':', color='w', lw=0.75)
-# ax.vlines(lims, 0, N_pix, linestyle=':', color='w', lw=0.75)
-ax.set_xlim([0, 511])
-ax.set_ylim([0, 511])
-ax.set_title('Original image')
-
-ax = axes_f[1]
-parm = 'k_full' # 'D_full', 'k_full'
-v_high = np.percentile(df_particle_MSD[parm], 98)
-df_f = df_particle_MSD[df_particle_MSD[parm] < v_high]
-
-g = ax.scatter(df_f['Xc'], df_f['Yc'], 
-               c=df_f[parm], cmap='viridis',
-               s = 8, alpha = 1, edgecolor='None',
-               norm=mpl.colors.Normalize(),
-               )
-cbar = fig.colorbar(g)
-ax.set_xlim([0, 511])
-ax.set_ylim([0, 511])
-ax.set_title(parm)
+for ii in range(len(dfNames)): #
+    t = nbimages//2
+    im = ufun.load_stack_region(tifPaths[ii], time_indices=[t])[0]
+    df_particle_MSD = pd.read_csv(os.path.join(dstDir, tableNames[ii]), sep=';')
+    label = msdNames[ii].split('_')[2]
 
 
-ax = axes_f[2]
-parm = 'D_lin' # 'D_full', 'k_full'
-v_high = np.percentile(df_particle_MSD[parm], 98)
-df_f = df_particle_MSD[df_particle_MSD[parm] < v_high]
-
-g = ax.scatter(df_f['Xc'], df_f['Yc'], 
-               c=df_f[parm], cmap='PuRd',
-               s = 8, alpha = 1, edgecolor='None',
-               norm=mpl.colors.LogNorm(),
-               )
-cbar = fig.colorbar(g)
-ax.set_xlim([0, 511])
-ax.set_ylim([0, 511])
-ax.set_title(parm)
-
-
-ax = axes_f[3]
-parm = 'D_full' # 'D_full', 'k_full'
-v_high = np.percentile(df_particle_MSD[parm], 98)
-df_f = df_particle_MSD[df_particle_MSD[parm] < v_high]
-
-g = ax.scatter(df_f['Xc'], df_f['Yc'], 
-               c=df_f[parm], cmap='BuPu',
-               s = 8, alpha = 1, edgecolor='None',
-               norm=mpl.colors.LogNorm(),
-               )
-cbar = fig.colorbar(g)
-ax.set_xlim([0, 511])
-ax.set_ylim([0, 511])
-ax.set_title(parm)
-
-# Remove the legend and add a colorbar
-
-
-plt.show()
+    lims = np.linspace(0, N_pix-1, (M_boxes+1))
+    fig, axes = plt.subplots(2, 2, figsize = (10, 8), layout='compressed')
+    axes_f = axes.flatten()
+    ax = axes_f[0]
+    vmin, vmax = np.percentile(im, 0.5), np.percentile(im, 99.5)
+    ax.imshow(im, cmap='gray', vmin=vmin, vmax=vmax)
+    # ax.hlines(lims, 0, N_pix, linestyle=':', color='w', lw=0.75)
+    # ax.vlines(lims, 0, N_pix, linestyle=':', color='w', lw=0.75)
+    ax.set_xlim([0, 511])
+    ax.set_ylim([0, 511])
+    ax.set_title('Original image')
+    
+    ax = axes_f[1]
+    parm = 'k_full' # 'D_full', 'k_full'
+    v_high = np.percentile(df_particle_MSD[parm], 98)
+    df_f = df_particle_MSD[df_particle_MSD[parm] < v_high]
+    
+    g = ax.scatter(df_f['Xc'], df_f['Yc'], 
+                   c=df_f[parm], cmap='viridis',
+                   s = 8, alpha = 1, edgecolor='None',
+                   norm=mpl.colors.Normalize(),
+                   )
+    cbar = fig.colorbar(g)
+    ax.set_xlim([0, 511])
+    ax.set_ylim([0, 511])
+    ax.set_title(parm)
+    
+    
+    ax = axes_f[2]
+    parm = 'D_lin' # 'D_full', 'k_full'
+    v_high = np.percentile(df_particle_MSD[parm], 98)
+    df_f = df_particle_MSD[df_particle_MSD[parm] < v_high]
+    
+    g = ax.scatter(df_f['Xc'], df_f['Yc'], 
+                   c=df_f[parm], cmap='PuRd',
+                   s = 8, alpha = 1, edgecolor='None',
+                   norm=mpl.colors.LogNorm(),
+                   )
+    cbar = fig.colorbar(g)
+    ax.set_xlim([0, 511])
+    ax.set_ylim([0, 511])
+    ax.set_title(parm)
+    
+    
+    ax = axes_f[3]
+    parm = 'D_full' # 'D_full', 'k_full'
+    v_high = np.percentile(df_particle_MSD[parm], 98)
+    df_f = df_particle_MSD[df_particle_MSD[parm] < v_high]
+    
+    g = ax.scatter(df_f['Xc'], df_f['Yc'], 
+                   c=df_f[parm], cmap='BuPu',
+                   s = 8, alpha = 1, edgecolor='None',
+                   norm=mpl.colors.LogNorm(),
+                   )
+    cbar = fig.colorbar(g)
+    ax.set_xlim([0, 511])
+    ax.set_ylim([0, 511])
+    ax.set_title(parm)
+    
+    # Remove the legend and add a colorbar
+    
+    
+    plt.show()
         
 
 
@@ -2225,12 +2399,21 @@ plt.show()
 # %%%% Radial / OrthoRadial
 
 
-N_lagT = 30
+max_lagtime = 30
 lagT = np.arange(1, 31) / FPS
 
+iLow = ufun.findFirst(lowDt_upper, lagT) + 1
+iHigh = ufun.findFirst(highDt_lower, lagT)
 
-for ii in [2]: # len(dfNames)
-    im = ufun.load_stack_region(tifPaths[ii], time_indices=[0])[0]
+df_centers = pd.read_csv(os.path.join(srcDir, 'OrganizingCenters.csv'), sep=';')
+
+tableNames = [tifName.split('.')[0] + '_partTrajData_RandOR.csv' for tifName in tifNames]
+
+
+for ii in range(len(dfNames)): # len(dfNames)
+    print(ii)
+    X_MTcenter, Y_MTcenter = df_centers.loc[ii, 'xc'], df_centers.loc[ii, 'yc']
+    
     dfName = dfNames[ii]
     df = pd.read_csv(os.path.join(dstDir, dfName), sep='\t')
     df.particle = df.particle.astype(int)
@@ -2280,11 +2463,11 @@ for ii in [2]: # len(dfNames)
         XY = np.array([X, Y]).T
         CvxHull = MultiPoint(XY).convex_hull
         Xc, Yc = CvxHull.centroid.coords[0]
-        theta = np.atan2(Yc - C_pix, Xc - C_pix)
+        theta = np.atan2(Yc - Y_MTcenter, Xc - X_MTcenter)
         
         RM = np.array([[np.cos(theta), - np.sin(theta)], 
                        [np.sin(theta),   np.cos(theta)]])
-        XY_center = np.array([C_pix, C_pix])
+        XY_center = np.array([X_MTcenter, Y_MTcenter])
         XY_r = ((XY - XY_center) @ RM) + XY_center
         
         # PLOT A ROTATED TRAJECTORY
@@ -2314,8 +2497,8 @@ for ii in [2]: # len(dfNames)
         
         # MSD 1D for each
         # lagT
-        MSD_r = (msd_fft_1D(Rd, UmPerPix, FPS, max_lagtime=N_lagT))['msd']
-        MSD_or = (msd_fft_1D(ORd, UmPerPix, FPS, max_lagtime=N_lagT))['msd']
+        MSD_r = (msd_fft_1D(Rd, UmPerPix, FPS, max_lagtime=max_lagtime))['msd']
+        MSD_or = (msd_fft_1D(ORd, UmPerPix, FPS, max_lagtime=max_lagtime))['msd']
         
         
         # Fits for D and k
@@ -2329,13 +2512,13 @@ for ii in [2]: # len(dfNames)
         k_r_full = a
         D_r_full = np.exp(b)/4
         
-        parms, results = ufun.fitLineHuber(np.log(lagT[10:]), np.log(MSD_r[10:]), 
+        parms, results = ufun.fitLineHuber(np.log(lagT[iHigh:]), np.log(MSD_r[iHigh:]), 
                                            with_intercept = True)
         b, a = parms
         k_r_highDt = a
         D_r_highDt = np.exp(b)/4
         
-        parms, results = ufun.fitLineHuber(np.log(lagT[:10]), np.log(MSD_r[:10]), 
+        parms, results = ufun.fitLineHuber(np.log(lagT[:iLow]), np.log(MSD_r[:iLow]), 
                                            with_intercept = True)
         b, a = parms
         k_r_lowDt = a
@@ -2352,13 +2535,13 @@ for ii in [2]: # len(dfNames)
         k_or_full = a
         D_or_full = np.exp(b)/4
         
-        parms, results = ufun.fitLineHuber(np.log(lagT[10:]), np.log(MSD_or[10:]), 
+        parms, results = ufun.fitLineHuber(np.log(lagT[iHigh:]), np.log(MSD_or[iHigh:]), 
                                            with_intercept = True)
         b, a = parms
         k_or_highDt = a
         D_or_highDt = np.exp(b)/4
         
-        parms, results = ufun.fitLineHuber(np.log(lagT[:10]), np.log(MSD_or[:10]), 
+        parms, results = ufun.fitLineHuber(np.log(lagT[:iLow]), np.log(MSD_or[:iLow]), 
                                            with_intercept = True)
         b, a = parms
         k_or_lowDt = a
@@ -2387,8 +2570,10 @@ for ii in [2]: # len(dfNames)
         dict_particle_MSD['D_or_lowDt'].append(D_or_lowDt)
         dict_particle_MSD['k_or_lowDt'].append(k_or_lowDt)
         
+        
+        
     df_particle_MSD_CylCoo = pd.DataFrame(dict_particle_MSD)
-    
+    df_particle_MSD_CylCoo.to_csv(os.path.join(dstDir, tableNames[ii]), sep=';', index=False)
 
     
     # dict_boxes = distribute_in_boxes(dict_particle_MSD, N_pix, M_boxes, 
@@ -2712,125 +2897,7 @@ plt.show()
 
 
 
-# %%%% Import MSD & plot
 
-# for ii in range(len(msdNames)):
-#     df = pd.read_csv(os.path.join(dstDir, dfNames[ii]), sep='\t')
-#     res_emsd = pd.read_csv(os.path.join(dstDir, msdNames[ii]), sep='\t')
-#     T, MSD = res_emsd['lagt'], res_emsd['msd']
-    
-#     dict_MSDfits = ufun.json2dict(dstDir, jsonNames[ii])
-#     D_linear = dict_MSDfits['D_linear']
-#     k_full = dict_MSDfits['k_full']
-#     D_full = dict_MSDfits['D_full']
-#     k_f4 = dict_MSDfits['k_f4']
-#     D_f4 = dict_MSDfits['D_f4']
-#     k_l15 = dict_MSDfits['k_l15']
-#     D_l15 = dict_MSDfits['D_l15']
-    
-#     Tc = (D_f4/D_l15)**(1/(k_l15-k_f4))
-    
-#     fig, ax = plt.subplots(1, 1, figsize=(5, 5))
-#     ax.set_xscale('log')
-#     ax.set_yscale('log')
-
-#     Xp = np.array([1e-2, 1e2])
-
-#     ax.plot(T, MSD, 'wo', mec='k')
-#     # ax.plot(Xp, 4*D_full*(Xp**k_full), ls='-', color=pm.cL_Set21[0], mec='k', label='Full curve')
-#     ax.plot(Xp, 4*D_f4*(Xp**k_f4), ls='-', color=pm.cL_Set21[1], mec='k', 
-#             label=f'First 4 pts\n$\\alpha$ = {k_f4:.2f}')
-#     ax.plot(Xp, 4*D_l15*(Xp**k_l15), ls='-', color=pm.cL_Set21[2], mec='k', 
-#             label=f'Last 15 pts\n$\\alpha$ = {k_l15:.2f}')
-#     ax.axvline(Tc, color='gray', lw=1.5, label=f'$T_c$ = {Tc:.2f}')
-#     ax.legend()
-#     ax.grid()
-#     ax.set_xlim([0.5e-1, 2e1])
-#     ax.set_ylim([0.5e-3, 2e0])
-#     ax.set_ylabel('MSD (um²)')
-#     ax.set_xlabel('T (s)')
-#     plt.show()
-    
-fig, ax = plt.subplots(1, 1, figsize=(5, 5))
-ax.set_xscale('log')
-ax.set_yscale('log')
-
-dict_res = {'label':[],
-            'D_full':[],
-            'k_full':[],
-            'D_f4':[],
-            'k_f4':[],
-            'D_l15':[],
-            'k_l15':[],
-            }
-
-for ii in range(len(msdNames)):
-    df = pd.read_csv(os.path.join(dstDir, dfNames[ii]), sep='\t')
-    res_emsd = pd.read_csv(os.path.join(dstDir, msdNames[ii]), sep='\t')
-    T, MSD = res_emsd['lagt'], res_emsd['msd']
-    
-    dict_MSDfits = ufun.json2dict(dstDir, jsonNames[ii])
-    D_linear = dict_MSDfits['D_linear']
-    k_full = dict_MSDfits['k_full']
-    D_full = dict_MSDfits['D_full']
-    k_f4 = dict_MSDfits['k_f4']
-    D_f4 = dict_MSDfits['D_f4']
-    k_l15 = dict_MSDfits['k_l15']
-    D_l15 = dict_MSDfits['D_l15']
-    
-    Tc = (D_f4/D_l15)**(1/(k_l15-k_f4))  
-
-    label = msdNames[ii].split('_')[2]
-
-    ax.plot(T, MSD, ls='', marker='o', color=pm.cL_Set21[ii], alpha=0.5,
-            markersize=4, label=label)
-    
-    dict_res['label'].append(label)
-    dict_res['D_full'].append(D_full)
-    dict_res['k_full'].append(k_full)
-    dict_res['D_f4'].append(D_f4)
-    dict_res['k_f4'].append(k_f4)
-    dict_res['D_l15'].append(D_l15)
-    dict_res['k_l15'].append(k_l15)
-    
-
-Xp1 = np.array([1e-1, 5e-1])
-Xp2 = np.array([1, 2])
-ax.plot(Xp1, 9e-3*Xp1**0.5, color = 'gray', ls=':', label='$x^{1/2}$')
-ax.plot(Xp2, 0.15e-1*Xp2**1, color = 'gray', ls='--', label='$x^{1}$')
-ax.legend(edgecolor='None')
-ax.grid()
-ax.set_xlim([0.8e-1, 0.5e1])
-ax.set_ylim([2e-3, 0.4e0])
-ax.set_ylabel('MSD (um²)')
-ax.set_xlabel('T (s)')
-
-plt.show()
-
-
-df_Diffusion = pd.DataFrame(dict_res)
-
-fig, axes = plt.subplots(2, 1, figsize=(7, 6), sharex = True, layout='compressed')
-ax = axes[0]
-ax.plot(np.arange(len(df_Diffusion)), df_Diffusion.D_full, ls='-', marker='o', label=r'$D_{full}$')
-ax.plot(np.arange(len(df_Diffusion)), df_Diffusion.D_f4, ls='-', marker='o', label=r'$D_{first4}$')
-ax.plot(np.arange(len(df_Diffusion)), df_Diffusion.D_l15, ls='-', marker='o', label=r'$D_{last15}$')
-ax.set_ylabel(r'$D\ (\mu m^2/s)$')
-ax.legend(loc='center left', bbox_to_anchor=(1, 0.5))
-ax.grid()
-
-ax = axes[1]
-ax.plot(np.arange(len(df_Diffusion)), df_Diffusion.k_full, ls='-', marker='o', label=r'$\alpha_{full}$')
-ax.plot(np.arange(len(df_Diffusion)), df_Diffusion.k_f4, ls='-', marker='o', label=r'$\alpha_{first4}$')
-ax.plot(np.arange(len(df_Diffusion)), df_Diffusion.k_l15, ls='-', marker='o', label=r'$\alpha_{last15}$')
-ax.set_ylabel(r'$\alpha$')
-ax.set_xticks(np.arange(len(df_Diffusion)))
-ax.set_xticklabels(df_Diffusion['label'].values, rotation = 20)
-ax.set_xlabel('Tpf (min)')
-ax.legend(loc='center left', bbox_to_anchor=(1, 0.5))
-ax.grid()
-
-plt.show()
 
 # %%% 3. Tracking and structure analysis
 
