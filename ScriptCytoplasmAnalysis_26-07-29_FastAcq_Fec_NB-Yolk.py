@@ -2262,8 +2262,12 @@ df_centers = pd.read_csv(os.path.join(srcDir, 'OrganizingCenters.csv'), sep=';')
 tableNames = [tifName.split('.')[0] + '_partTrajData.csv' for tifName in tifNames]
 
 for ii in range(len(dfNames)): #
-    t = nbimages//2
-    im = ufun.load_stack_region(tifPaths[ii], time_indices=[t])[0]
+    try:
+        t = nbimages//2
+        im = ufun.load_stack_region(tifPaths[ii], time_indices=[t])[0]
+        NoImg=False
+    except:
+        NoImg=True
     df_particle_MSD = pd.read_csv(os.path.join(dstDir, tableNames[ii]), sep=';')
     label = msdNames[ii].split('_')[2]
     
@@ -2291,11 +2295,12 @@ for ii in range(len(dfNames)): #
     axes_f = axes.flatten()
 
     ax = axes_f[0]
-    vmin, vmax = np.percentile(im, 0.5), np.percentile(im, 99.5)
-    ax.imshow(im, cmap='gray', vmin=vmin, vmax=vmax)
-    ax.hlines(lims, 0, N_pix, linestyle=':', color='w', lw=0.75)
-    ax.vlines(lims, 0, N_pix, linestyle=':', color='w', lw=0.75)
-    ax.plot(Xc, Yc, 'ro', markersize=3)
+    if not NoImg:
+        vmin, vmax = np.percentile(im, 0.5), np.percentile(im, 99.5)
+        ax.imshow(im, cmap='gray', vmin=vmin, vmax=vmax)
+        ax.hlines(lims, 0, N_pix, linestyle=':', color='w', lw=0.75)
+        ax.vlines(lims, 0, N_pix, linestyle=':', color='w', lw=0.75)
+        ax.plot(Xc, Yc, 'ro', markersize=3)
     ax.set_xlim([0, 511])
     ax.set_ylim([0, 511])
     ax.set_title(f'Tpf {label} - tiled img')
@@ -2669,6 +2674,22 @@ plt.show()
 # %%%% Plot the points
 
 pm.setGraphicOptions(mode='print')
+
+df_centers = pd.read_csv(os.path.join(srcDir, 'OrganizingCenters.csv'), sep=';')
+
+tableNames = [tifName.split('.')[0] + '_partTrajData_RandOR.csv' for tifName in tifNames]
+
+ii = 7
+
+# for ii in range(len(dfNames)): # len(dfNames)
+#     print(ii)
+X_MTcenter, Y_MTcenter = df_centers.loc[ii, 'xc'], df_centers.loc[ii, 'yc']
+
+df_particle_MSD_CylCoo = pd.read_csv(os.path.join(dstDir, tableNames[ii]), sep=';')
+# dfName = dfNames[ii]
+# df = pd.read_csv(os.path.join(dstDir, dfName), sep='\t')
+# df.particle = df.particle.astype(int)
+    
 
 df = df_particle_MSD_CylCoo
 
