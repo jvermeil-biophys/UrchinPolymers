@@ -2857,10 +2857,10 @@ for ii in [0, 2, 3, 5, 7]: #range(len(dfNames)): #
     
     grouped = df.groupby('Bxy')
     df_grid_MSD = grouped.agg({'Pid':'count',
-                               'D_r_linHighDt':'median',
+                               'D_r_lin':'median',
                                'D_r_highDt':'median',
                                'k_r_highDt':'median',
-                               'D_or_linHighDt':'median',
+                               'D_or_lin':'median',
                                'D_or_highDt':'median',
                                'k_or_highDt':'median',
                                }).rename(columns={'Pid':'count'}).reset_index()
@@ -2926,7 +2926,7 @@ for ii in [0, 2, 3, 5, 7]: #range(len(dfNames)): #
                             fig=fig, ax=ax)
     
     ax = axes_f[4]
-    parm = 'D_r_linHighDt'
+    parm = 'D_r_lin'
     axtitle = r'$D$ radial (linear fit, $\Delta t \geq$ 1s)'
     cbarlabel = r'$D$ (µm²/s)'
     
@@ -2937,7 +2937,7 @@ for ii in [0, 2, 3, 5, 7]: #range(len(dfNames)): #
                             fig=fig, ax=ax)
     
     ax = axes_f[5]
-    parm = 'D_or_linHighDt'
+    parm = 'D_or_lin'
     axtitle = r'$D$ ortho-radial (linear fit, $\Delta t \geq$ 1s)'
     cbarlabel = r'$D$ (µm²/s)'
     
@@ -3071,6 +3071,7 @@ plt.show()
 # %%%% Plot the distributions
 
 pm.setGraphicOptions(mode='print')
+ii = 2
 
 df_centers = pd.read_csv(os.path.join(srcDir, 'OrganizingCenters.csv'), sep=';')
 
@@ -3078,9 +3079,9 @@ tableNames = [tifName.split('.')[0] + '_partTrajData_RandOR.csv' for tifName in 
 df_particle_MSD_CylCoo = pd.read_csv(os.path.join(dstDir, tableNames[ii]), sep=';')
 df = df_particle_MSD_CylCoo
 
-ii = 2
 
-fig, axes = plt.subplots(3, 3, figsize = (9, 7), layout='compressed', sharex='col')
+
+fig, axes = plt.subplots(3, 1, figsize = (9, 7), layout='compressed', sharex='col')
 axes_f = axes.flatten()
 
 ax = axes_f[0]
@@ -3093,15 +3094,16 @@ ax.set_ylim([0, 511])
 ax.set_title('Original image')
 
 ax = axes_f[1]
-parm1 = 'D_r_full' # 'D_r_full', 'k_r_full'
+parm1 = 'D_r_lin' # 'D_r_full', 'k_r_full'
 v_high1 = np.percentile(df[parm1], 98)
 df_f = df[df[parm1] < v_high1]
 ax.hist(df_f[parm1].values, bins=60, alpha=0.4, label=parm1)
 
-parm2 = 'D_or_full' # 'D_or_full', 'k_or_full'
+parm2 = 'D_or_lin' # 'D_or_full', 'k_or_full'
 v_high2 = np.percentile(df[parm2], 98)
 df_f = df[df[parm2] < v_high2]
 ax.hist(df_f[parm2].values, bins=60, alpha=0.4, label=parm2)
+
 ax.legend()
 ax.set_title(f'{parm1} & {parm2}')
 
@@ -3161,8 +3163,8 @@ fig, axes = plt.subplots(3, 3, figsize = (9, 7), layout='compressed', sharex='co
 axes_f = axes.flatten()
 
 ax = axes_f[0]
-vmin, vmax = np.percentile(im, 0.5), np.percentile(im, 99.5)
-ax.imshow(im, cmap='gray', vmin=vmin, vmax=vmax)
+# vmin, vmax = np.percentile(im, 0.5), np.percentile(im, 99.5)
+# ax.imshow(im, cmap='gray', vmin=vmin, vmax=vmax)
 # ax.hlines(lims, 0, N_pix, linestyle=':', color='w', lw=0.75)
 # ax.vlines(lims, 0, N_pix, linestyle=':', color='w', lw=0.75)
 ax.set_xlim([0, 511])
@@ -3233,7 +3235,86 @@ ax.set_title(f'{parm1} - {parm2}')
 
 
 plt.show()
+
+# %%%% Plot the distributions - GOOD FOR PRES
+
+pm.setGraphicOptions(mode='print')
+
+idx_to_plot = [0, 2, 4, 5, 7]
+
+fig, axes = plt.subplots(2, len(idx_to_plot), figsize = (10, 4), layout='compressed', sharex='row')
+axes_f = axes.flatten(order='F')
+axes_f[0].set_xlim([0, 0.018])
+
+for k, ii in enumerate(idx_to_plot):
+
+
+    df_centers = pd.read_csv(os.path.join(srcDir, 'OrganizingCenters.csv'), sep=';')
     
+    tableNames = [tifName.split('.')[0] + '_partTrajData_RandOR.csv' for tifName in tifNames]
+    
+    df_particle_MSD_CylCoo = pd.read_csv(os.path.join(dstDir, tableNames[ii]), sep=';')
+    df = df_particle_MSD_CylCoo
+    title = tableNames[ii].split('_')[2]
+    
+    
+    
+    
+    # ax = axes_f[2*k]
+    # vmin, vmax = np.percentile(im, 0.5), np.percentile(im, 99.5)
+    # ax.imshow(im, cmap='gray', vmin=vmin, vmax=vmax)
+    # ax.hlines(lims, 0, N_pix, linestyle=':', color='w', lw=0.75)
+    # ax.vlines(lims, 0, N_pix, linestyle=':', color='w', lw=0.75)
+    # ax.set_xlim([0, 511])
+    # ax.set_ylim([0, 511])
+    # ax.set_title('Original image')
+    
+    ax = axes_f[2*k]
+    [parm1, parm2] = [f'D_{c}_lin' for c in ['r', 'or']] # D_{c}_lin # D_{c}_linHighDt
+    
+    v_high1 = np.percentile(df[parm1], 98)
+    df_f = df[df[parm1] < v_high1]
+    ax.hist(df_f[parm1].values, bins=30, alpha=0.4, label='Radial')
+    
+    v_high2 = np.percentile(df[parm2], 98)
+    df_f = df[df[parm2] < v_high2]
+    ax.hist(df_f[parm2].values, bins=30, alpha=0.4, label='Orthoradial')
+    
+    ax.set_xlabel(r'$D$ (µm²/s)')
+    
+    if k==0:
+        ax.set_ylabel('N particles')
+    
+    if k==len(idx_to_plot)-1:
+        ax.legend(loc='center left', bbox_to_anchor=(1, 0.5))
+        
+    ax.set_title('Tpf ' + title)
+    
+    
+    ax = axes_f[2*k + 1]
+    [parm1, parm2] = [f'k_{c}_full' for c in ['r', 'or']] # k_{c}_full # k_{c}_highDt
+    
+    v_high1 = np.percentile(df[parm1], 98)
+    df_f = df[df[parm1] < v_high1]
+    ax.hist(df_f[parm1].values, bins=30, alpha=0.4, label='Radial')
+    
+    v_high2 = np.percentile(df[parm2], 98)
+    df_f = df[df[parm2] < v_high2]
+    ax.hist(df_f[parm2].values, bins=30, alpha=0.4, label='Orthoradial')
+    
+    ax.set_xlabel(r'$\alpha$')
+    
+    if k==0:
+        ax.set_ylabel('N particles')
+    
+    if k==len(idx_to_plot)-1:
+        ax.legend(loc='center left', bbox_to_anchor=(1, 0.5))
+        
+    # ax.set_title('\n')
+    
+    
+    
+plt.show()
 
 # %%%% Check the nature of the distribution
 
@@ -3245,7 +3326,7 @@ tableNames = [tifName.split('.')[0] + '_partTrajData_RandOR.csv' for tifName in 
 
 M_boxes=15
 
-ii = 7
+ii = 2
 
 # for ii in range(len(dfNames)): # len(dfNames)
 #     print(ii)
@@ -3369,23 +3450,34 @@ res_df['Tpf_min'] = res_df['Tpf_s']/60
 
 
 
-fig, axes = plt.subplots(2, 1, figsize=(7, 6), sharex = True, layout='compressed')
+fig, axes = plt.subplots(2, 1, figsize=(6, 6), sharex = True, layout='compressed')
 ax = axes[0]
 # ax.plot(res_df.Tpf_min, df_Diffusion.D_full, ls='-', marker='o', label=r'All $\Delta t$')
 # ax.plot(res_df.Tpf_min, df_Diffusion.D_lowDt, ls='-', marker='o', label=r'$\Delta t \leq 0.5s$')
 # ax.plot(res_df.Tpf_min, df_Diffusion.D_highDt, ls='-', marker='o', label=r'$\Delta t \geq 1s$')
-ax.errorbar(res_df.Tpf_min, np.exp(res_df.D_r_linHighDt_mean), 
+# ax.errorbar(res_df.Tpf_min, np.exp(res_df.D_r_linHighDt_mean), 
+#             ls='-', marker='o', label=r'Radial',
+#             yerr=[np.exp(res_df.D_r_linHighDt_mean - res_df.D_r_linHighDt_std)/(res_df.N**0.5), 
+#                   np.exp(res_df.D_r_linHighDt_mean + res_df.D_r_linHighDt_std)/(res_df.N**0.5)],
+#             ecolor='k', capsize=2)
+# ax.errorbar(res_df.Tpf_min, np.exp(res_df.D_or_full_mean), 
+#         ls='-', marker='o', label=r'Ortho-radial',
+#         yerr=[np.exp(res_df.D_or_linHighDt_mean - res_df.D_or_linHighDt_std)/(res_df.N**0.5), 
+#               np.exp(res_df.D_or_linHighDt_mean + res_df.D_or_linHighDt_std)/(res_df.N**0.5)],
+#         ecolor='k', capsize=2)
+ax.errorbar(res_df.Tpf_min, np.exp(res_df.D_r_lin_mean), 
             ls='-', marker='o', label=r'Radial',
-            yerr=[np.exp(res_df.D_r_linHighDt_mean - res_df.D_r_linHighDt_std)/(res_df.N**0.5), 
-                  np.exp(res_df.D_r_linHighDt_mean + res_df.D_r_linHighDt_std)/(res_df.N**0.5)],
+            yerr=[np.exp(res_df.D_r_lin_mean - res_df.D_r_lin_std)/(res_df.N**0.5), 
+                  np.exp(res_df.D_r_lin_mean + res_df.D_r_lin_std)/(res_df.N**0.5)],
             ecolor='k', capsize=2)
-ax.errorbar(res_df.Tpf_min, np.exp(res_df.D_or_full_mean), 
+ax.errorbar(res_df.Tpf_min, np.exp(res_df.D_or_lin_mean), 
         ls='-', marker='o', label=r'Ortho-radial',
-        yerr=[np.exp(res_df.D_or_linHighDt_mean - res_df.D_or_linHighDt_std)/(res_df.N**0.5), 
-              np.exp(res_df.D_or_linHighDt_mean + res_df.D_or_linHighDt_std)/(res_df.N**0.5)],
+        yerr=[np.exp(res_df.D_or_lin_mean - res_df.D_or_lin_std)/(res_df.N**0.5), 
+              np.exp(res_df.D_or_lin_mean + res_df.D_or_lin_std)/(res_df.N**0.5)],
         ecolor='k', capsize=2)
-ax.set_ylabel(r'$D_{eff}\ (\mu m^2/s^\alpha)$')
-ax.legend(loc='center left', bbox_to_anchor=(1, 0.5))
+ax.set_ylabel(r'$D\ (\mu m^2/s)$')
+# ax.legend(loc='center left', bbox_to_anchor=(1, 0.5))
+ax.legend(loc='upper right')
 ax.grid()
 
 ax = axes[1]
@@ -3406,7 +3498,8 @@ ax.set_ylabel(r'$\alpha$')
 ax.set_xticks(res_df['Tpf_min'].values)
 ax.set_xticklabels(res_df['Tpf_min'].values, rotation = 20)
 ax.set_xlabel('Tpf (min)')
-ax.legend(loc='center left', bbox_to_anchor=(1, 0.5))
+# ax.legend(loc='center left', bbox_to_anchor=(1, 0.5))
+ax.legend(loc='upper right')
 ax.grid()
 
 plt.show()
