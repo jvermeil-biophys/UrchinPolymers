@@ -2735,58 +2735,60 @@ for ii in range(len(dfNames)): # len(dfNames)
         
         
         # Fits for D and k
+        
         # Radial
         parms, results = ufun.fitLineHuber(lagT, MSD_r, with_intercept = False)
-        D_r_linear = parms.values[0]/4
+        D_r_linear = parms.values[0]/2
         
         parms, results = ufun.fitLineHuber(lagT[iHigh:], MSD_r[iHigh:], 
                                            with_intercept = False)
-        D_r_lin_highDt = parms.values[0]/4
+        D_r_lin_highDt = parms.values[0]/2
         
         parms, results = ufun.fitLineHuber(np.log(lagT), np.log(MSD_r), 
                                            with_intercept = True)
         b, a = parms
         k_r_full = a
-        D_r_full = np.exp(b)/4
+        D_r_full = np.exp(b)/2
         
         parms, results = ufun.fitLineHuber(np.log(lagT[iHigh:]), np.log(MSD_r[iHigh:]), 
                                            with_intercept = True)
         b, a = parms
         k_r_highDt = a
-        D_r_highDt = np.exp(b)/4
+        D_r_highDt = np.exp(b)/2
         
         parms, results = ufun.fitLineHuber(np.log(lagT[:iLow]), np.log(MSD_r[:iLow]), 
                                            with_intercept = True)
         b, a = parms
         k_r_lowDt = a
-        D_r_lowDt = np.exp(b)/4
+        D_r_lowDt = np.exp(b)/2
+        
         
         
         # OrthoRadial
         parms, results = ufun.fitLineHuber(lagT, MSD_or, with_intercept = False)
-        D_or_linear = parms.values[0]/4
+        D_or_linear = parms.values[0]/2
         
         parms, results = ufun.fitLineHuber(lagT[iHigh:], MSD_or[iHigh:], 
                                            with_intercept = False)
-        D_or_lin_highDt = parms.values[0]/4
+        D_or_lin_highDt = parms.values[0]/2
         
         parms, results = ufun.fitLineHuber(np.log(lagT), np.log(MSD_or), 
                                            with_intercept = True)
         b, a = parms
         k_or_full = a
-        D_or_full = np.exp(b)/4
+        D_or_full = np.exp(b)/2
         
         parms, results = ufun.fitLineHuber(np.log(lagT[iHigh:]), np.log(MSD_or[iHigh:]), 
                                            with_intercept = True)
         b, a = parms
         k_or_highDt = a
-        D_or_highDt = np.exp(b)/4
+        D_or_highDt = np.exp(b)/2
         
         parms, results = ufun.fitLineHuber(np.log(lagT[:iLow]), np.log(MSD_or[:iLow]), 
                                            with_intercept = True)
         b, a = parms
         k_or_lowDt = a
-        D_or_lowDt = np.exp(b)/4
+        D_or_lowDt = np.exp(b)/2
         
         
         # Save
