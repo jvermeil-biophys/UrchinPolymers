@@ -2034,10 +2034,10 @@ tifNames = ['26-07-29_PostF_2min_Pos11_10fps_Texp100ms_CSU642_crop.tif',
 #             '26-07-29_PostF_120min_Pos11_10fps_Texp100ms_CSU642_crop.tif',
 #              ]
 
-
+# srcDir = os.path.join(mainDir, 'Crops_preF_20fps')
 # tifNames = [
-#             '26-07-29_PostF_20min_Pos11_10fps_Texp100ms_CSU642_crop.tif',
-#             '26-07-29_PostF_60min_Pos11_10fps_Texp100ms_CSU642_crop.tif',
+#             '26-07-29_PreF_Pos2-1_20fps_Texp50ms_CSU642_crop.tif',
+#             '26-07-29_PreF_Pos2-2_20fps_Texp50ms_CSU642_crop.tif',
 #             ]
 
 tifPaths = [os.path.join(srcDir, tifName) for tifName in tifNames]
@@ -2241,9 +2241,9 @@ Xp1 = np.array([1e-1, 5e-1])
 Xp2 = np.array([1, 2])
 ax.plot(Xp1, 12e-3*Xp1**0.5, color = 'gray', ls=':', label=r'$y \propto x^{1/2}$')
 ax.plot(Xp2, 0.15e-1*Xp2**1, color = 'gray', ls='--', label=r'$y \propto x^{1}$')
-ax.legend(edgecolor='None', title='Tpf')
+ax.legend(edgecolor='None')#, title='Tpf')
 ax.grid()
-ax.set_xlim([0.8e-1, 0.6e1])
+ax.set_xlim([0.4e-1, 0.6e1])
 ax.set_ylim([2e-3, 0.5e0])
 ax.set_ylabel('MSD (µm²)')
 ax.set_xlabel(r'$\Delta t$ (s)')
@@ -2292,10 +2292,67 @@ for ii in range(len(dfNames)): # len(dfNames)
     df = pd.read_csv(os.path.join(dstDir, dfName), sep='\t')
     df.particle = df.particle.astype(int)
     
-    res_imsd = tp.motion.imsd(df, UmPerPix, FPS, max_lagtime=50).reset_index()
+    res_imsd = tp.motion.imsd(df, UmPerPix, FPS, max_lagtime=200).reset_index()
     IMSD.append(res_imsd)
 
+# %%%% Plot a few imsd
 
+res_imsd = IMSD[0]
+df = res_imsd.dropna(axis=1)
+
+dt = df['lag time [s]']
+Np = len(df.columns)
+plot_cols = df.columns.values[np.arange(1, Np, Np//33)] #.astype(int)
+
+fig, ax = plt.subplots(1, 1)
+ax.set_xscale('log')
+ax.set_yscale('log')
+for col in plot_cols:
+    msd = df.loc[:, col].values
+    ax.plot(dt, msd, ls='-', color='gray', lw=1,
+            marker='', alpha = 0.75)
+    
+ax.plot([], [], ls='-', color='gray', lw=1,
+        marker='', alpha = 0.75, label='Single particles MSD')
+    
+
+#### Long term MSD
+ii = 0
+xmlPath = xmlPaths[ii]
+dfName = dfNames[ii]
+print(dfName)
+Tracks = tbca.importTrackMateTracks(xmlPath)
+
+Np = len(Tracks)
+    
+column_names = ['frame', 'x', 'y', 'particle']
+all_tracks = []
+for i, track in enumerate(Tracks):
+    nT = len(track)
+    # test_x_sat = ((np.max(track[:, 1]) - np.min(track[:, 1])) < 1)
+    # test_y_sat = ((np.max(track[:, 2]) - np.min(track[:, 2])) < 1)
+    test_x_sat = ((np.max(track[:, 1]) == (N_pix-1)) or (np.min(track[:, 1]) == 0))
+    test_y_sat = ((np.max(track[:, 2]) == (N_pix-1)) or (np.min(track[:, 2]) == 0))
+    if (not test_x_sat) and (not test_y_sat) and (nT >= 250):
+        track = np.concat((track, np.ones((len(track[:,0]), 1), dtype=int) * (i+1)), axis = 1)
+        track[:, 0] = track[:, 0].astype(int) + 1
+        all_tracks.append(track)
+
+concat_tracks = np.concat(all_tracks, axis = 0)
+df = pd.DataFrame({column_names[k] : concat_tracks[:,k] for k in range(len(column_names))})
+res_emsd = tp.motion.emsd(df, UmPerPix, FPS, max_lagtime=200).reset_index()
+
+ax.plot(res_emsd.lagt, res_emsd.msd, ls='-', color='k', lw=2,
+        marker='', alpha = 1, label='Global MSD')
+
+ax.legend(edgecolor='None')#, title='Tpf')
+ax.grid()
+ax.set_xlim([0.8e-1, 25e0])
+ax.set_ylim([2e-3, 5e0])
+ax.set_ylabel('MSD (µm²)')
+ax.set_xlabel(r'$\Delta t$ (s)')
+
+plt.show()
 
 # %%%% From imsd -> Diffusion Map
 
@@ -2819,7 +2876,7 @@ for ii in [0, 2, 3, 5, 7]: #range(len(dfNames)): #
     ax.vlines(lims, 0, N_pix, linestyle=':', color='w', lw=0.75)
     ax.set_xlim([0, 511])
     ax.set_ylim([0, 511])
-    ax.set_title('Tiled image')
+    ax.set_title(f'Tpf {label} - tiled image')
     
     # df_2_heatmap(df_grid_MSD, axes_f[1], parmCol='k_r_full', boxCol='Bxy', 
     #              y_ascending=True, cmap="viridis", annotate=False, colorScale='linear')
@@ -2852,7 +2909,7 @@ for ii in [0, 2, 3, 5, 7]: #range(len(dfNames)): #
     fig, ax = MSD_HeatMap(df_grid_MSD, M_boxes, 'Bxy', parm,
                             axtitle = axtitle, cbarlabel = cbarlabel,
                             cmap='PuOr_r', norm_type = 'lin',
-                            c_vmin=0.5, c_vmax=1.1,
+                            c_vmin=0.6, c_vmax=1.15,
                             fig=fig, ax=ax)
     
     ax = axes_f[2]
@@ -2863,7 +2920,7 @@ for ii in [0, 2, 3, 5, 7]: #range(len(dfNames)): #
     fig, ax = MSD_HeatMap(df_grid_MSD, M_boxes, 'Bxy', parm,
                             axtitle = axtitle, cbarlabel = cbarlabel,
                             cmap='PuOr_r', norm_type = 'lin',
-                            c_vmin=0.5, c_vmax=1.1,
+                            c_vmin=0.6, c_vmax=1.15,
                             fig=fig, ax=ax)
     
     ax = axes_f[4]
@@ -2874,7 +2931,7 @@ for ii in [0, 2, 3, 5, 7]: #range(len(dfNames)): #
     fig, ax = MSD_HeatMap(df_grid_MSD, M_boxes, 'Bxy', parm,
                             axtitle = axtitle, cbarlabel = cbarlabel,
                             cmap='RdYlBu_r', norm_type = 'lin',
-                            c_vmin=0.002, c_vmax=0.007,
+                            c_vmin = 3e-3, c_vmax = 11.5e-3,
                             fig=fig, ax=ax)
     
     ax = axes_f[5]
@@ -2885,7 +2942,7 @@ for ii in [0, 2, 3, 5, 7]: #range(len(dfNames)): #
     fig, ax = MSD_HeatMap(df_grid_MSD, M_boxes, 'Bxy', parm,
                             axtitle = axtitle, cbarlabel = cbarlabel,
                             cmap='RdYlBu_r', norm_type = 'lin',
-                            c_vmin=0.002, c_vmax=0.007,
+                            c_vmin = 3e-3, c_vmax = 11.5e-3,
                             fig=fig, ax=ax)
     
     plt.show()
@@ -3010,6 +3067,16 @@ ax.set_title(f'{parm1} - {parm2}')
 plt.show()
 
 # %%%% Plot the distributions
+
+pm.setGraphicOptions(mode='print')
+
+df_centers = pd.read_csv(os.path.join(srcDir, 'OrganizingCenters.csv'), sep=';')
+
+tableNames = [tifName.split('.')[0] + '_partTrajData_RandOR.csv' for tifName in tifNames]
+df_particle_MSD_CylCoo = pd.read_csv(os.path.join(dstDir, tableNames[ii]), sep=';')
+df = df_particle_MSD_CylCoo
+
+ii = 2
 
 fig, axes = plt.subplots(3, 3, figsize = (9, 7), layout='compressed', sharex='col')
 axes_f = axes.flatten()
@@ -3332,8 +3399,8 @@ ax.errorbar(res_df.Tpf_min, res_df.k_or_full_mean,
               (res_df.k_or_full_mean + res_df.k_or_full_std)/(res_df.N**0.5)],
         ecolor='k', capsize=2)
 ax.set_ylabel(r'$\alpha$')
-ax.set_xticks(df_Diffusion['Tpf_min'].values)
-ax.set_xticklabels(df_Diffusion['Tpf_min'].values, rotation = 20)
+ax.set_xticks(res_df['Tpf_min'].values)
+ax.set_xticklabels(res_df['Tpf_min'].values, rotation = 20)
 ax.set_xlabel('Tpf (min)')
 ax.legend(loc='center left', bbox_to_anchor=(1, 0.5))
 ax.grid()
