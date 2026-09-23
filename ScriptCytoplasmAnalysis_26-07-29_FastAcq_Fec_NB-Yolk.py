@@ -138,7 +138,7 @@ def MSD_HeatMap(df_grid, M_boxes, xy_col, parm_col,
 
     # Create colorbar
     cbar = fig.colorbar(axim, ax=ax, label=cbarlabel)
-    cbar.ax.set_ylabel(cbarlabel)#, va="bottom")
+    cbar.ax.set_ylabel(cbarlabel, rotation=-90, va="bottom")#, va="bottom")
 
     xt = np.linspace(0, M_boxes, 3, endpoint=True)
     yt = np.linspace(0, M_boxes, 3, endpoint=True)
@@ -2379,7 +2379,7 @@ df_centers = pd.read_csv(os.path.join(srcDir, 'OrganizingCenters.csv'), sep=';')
 tableNames = [tifName.split('.')[0] + '_partTrajData.csv' for tifName in tifNames]
 
 
-for ii in range(6, 7): # len(dfNames)
+for ii in [0, 2, 3, 5, 7]: # len(dfNames)
     try:
         t = nbimages//2
         im = ufun.load_stack_region(tifPaths[ii], time_indices=[t])[0]
@@ -2425,51 +2425,54 @@ for ii in range(6, 7): # len(dfNames)
     ax.set_title(f'Tpf {label} - tiled image')
     
     #### 2.2 - Count Heatmap
-    ax = axes_f[3]
+    ax = axes_f[4]
     parm = 'count'
     axtitle = r'Trajectories / tile'
     cbarlabel = r'$N$'
     
     fig, ax = MSD_HeatMap(df_grid_MSD, M_boxes, 'Bxy', parm,
                             axtitle = axtitle, cbarlabel = cbarlabel,
-                            cmap = 'GnBu', norm = mpl.colors.Normalize(),
+                            cmap = 'GnBu', norm_type = 'lin',
                             fig=fig, ax=ax)
     
     
     #### 2.3 - D_full Heatmap
-    ax = axes_f[1]
+    ax = axes_f[2]
     parm = 'D_full'
-    axtitle = r'$D$ for all $\Delta t$'
-    cbarlabel = r'$D$ (µm²/s)'
+    axtitle = r'$D$ - from $MSD = 4D\cdot\Delta t^\alpha$'
+    cbarlabel = r'$D$ (µm²/$s^\alpha$)'
     
     fig, ax = MSD_HeatMap(df_grid_MSD, M_boxes, 'Bxy', parm,
                             axtitle = axtitle, cbarlabel = cbarlabel,
-                            cmap='RdYlBu_r', norm = mpl.colors.Normalize(),
+                            cmap='RdYlBu_r', norm_type = 'lin',
+                            c_vmin = 5e-3, c_vmax = 12.5e-3,
                             fig=fig, ax=ax)
     
     
     #### 2.4 k_full Heatmap
-    ax = axes_f[4]
+    ax = axes_f[5]
     parm = 'k_full'
-    axtitle = r'$\alpha$ for all $\Delta t$'
+    axtitle = r'$\alpha$ - from $MSD = 4D\cdot\Delta t^\alpha$'
     cbarlabel = r'$\alpha$'
     
     fig, ax = MSD_HeatMap(df_grid_MSD, M_boxes, 'Bxy', parm,
                             axtitle = axtitle, cbarlabel = cbarlabel,
-                            cmap='PuOr_r', norm = mpl.colors.Normalize(),
+                            cmap='PuOr_r', norm_type = 'lin',
+                            c_vmin = 0.6, c_vmax = 1.15,
                             fig=fig, ax=ax)
 
     
     
     #### 2.5 D_lin Heatmap
-    ax = axes_f[2]
+    ax = axes_f[1]
     parm = 'D_lin'
-    axtitle = r'$D$ with a linear fit'
+    axtitle = r'$D$ - from $MSD = 4D\cdot\Delta t$'
     cbarlabel = r'$D$ (µm²/s)'
     
     fig, ax = MSD_HeatMap(df_grid_MSD, M_boxes, 'Bxy', parm,
                             axtitle = axtitle, cbarlabel = cbarlabel,
-                            cmap='RdYlBu_r', norm = mpl.colors.Normalize(),
+                            cmap='RdYlBu_r', norm_type = 'lin',
+                            c_vmin = 5e-3, c_vmax = 12.5e-3,
                             fig=fig, ax=ax)
 
     plt.show()
@@ -2484,9 +2487,9 @@ tableNames = [tifName.split('.')[0] + '_partTrajData.csv' for tifName in tifName
 
 # norm=mpl.colors.LogNorm() # norm=mpl.colors.Normalize()
 
-for ii in [4]: #range(len(dfNames)): #
+for ii in [0, 2, 3, 5, 7]: #range(len(dfNames)): #
     t = nbimages//2
-    # im = ufun.load_stack_region(tifPaths[ii], time_indices=[t])[0]
+    im = ufun.load_stack_region(tifPaths[ii], time_indices=[t])[0]
     df_particle_MSD = pd.read_csv(os.path.join(dstDir, tableNames[ii]), sep=';')
     label = msdNames[ii].split('_')[2]
 
@@ -2495,17 +2498,17 @@ for ii in [4]: #range(len(dfNames)): #
     fig, axes = plt.subplots(2, 2, figsize = (8, 6), layout='compressed')
     axes_f = axes.flatten()
     ax = axes_f[0]
-    # vmin, vmax = np.percentile(im, 0.5), np.percentile(im, 99.5)
-    # ax.imshow(im, cmap='gray', vmin=vmin, vmax=vmax, aspect='equal')
-    # ax.hlines(lims, 0, N_pix, linestyle=':', color='w', lw=0.75)
-    # ax.vlines(lims, 0, N_pix, linestyle=':', color='w', lw=0.75)
+    vmin, vmax = np.percentile(im, 0.5), np.percentile(im, 99.5)
+    ax.imshow(im, cmap='gray', vmin=vmin, vmax=vmax, aspect='equal')
+    ax.hlines(lims, 0, N_pix, linestyle=':', color='w', lw=0.75)
+    ax.vlines(lims, 0, N_pix, linestyle=':', color='w', lw=0.75)
     ax.set_xlim([0, 511])
     ax.set_ylim([0, 511])
-    ax.set_title('Original image')
+    ax.set_title(f'Tpf {label}')
     
     ax = axes_f[1]
     parm = 'k_full' # 'D_full', 'k_full'
-    axtitle = r'$\alpha$ for all $\Delta t$'
+    axtitle = r'$\alpha$ - from $MSD = 4D\cdot\Delta t^\alpha$'
     cbarlabel = r'$\alpha$'
     ax.set_title(axtitle)
     ax.set_aspect('equal', adjustable='box')
@@ -2515,7 +2518,7 @@ for ii in [4]: #range(len(dfNames)): #
     g = ax.scatter(df_f['Xc'], df_f['Yc'], 
                    c=df_f[parm], cmap='PuOr_r',
                    s = 6, alpha = 1, edgecolor='None',
-                   norm=mpl.colors.Normalize(),
+                   norm=mpl.colors.Normalize(vmin = 0.6, vmax = 1.15),
                    )
     cbar = fig.colorbar(g, label=cbarlabel)
     ax.set_xlim([0, 511])
@@ -2525,7 +2528,7 @@ for ii in [4]: #range(len(dfNames)): #
     
     ax = axes_f[2]
     parm = 'D_lin' # 'D_full', 'k_full'
-    axtitle = r'$D$ with a linear fit'
+    axtitle = r'$D$ - from $MSD = 4D\cdot\Delta t$'
     cbarlabel = r'$D$ (µm²/s)'
     ax.set_title(axtitle)
     ax.set_aspect('equal', adjustable='box')
@@ -2535,7 +2538,7 @@ for ii in [4]: #range(len(dfNames)): #
     g = ax.scatter(df_f['Xc'], df_f['Yc'], 
                    c=df_f[parm], cmap='RdYlBu_r',
                    s = 6, alpha = 1, edgecolor='None',
-                   norm=mpl.colors.LogNorm(),
+                   norm=mpl.colors.Normalize(vmin = 5e-3, vmax = 12.5e-3),
                    )
     cbar = fig.colorbar(g, label=cbarlabel)
     ax.set_xlim([0, 511])
@@ -2545,8 +2548,8 @@ for ii in [4]: #range(len(dfNames)): #
     
     ax = axes_f[3]
     parm = 'D_full' # 'D_full', 'k_full'
-    axtitle = r'$D$ for all $\Delta t$'
-    cbarlabel = r'$D$ (µm²/s)'
+    axtitle = r'$D$ - from $MSD = 4D\cdot\Delta t^\alpha$'
+    cbarlabel = r'$D$ (µm²/$s^\alpha$)'
     ax.set_title(axtitle)
     ax.set_aspect('equal', adjustable='box')
     v_high = np.percentile(df_particle_MSD[parm], 98)
@@ -2555,7 +2558,7 @@ for ii in [4]: #range(len(dfNames)): #
     g = ax.scatter(df_f['Xc'], df_f['Yc'], 
                    c=df_f[parm], cmap='RdYlBu_r',
                    s = 6, alpha = 1, edgecolor='None',
-                   norm=mpl.colors.LogNorm(),
+                   norm=mpl.colors.Normalize(vmin = 5e-3, vmax = 12.5e-3),
                    )
     cbar = fig.colorbar(g, label=cbarlabel)
     ax.set_xlim([0, 511])
@@ -2597,6 +2600,7 @@ for ii in range(len(dfNames)): # len(dfNames)
                         'fmin':[],
                         'fmax':[],
                         'D_r_lin':[],
+                        'D_r_linHighDt':[],
                         'D_r_full':[],
                         'k_r_full':[],
                         'D_r_highDt':[],
@@ -2604,6 +2608,7 @@ for ii in range(len(dfNames)): # len(dfNames)
                         'D_r_lowDt':[],
                         'k_r_lowDt':[],
                         'D_or_lin':[],
+                        'D_or_linHighDt':[],
                         'D_or_full':[],
                         'k_or_full':[],
                         'D_or_highDt':[],
@@ -2677,6 +2682,10 @@ for ii in range(len(dfNames)): # len(dfNames)
         parms, results = ufun.fitLineHuber(lagT, MSD_r, with_intercept = False)
         D_r_linear = parms.values[0]/4
         
+        parms, results = ufun.fitLineHuber(lagT[iHigh:], MSD_r[iHigh:], 
+                                           with_intercept = False)
+        D_r_lin_highDt = parms.values[0]/4
+        
         parms, results = ufun.fitLineHuber(np.log(lagT), np.log(MSD_r), 
                                            with_intercept = True)
         b, a = parms
@@ -2699,6 +2708,10 @@ for ii in range(len(dfNames)): # len(dfNames)
         # OrthoRadial
         parms, results = ufun.fitLineHuber(lagT, MSD_or, with_intercept = False)
         D_or_linear = parms.values[0]/4
+        
+        parms, results = ufun.fitLineHuber(lagT[iHigh:], MSD_or[iHigh:], 
+                                           with_intercept = False)
+        D_or_lin_highDt = parms.values[0]/4
         
         parms, results = ufun.fitLineHuber(np.log(lagT), np.log(MSD_or), 
                                            with_intercept = True)
@@ -2727,6 +2740,7 @@ for ii in range(len(dfNames)): # len(dfNames)
         dict_particle_MSD['fmin'].append(fmin)
         dict_particle_MSD['fmax'].append(fmax)
         dict_particle_MSD['D_r_lin'].append(D_r_linear)
+        dict_particle_MSD['D_r_linHighDt'].append(D_r_lin_highDt)
         dict_particle_MSD['D_r_full'].append(D_r_full)
         dict_particle_MSD['k_r_full'].append(k_r_full)
         dict_particle_MSD['D_r_highDt'].append(D_r_highDt)
@@ -2734,6 +2748,7 @@ for ii in range(len(dfNames)): # len(dfNames)
         dict_particle_MSD['D_r_lowDt'].append(D_r_lowDt)
         dict_particle_MSD['k_r_lowDt'].append(k_r_lowDt)
         dict_particle_MSD['D_or_lin'].append(D_or_linear)
+        dict_particle_MSD['D_or_linHighDt'].append(D_or_lin_highDt)
         dict_particle_MSD['D_or_full'].append(D_or_full)
         dict_particle_MSD['k_or_full'].append(k_or_full)
         dict_particle_MSD['D_or_highDt'].append(D_or_highDt)
@@ -2763,9 +2778,9 @@ tableNames = [tifName.split('.')[0] + '_partTrajData_RandOR.csv' for tifName in 
 
 # norm=mpl.colors.LogNorm() # norm=mpl.colors.Normalize()
 
-for ii in [3]: #range(len(dfNames)): #
+for ii in [0, 2, 3, 5, 7]: #range(len(dfNames)): #
     t = nbimages//2
-    # im = ufun.load_stack_region(tifPaths[ii], time_indices=[t])[0]
+    im = ufun.load_stack_region(tifPaths[ii], time_indices=[t])[0]
     df_particle_MSD_CylCoo = pd.read_csv(os.path.join(dstDir, tableNames[ii]), sep=';')
     label = msdNames[ii].split('_')[2]
     
@@ -2783,12 +2798,12 @@ for ii in [3]: #range(len(dfNames)): #
     
     grouped = df.groupby('Bxy')
     df_grid_MSD = grouped.agg({'Pid':'count',
-                               'D_r_lin':'median',
-                               'D_r_full':'median',
-                               'k_r_full':'median',
-                               'D_or_lin':'median',
-                               'D_or_full':'median',
-                               'k_or_full':'median',
+                               'D_r_linHighDt':'median',
+                               'D_r_highDt':'median',
+                               'k_r_highDt':'median',
+                               'D_or_linHighDt':'median',
+                               'D_or_highDt':'median',
+                               'k_or_highDt':'median',
                                }).rename(columns={'Pid':'count'}).reset_index()
     
     df_grid_MSD = df_grid_MSD[df_grid_MSD['count'] >= 5]
@@ -2830,8 +2845,8 @@ for ii in [3]: #range(len(dfNames)): #
     
     
     ax = axes_f[1]
-    parm = 'k_r_full'
-    axtitle = r'$\alpha$ radial'
+    parm = 'k_r_highDt'
+    axtitle = r'$\alpha$ radial ($\Delta t \geq$ 1s)'
     cbarlabel = r'$\alpha$'
     
     fig, ax = MSD_HeatMap(df_grid_MSD, M_boxes, 'Bxy', parm,
@@ -2841,8 +2856,8 @@ for ii in [3]: #range(len(dfNames)): #
                             fig=fig, ax=ax)
     
     ax = axes_f[2]
-    parm = 'k_or_full'
-    axtitle = r'$\alpha$ ortho-radial'
+    parm = 'k_or_highDt'
+    axtitle = r'$\alpha$ ortho-radial ($\Delta t \geq$ 1s)'
     cbarlabel = r'$\alpha$'
     
     fig, ax = MSD_HeatMap(df_grid_MSD, M_boxes, 'Bxy', parm,
@@ -2852,8 +2867,8 @@ for ii in [3]: #range(len(dfNames)): #
                             fig=fig, ax=ax)
     
     ax = axes_f[4]
-    parm = 'D_r_full'
-    axtitle = r'$D$ radial'
+    parm = 'D_r_linHighDt'
+    axtitle = r'$D$ radial (linear fit, $\Delta t \geq$ 1s)'
     cbarlabel = r'$D$ (µm²/s)'
     
     fig, ax = MSD_HeatMap(df_grid_MSD, M_boxes, 'Bxy', parm,
@@ -2863,8 +2878,8 @@ for ii in [3]: #range(len(dfNames)): #
                             fig=fig, ax=ax)
     
     ax = axes_f[5]
-    parm = 'D_or_full'
-    axtitle = r'$D$ ortho-radial'
+    parm = 'D_or_linHighDt'
+    axtitle = r'$D$ ortho-radial (linear fit, $\Delta t \geq$ 1s)'
     cbarlabel = r'$D$ (µm²/s)'
     
     fig, ax = MSD_HeatMap(df_grid_MSD, M_boxes, 'Bxy', parm,
@@ -2928,7 +2943,7 @@ df_particle_MSD_CylCoo = pd.read_csv(os.path.join(dstDir, tableNames[ii]), sep='
 # dfName = dfNames[ii]
 # df = pd.read_csv(os.path.join(dstDir, dfName), sep='\t')
 # df.particle = df.particle.astype(int)
-    
+
 
 df = df_particle_MSD_CylCoo
 
@@ -3498,7 +3513,7 @@ dict_TRanges2pairs = get_pairs_for_TRanges(df, SCALE, FPS, Nframes,
 
 # %%%% Import tracks & analyse shape of explored zone
 
-idx_films = [2, 3]
+idx_films = [0, 2, 3, 5, 7]
 
 pm.setGraphicOptions(mode='screen')
 fig, axes = plt.subplots(2, len(idx_films), figsize=(len(idx_films)*3, 6),
@@ -3510,7 +3525,13 @@ dict_res = {'label':[],
 
 GEOM_DATA = []
 
+df_centers = pd.read_csv(os.path.join(srcDir, 'OrganizingCenters.csv'), sep=';')
+
+
 for k, ii in enumerate(idx_films):
+    X_MTcenter, Y_MTcenter = df_centers.loc[ii, 'xc'], df_centers.loc[ii, 'yc']
+    print(X_MTcenter, Y_MTcenter)
+
     dfName = dfNames[ii]
     title = '_'.join(dfName.split('_')[1:3])
     df = pd.read_csv(os.path.join(dstDir, dfName), sep='\t')
@@ -3555,7 +3576,7 @@ for k, ii in enumerate(idx_films):
         
         
         
-        theta = np.atan2(yc-255, xc-255)
+        theta = np.atan2(yc - Y_MTcenter, xc - X_MTcenter)
         theta_deg = theta * 180/np.pi
         
         dotprod = np.cos(theta)*np.cos(phi) + np.sin(theta)*np.sin(phi)
@@ -3569,7 +3590,7 @@ for k, ii in enumerate(idx_films):
         AR = L/l
         
         dict_geom['particle'].append(j)
-        dict_geom['np'].append(xc)
+        dict_geom['np'].append(len(df_j))
         dict_geom['xc'].append(xc)
         dict_geom['yc'].append(yc)
         dict_geom['theta'].append(theta)
@@ -3598,17 +3619,23 @@ for k, ii in enumerate(idx_films):
     plt.show()
     
     
-    df_geom = pd.DataFrame(dict_geom)
+    df_geom_raw = pd.DataFrame(dict_geom)
+    GEOM_DATA.append(df_geom_raw)
     
-    GEOM_DATA.append(df_geom)
+    
+    df_geom = df_geom_raw[df_geom_raw['AR'] > 1.5]
+    # N = len(df_geom)
+    
+    GEOM_DATA.append(df_geom_raw)
     
     df_geom['theta_bin'] = (df_geom['theta'].values * 18/np.pi).astype(int) * 10 + 5
     
-    C = np.cos(df_geom['theta'].values) * np.cos(df_geom['phi'].values) + np.sin(df_geom['theta'].values) * np.sin(df_geom['phi'].values)
+    C = np.cos(df_geom['theta'].values) * np.cos(df_geom['phi'].values) + \
+        np.sin(df_geom['theta'].values) * np.sin(df_geom['phi'].values)
     DA = np.acos(C)
     
     ax = axes[1, k]
-    ax.hist(DA, bins=40)
+    ax.hist(DA, bins=20)
     ax.set_ylabel('N trajectories')
     ax.set_xlabel(r'$|\theta - \phi|$ (rad)')
     ax.set_xticks([0, np.pi/8, np.pi/4, 3*np.pi/8, np.pi/2])
