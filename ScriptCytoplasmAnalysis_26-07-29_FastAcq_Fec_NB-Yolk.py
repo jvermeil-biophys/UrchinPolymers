@@ -3316,6 +3316,7 @@ plt.show()
 
 list_parm_cols = [
                 'D_r_lin',
+                'D_r_linHighDt',
                 'D_r_full',
                 'k_r_full',
                 'D_r_highDt',
@@ -3323,6 +3324,7 @@ list_parm_cols = [
                 'D_r_lowDt',
                 'k_r_lowDt',
                 'D_or_lin',
+                'D_or_linHighDt',
                 'D_or_full',
                 'k_or_full',
                 'D_or_highDt',
@@ -3372,15 +3374,15 @@ ax = axes[0]
 # ax.plot(res_df.Tpf_min, df_Diffusion.D_full, ls='-', marker='o', label=r'All $\Delta t$')
 # ax.plot(res_df.Tpf_min, df_Diffusion.D_lowDt, ls='-', marker='o', label=r'$\Delta t \leq 0.5s$')
 # ax.plot(res_df.Tpf_min, df_Diffusion.D_highDt, ls='-', marker='o', label=r'$\Delta t \geq 1s$')
-ax.errorbar(res_df.Tpf_min, np.exp(res_df.D_r_full_mean), 
+ax.errorbar(res_df.Tpf_min, np.exp(res_df.D_r_linHighDt_mean), 
             ls='-', marker='o', label=r'Radial',
-            yerr=[np.exp(res_df.D_r_full_mean - res_df.D_r_full_std)/(res_df.N**0.5), 
-                  np.exp(res_df.D_r_full_mean + res_df.D_r_full_std)/(res_df.N**0.5)],
+            yerr=[np.exp(res_df.D_r_linHighDt_mean - res_df.D_r_linHighDt_std)/(res_df.N**0.5), 
+                  np.exp(res_df.D_r_linHighDt_mean + res_df.D_r_linHighDt_std)/(res_df.N**0.5)],
             ecolor='k', capsize=2)
 ax.errorbar(res_df.Tpf_min, np.exp(res_df.D_or_full_mean), 
         ls='-', marker='o', label=r'Ortho-radial',
-        yerr=[np.exp(res_df.D_or_full_mean - res_df.D_or_full_std)/(res_df.N**0.5), 
-              np.exp(res_df.D_or_full_mean + res_df.D_or_full_std)/(res_df.N**0.5)],
+        yerr=[np.exp(res_df.D_or_linHighDt_mean - res_df.D_or_linHighDt_std)/(res_df.N**0.5), 
+              np.exp(res_df.D_or_linHighDt_mean + res_df.D_or_linHighDt_std)/(res_df.N**0.5)],
         ecolor='k', capsize=2)
 ax.set_ylabel(r'$D_{eff}\ (\mu m^2/s^\alpha)$')
 ax.legend(loc='center left', bbox_to_anchor=(1, 0.5))
@@ -3392,13 +3394,13 @@ ax = axes[1]
 # ax.plot(res_df.Tpf_min, df_Diffusion.k_highDt, ls='-', marker='o', label=r'$\Delta t \geq 1s$')
 ax.errorbar(res_df.Tpf_min, res_df.k_r_full_mean, 
         ls='-', marker='o', label=r'Radial',
-        yerr=[(res_df.k_r_full_mean - res_df.k_r_full_std)/(res_df.N**0.5), 
-              (res_df.k_r_full_mean + res_df.k_r_full_std)/(res_df.N**0.5)],
+        yerr=[(res_df.k_r_highDt_mean - res_df.k_r_highDt_std)/(res_df.N**0.5), 
+              (res_df.k_r_highDt_mean + res_df.k_r_highDt_std)/(res_df.N**0.5)],
         ecolor='k', capsize=2)
 ax.errorbar(res_df.Tpf_min, res_df.k_or_full_mean, 
         ls='-', marker='o', label=r'Ortho-radial',
-        yerr=[(res_df.k_or_full_mean - res_df.k_or_full_std)/(res_df.N**0.5), 
-              (res_df.k_or_full_mean + res_df.k_or_full_std)/(res_df.N**0.5)],
+        yerr=[(res_df.k_or_highDt_mean - res_df.k_or_highDt_std)/(res_df.N**0.5), 
+              (res_df.k_or_highDt_mean + res_df.k_or_highDt_std)/(res_df.N**0.5)],
         ecolor='k', capsize=2)
 ax.set_ylabel(r'$\alpha$')
 ax.set_xticks(res_df['Tpf_min'].values)
