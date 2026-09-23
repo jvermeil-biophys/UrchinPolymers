@@ -61,6 +61,8 @@ def Tpf_str2num(tpf_str):
         tpf_num += int(L[1])
     return(tpf_num)
 
+
+
 def distribute_in_boxes(df, L, M, 
                         str_Id = 'Id', str_X = 'X', str_Y = 'Y'):
     box_size = L / M
@@ -79,9 +81,83 @@ def distribute_in_boxes(df, L, M,
           .groupby(["row", "col"])[str_Id]
           .apply(list)
           .to_dict()
-    )
-    
+    )    
     return(result)
+
+
+def df_grid_2_matrix(df_grid, Nx, Ny, xy_col = 'Bxy', parm_col = 'k_full'):
+    V = df_grid[xy_col].values
+    L = [[*tup] for tup in V]
+    XY_g = np.array(L)
+    df_grid['X_g'] = XY_g[:, 0]
+    df_grid['Y_g'] = XY_g[:, 1]
+    if max(XY_g[:, 0]) > (Nx-1):
+        Nx = max(XY_g[:, 0])+1
+    if max(XY_g[:, 1]) > (Ny-1):
+        Ny = max(XY_g[:, 1])+1
+        
+    Hm = np.zeros((Nx, Ny))
+    Hm.fill(np.nan)
+    for xy in XY_g:
+        [x, y] = xy
+        Hm[y, x] = df_grid.loc[(df_grid['X_g'] == x) & (df_grid['Y_g'] == y), parm_col].values[0]
+        
+    return(Hm)
+
+
+def MSD_HeatMap(df_grid, M_boxes, xy_col, parm_col,
+                axtitle = '', cbarlabel = '',
+                cmap='viridis', norm_type = 'lin',
+                c_vmin=None, c_vmax=None,
+                fig=None, ax=None):
+    
+    if ax is None:
+        fig, ax = plt.subplots(1, 1)
+        
+    parm = parm_col
+    if axtitle=='':
+        axtitle=parm
+    ax.set_title(axtitle)
+    
+    HeatMap = df_grid_2_matrix(df_grid_MSD, M_boxes, M_boxes, 
+                               xy_col = xy_col, 
+                               parm_col = parm_col)
+
+    # mpl.colors.Normalize() # mpl.colors.LogNorm()
+    # norm = mpl.colors.Normalize()
+    if norm_type == 'lin':
+        norm = mpl.colors.Normalize(vmin=c_vmin, vmax=c_vmax)
+    elif norm_type == 'log':
+        norm = mpl.colors.LogNorm(vmin=c_vmin, vmax=c_vmax)
+    else:
+        norm = None
+        
+    axim = ax.imshow(HeatMap, aspect='equal',
+                     cmap=cmap, norm=norm, )
+    ax.invert_yaxis()
+
+    # Create colorbar
+    cbar = fig.colorbar(axim, ax=ax, label=cbarlabel)
+    cbar.ax.set_ylabel(cbarlabel)#, va="bottom")
+
+    xt = np.linspace(0, M_boxes, 3, endpoint=True)
+    yt = np.linspace(0, M_boxes, 3, endpoint=True)
+    xticks = xt - 0.5
+    yticks = yt - 0.5
+    xlabels = [f'{x*(N_pix)/M_boxes:.0f}' for x in xt]
+    ylabels = [f'{y*(N_pix)/M_boxes:.0f}' for y in yt]
+    xlabels = ['' for x in xt]
+    ylabels = ['' for y in yt]
+    ax.tick_params(axis='both', length=0,)
+
+    ax.set_xticks(xticks, labels=xlabels,) # rotation=-30, rotation_mode="xtick")
+    ax.set_yticks(yticks, labels=ylabels)
+    # ax.spines[:].set_visible(False)
+    ax.grid(which="minor", color="w", linestyle='-', linewidth=0.5)
+    ax.tick_params(which="minor", bottom=False, left=False)
+        
+    return(fig, ax)
+
 
 
 def df_2_heatmap(df, ax, parmCol='k', boxCol='Bxy', y_ascending=False,
@@ -170,10 +246,6 @@ def df_2_heatmap(df, ax, parmCol='k', boxCol='Bxy', y_ascending=False,
 
 
 
-
-
-
-
 def autocorr_fft(x):
     N = len(x)
     F = np.fft.fft(x, n = 2*N)  # 2*N because of zero-padding
@@ -182,6 +254,8 @@ def autocorr_fft(x):
     res = (res[:N]).real  # now we have the autocorrelation in convention B
     n = N * np.ones(N) - np.arange(0, N) # divide res(m) by (N-m)
     return(res / n)  # this is the autocorrelation in convention A
+
+
 
 def msd_fft_trackpyStyle(traj, mpp, fps, max_lagtime=100, pos_columns=['x', 'y']):
     """
@@ -221,6 +295,7 @@ def msd_fft_trackpyStyle(traj, mpp, fps, max_lagtime=100, pos_columns=['x', 'y']
     return(results)
 
 
+
 def msd_fft_1D(pos, mpp, fps, max_lagtime=100):
     """
     https://stackoverflow.com/questions/34222272/computing-mean-square-displacement-using-python-and-fft/34222273#34222273
@@ -257,6 +332,47 @@ def msd_fft_1D(pos, mpp, fps, max_lagtime=100):
     results.index.name = 'lagt'
     
     return(results)
+
+
+# %% Test heatmaps
+
+# HeatMap = df_grid_2_matrix(df_grid_MSD, 15, 15, xy_col = 'Bxy', parm_col = 'count')
+
+# fig, ax = plt.subplots(1, 1)
+
+# HeatMap = df_grid_2_matrix(df_grid_MSD, 15, 15, xy_col = 'Bxy', parm_col = 'count')
+
+# # mpl.colors.Normalize() # mpl.colors.LogNorm()
+# norm = mpl.colors.LogNorm()
+# axim = ax.imshow(HeatMap, cmap='gray', aspect='equal',
+#                  norm=norm, vmin=None, vmax=None)
+# ax.invert_yaxis()
+
+# # Create colorbar
+# cbarlabel = 'count'
+# cbar = fig.colorbar(axim, ax=ax, label=cbarlabel)
+# # cbar = ax.figure.colorbar(axim, ax=ax) #, **cbar_kw)
+# # cbar = fig.colorbar(plt.cm.ScalarMappable(norm=mpl.colors.LogNorm(vmin=np.min(dt_plot), 
+# #                                                                   vmax=np.max(dt_plot)), 
+# #                                    cmap="autumn"),
+# #              ax=ax, label=r"$\Delta t$")
+# cbar.ax.set_ylabel(cbarlabel, rotation=-90, va="bottom")
+
+# xt = np.linspace(0, M_boxes, 6, endpoint=True)
+# yt = np.linspace(0, M_boxes, 6, endpoint=True)
+# xticks = xt - 0.5
+# yticks = yt - 0.5
+# xlabels = [f'{x*(N_pix-1)/M_boxes:.0f}' for x in xt]
+# ylabels = [f'{y*(N_pix-1)/M_boxes:.0f}' for y in yt]
+
+# ax.set_xticks(xticks, labels=xlabels,) # rotation=-30, rotation_mode="xtick")
+# ax.set_yticks(yticks, labels=ylabels)
+# ax.spines[:].set_visible(False)
+# ax.grid(which="minor", color="w", linestyle='-', linewidth=0.5)
+# ax.tick_params(which="minor", bottom=False, left=False)
+
+# plt.show()
+
 
 
 # %% Test MSD computation
@@ -2258,10 +2374,12 @@ for ii in range(len(dfNames)):
 
 # %%%% Plot the Map
 
+pm.setGraphicOptions(mode='print')
 df_centers = pd.read_csv(os.path.join(srcDir, 'OrganizingCenters.csv'), sep=';')
 tableNames = [tifName.split('.')[0] + '_partTrajData.csv' for tifName in tifNames]
 
-for ii in range(len(dfNames)): #
+
+for ii in range(6, 7): # len(dfNames)
     try:
         t = nbimages//2
         im = ufun.load_stack_region(tifPaths[ii], time_indices=[t])[0]
@@ -2283,17 +2401,18 @@ for ii in range(len(dfNames)): #
 
     grouped = df_particle_MSD.groupby('Bxy')
     df_grid_MSD = grouped.agg({'Pid':'count',
-                               'D_lin':'mean',
-                               'D_full':'mean',
-                               'k_full':'mean',
+                               'D_lin':'median',
+                               'D_full':'median',
+                               'k_full':'median',
                                }).rename(columns={'Pid':'count'}).reset_index()
 
     df_grid_MSD = df_grid_MSD[df_grid_MSD['count'] >= 5]
 
     lims = np.linspace(0, N_pix-1, (M_boxes+1))
-    fig, axes = plt.subplots(2, 2, figsize = (8, 6), layout='compressed')
+    fig, axes = plt.subplots(2, 3, figsize = (10, 6), layout='compressed')
     axes_f = axes.flatten()
-
+    
+    #### 2.1 - Image
     ax = axes_f[0]
     if not NoImg:
         vmin, vmax = np.percentile(im, 0.5), np.percentile(im, 99.5)
@@ -2303,23 +2422,59 @@ for ii in range(len(dfNames)): #
         ax.plot(Xc, Yc, 'ro', markersize=3)
     ax.set_xlim([0, 511])
     ax.set_ylim([0, 511])
-    ax.set_title(f'Tpf {label} - tiled img')
+    ax.set_title(f'Tpf {label} - tiled image')
+    
+    #### 2.2 - Count Heatmap
+    ax = axes_f[3]
+    parm = 'count'
+    axtitle = r'Trajectories / tile'
+    cbarlabel = r'$N$'
+    
+    fig, ax = MSD_HeatMap(df_grid_MSD, M_boxes, 'Bxy', parm,
+                            axtitle = axtitle, cbarlabel = cbarlabel,
+                            cmap = 'GnBu', norm = mpl.colors.Normalize(),
+                            fig=fig, ax=ax)
+    
+    
+    #### 2.3 - D_full Heatmap
+    ax = axes_f[1]
+    parm = 'D_full'
+    axtitle = r'$D$ for all $\Delta t$'
+    cbarlabel = r'$D$ (µm²/s)'
+    
+    fig, ax = MSD_HeatMap(df_grid_MSD, M_boxes, 'Bxy', parm,
+                            axtitle = axtitle, cbarlabel = cbarlabel,
+                            cmap='RdYlBu_r', norm = mpl.colors.Normalize(),
+                            fig=fig, ax=ax)
+    
+    
+    #### 2.4 k_full Heatmap
+    ax = axes_f[4]
+    parm = 'k_full'
+    axtitle = r'$\alpha$ for all $\Delta t$'
+    cbarlabel = r'$\alpha$'
+    
+    fig, ax = MSD_HeatMap(df_grid_MSD, M_boxes, 'Bxy', parm,
+                            axtitle = axtitle, cbarlabel = cbarlabel,
+                            cmap='PuOr_r', norm = mpl.colors.Normalize(),
+                            fig=fig, ax=ax)
 
-    df_2_heatmap(df_grid_MSD, axes_f[1], parmCol='k_full', boxCol='Bxy', 
-                 y_ascending=True, cmap="viridis", annotate=False, colorScale='linear')
-
-    df_2_heatmap(df_grid_MSD, axes_f[2], parmCol='D_lin', boxCol='Bxy', 
-                 y_ascending=True, cmap="viridis", annotate=False, colorScale='log')
-
-    df_2_heatmap(df_grid_MSD, axes_f[3], parmCol='D_full', boxCol='Bxy', 
-                 y_ascending=True, cmap="viridis", annotate=False, colorScale='log')
-
+    
+    
+    #### 2.5 D_lin Heatmap
+    ax = axes_f[2]
+    parm = 'D_lin'
+    axtitle = r'$D$ with a linear fit'
+    cbarlabel = r'$D$ (µm²/s)'
+    
+    fig, ax = MSD_HeatMap(df_grid_MSD, M_boxes, 'Bxy', parm,
+                            axtitle = axtitle, cbarlabel = cbarlabel,
+                            cmap='RdYlBu_r', norm = mpl.colors.Normalize(),
+                            fig=fig, ax=ax)
 
     plt.show()
     
-
-
-
+    
 
 
 # %%%% Plot the points
@@ -2327,19 +2482,21 @@ for ii in range(len(dfNames)): #
 df_centers = pd.read_csv(os.path.join(srcDir, 'OrganizingCenters.csv'), sep=';')
 tableNames = [tifName.split('.')[0] + '_partTrajData.csv' for tifName in tifNames]
 
-for ii in range(len(dfNames)): #
+# norm=mpl.colors.LogNorm() # norm=mpl.colors.Normalize()
+
+for ii in [4]: #range(len(dfNames)): #
     t = nbimages//2
-    im = ufun.load_stack_region(tifPaths[ii], time_indices=[t])[0]
+    # im = ufun.load_stack_region(tifPaths[ii], time_indices=[t])[0]
     df_particle_MSD = pd.read_csv(os.path.join(dstDir, tableNames[ii]), sep=';')
     label = msdNames[ii].split('_')[2]
 
 
     lims = np.linspace(0, N_pix-1, (M_boxes+1))
-    fig, axes = plt.subplots(2, 2, figsize = (10, 8), layout='compressed')
+    fig, axes = plt.subplots(2, 2, figsize = (8, 6), layout='compressed')
     axes_f = axes.flatten()
     ax = axes_f[0]
-    vmin, vmax = np.percentile(im, 0.5), np.percentile(im, 99.5)
-    ax.imshow(im, cmap='gray', vmin=vmin, vmax=vmax)
+    # vmin, vmax = np.percentile(im, 0.5), np.percentile(im, 99.5)
+    # ax.imshow(im, cmap='gray', vmin=vmin, vmax=vmax, aspect='equal')
     # ax.hlines(lims, 0, N_pix, linestyle=':', color='w', lw=0.75)
     # ax.vlines(lims, 0, N_pix, linestyle=':', color='w', lw=0.75)
     ax.set_xlim([0, 511])
@@ -2348,52 +2505,61 @@ for ii in range(len(dfNames)): #
     
     ax = axes_f[1]
     parm = 'k_full' # 'D_full', 'k_full'
+    axtitle = r'$\alpha$ for all $\Delta t$'
+    cbarlabel = r'$\alpha$'
+    ax.set_title(axtitle)
+    ax.set_aspect('equal', adjustable='box')
     v_high = np.percentile(df_particle_MSD[parm], 98)
     df_f = df_particle_MSD[df_particle_MSD[parm] < v_high]
     
     g = ax.scatter(df_f['Xc'], df_f['Yc'], 
-                   c=df_f[parm], cmap='viridis',
-                   s = 8, alpha = 1, edgecolor='None',
+                   c=df_f[parm], cmap='PuOr_r',
+                   s = 6, alpha = 1, edgecolor='None',
                    norm=mpl.colors.Normalize(),
                    )
-    cbar = fig.colorbar(g)
+    cbar = fig.colorbar(g, label=cbarlabel)
     ax.set_xlim([0, 511])
     ax.set_ylim([0, 511])
-    ax.set_title(parm)
+    
     
     
     ax = axes_f[2]
     parm = 'D_lin' # 'D_full', 'k_full'
+    axtitle = r'$D$ with a linear fit'
+    cbarlabel = r'$D$ (µm²/s)'
+    ax.set_title(axtitle)
+    ax.set_aspect('equal', adjustable='box')
     v_high = np.percentile(df_particle_MSD[parm], 98)
     df_f = df_particle_MSD[df_particle_MSD[parm] < v_high]
     
     g = ax.scatter(df_f['Xc'], df_f['Yc'], 
-                   c=df_f[parm], cmap='PuRd',
-                   s = 8, alpha = 1, edgecolor='None',
+                   c=df_f[parm], cmap='RdYlBu_r',
+                   s = 6, alpha = 1, edgecolor='None',
                    norm=mpl.colors.LogNorm(),
                    )
-    cbar = fig.colorbar(g)
+    cbar = fig.colorbar(g, label=cbarlabel)
     ax.set_xlim([0, 511])
     ax.set_ylim([0, 511])
-    ax.set_title(parm)
+
     
     
     ax = axes_f[3]
     parm = 'D_full' # 'D_full', 'k_full'
+    axtitle = r'$D$ for all $\Delta t$'
+    cbarlabel = r'$D$ (µm²/s)'
+    ax.set_title(axtitle)
+    ax.set_aspect('equal', adjustable='box')
     v_high = np.percentile(df_particle_MSD[parm], 98)
     df_f = df_particle_MSD[df_particle_MSD[parm] < v_high]
     
     g = ax.scatter(df_f['Xc'], df_f['Yc'], 
-                   c=df_f[parm], cmap='BuPu',
-                   s = 8, alpha = 1, edgecolor='None',
+                   c=df_f[parm], cmap='RdYlBu_r',
+                   s = 6, alpha = 1, edgecolor='None',
                    norm=mpl.colors.LogNorm(),
                    )
-    cbar = fig.colorbar(g)
+    cbar = fig.colorbar(g, label=cbarlabel)
     ax.set_xlim([0, 511])
     ax.set_ylim([0, 511])
-    ax.set_title(parm)
-    
-    # Remove the legend and add a colorbar
     
     
     plt.show()
@@ -2592,55 +2758,126 @@ for ii in range(len(dfNames)): # len(dfNames)
     
 # %%%% Plot the Map
 
-df = df_particle_MSD_CylCoo
+df_centers = pd.read_csv(os.path.join(srcDir, 'OrganizingCenters.csv'), sep=';')
+tableNames = [tifName.split('.')[0] + '_partTrajData_RandOR.csv' for tifName in tifNames]
 
-M_boxes = 15
-L_box = N_pix/M_boxes
+# norm=mpl.colors.LogNorm() # norm=mpl.colors.Normalize()
 
-df['Xb'] = (df['Xc'].values//L_box).astype(int)
-df['Yb'] = (df['Yc'].values//L_box).astype(int)
+for ii in [3]: #range(len(dfNames)): #
+    t = nbimages//2
+    # im = ufun.load_stack_region(tifPaths[ii], time_indices=[t])[0]
+    df_particle_MSD_CylCoo = pd.read_csv(os.path.join(dstDir, tableNames[ii]), sep=';')
+    label = msdNames[ii].split('_')[2]
+    
+    X_MTcenter, Y_MTcenter = df_centers.loc[ii, 'xc'], df_centers.loc[ii, 'yc']
 
-df['Bxy'] = [(x,y) for x, y in zip(df['Xb'], df['Yb'])]
+    df = df_particle_MSD_CylCoo
+    
+    M_boxes = 15
+    L_box = N_pix/M_boxes
+    
+    df['Xb'] = (df['Xc'].values//L_box).astype(int)
+    df['Yb'] = (df['Yc'].values//L_box).astype(int)
+    
+    df['Bxy'] = [(x,y) for x, y in zip(df['Xb'], df['Yb'])]
+    
+    grouped = df.groupby('Bxy')
+    df_grid_MSD = grouped.agg({'Pid':'count',
+                               'D_r_lin':'median',
+                               'D_r_full':'median',
+                               'k_r_full':'median',
+                               'D_or_lin':'median',
+                               'D_or_full':'median',
+                               'k_or_full':'median',
+                               }).rename(columns={'Pid':'count'}).reset_index()
+    
+    df_grid_MSD = df_grid_MSD[df_grid_MSD['count'] >= 5]
+    
+    lims = np.linspace(0, N_pix-1, (M_boxes+1))
+    fig, axes = plt.subplots(2, 3, figsize = (12, 8), layout='compressed')
+    axes_f = axes.flatten()
+    
+    ax = axes_f[0]
+    vmin, vmax = np.percentile(im, 0.5), np.percentile(im, 99.5)
+    ax.imshow(im, cmap='gray', vmin=vmin, vmax=vmax)
+    ax.hlines(lims, 0, N_pix, linestyle=':', color='w', lw=0.75)
+    ax.vlines(lims, 0, N_pix, linestyle=':', color='w', lw=0.75)
+    ax.set_xlim([0, 511])
+    ax.set_ylim([0, 511])
+    ax.set_title('Tiled image')
+    
+    # df_2_heatmap(df_grid_MSD, axes_f[1], parmCol='k_r_full', boxCol='Bxy', 
+    #              y_ascending=True, cmap="viridis", annotate=False, colorScale='linear')
+    
+    # df_2_heatmap(df_grid_MSD, axes_f[2], parmCol='k_or_full', boxCol='Bxy', 
+    #              y_ascending=True, cmap="viridis", annotate=False, colorScale='linear')
+    
+    # df_2_heatmap(df_grid_MSD, axes_f[4], parmCol='D_r_full', boxCol='Bxy', 
+    #              y_ascending=True, cmap="viridis", annotate=False, colorScale='log')
+    
+    # df_2_heatmap(df_grid_MSD, axes_f[5], parmCol='D_or_full', boxCol='Bxy', 
+    #              y_ascending=True, cmap="viridis", annotate=False, colorScale='log')
+    
+    ax = axes_f[3]
+    parm = 'count'
+    axtitle = r'Trajectories / tile'
+    cbarlabel = r'$N$'
+    
+    fig, ax = MSD_HeatMap(df_grid_MSD, M_boxes, 'Bxy', parm,
+                            axtitle = axtitle, cbarlabel = cbarlabel,
+                            cmap='GnBu', norm_type = 'lin',
+                            fig=fig, ax=ax)
+    
+    
+    ax = axes_f[1]
+    parm = 'k_r_full'
+    axtitle = r'$\alpha$ radial'
+    cbarlabel = r'$\alpha$'
+    
+    fig, ax = MSD_HeatMap(df_grid_MSD, M_boxes, 'Bxy', parm,
+                            axtitle = axtitle, cbarlabel = cbarlabel,
+                            cmap='PuOr_r', norm_type = 'lin',
+                            c_vmin=0.5, c_vmax=1.1,
+                            fig=fig, ax=ax)
+    
+    ax = axes_f[2]
+    parm = 'k_or_full'
+    axtitle = r'$\alpha$ ortho-radial'
+    cbarlabel = r'$\alpha$'
+    
+    fig, ax = MSD_HeatMap(df_grid_MSD, M_boxes, 'Bxy', parm,
+                            axtitle = axtitle, cbarlabel = cbarlabel,
+                            cmap='PuOr_r', norm_type = 'lin',
+                            c_vmin=0.5, c_vmax=1.1,
+                            fig=fig, ax=ax)
+    
+    ax = axes_f[4]
+    parm = 'D_r_full'
+    axtitle = r'$D$ radial'
+    cbarlabel = r'$D$ (µm²/s)'
+    
+    fig, ax = MSD_HeatMap(df_grid_MSD, M_boxes, 'Bxy', parm,
+                            axtitle = axtitle, cbarlabel = cbarlabel,
+                            cmap='RdYlBu_r', norm_type = 'lin',
+                            c_vmin=0.002, c_vmax=0.007,
+                            fig=fig, ax=ax)
+    
+    ax = axes_f[5]
+    parm = 'D_or_full'
+    axtitle = r'$D$ ortho-radial'
+    cbarlabel = r'$D$ (µm²/s)'
+    
+    fig, ax = MSD_HeatMap(df_grid_MSD, M_boxes, 'Bxy', parm,
+                            axtitle = axtitle, cbarlabel = cbarlabel,
+                            cmap='RdYlBu_r', norm_type = 'lin',
+                            c_vmin=0.002, c_vmax=0.007,
+                            fig=fig, ax=ax)
+    
+    plt.show()
 
-grouped = df.groupby('Bxy')
-df_grid_MSD = grouped.agg({'Pid':'count',
-                           'D_r_lin':'mean',
-                           'D_r_full':'mean',
-                           'k_r_full':'mean',
-                           'D_or_lin':'mean',
-                           'D_or_full':'mean',
-                           'k_or_full':'mean',
-                           }).rename(columns={'Pid':'count'}).reset_index()
-
-df_grid_MSD = df_grid_MSD[df_grid_MSD['count'] >= 10]
-
-lims = np.linspace(0, N_pix-1, (M_boxes+1))
-fig, axes = plt.subplots(2, 3, figsize = (12, 8), layout='compressed')
-axes_f = axes.flatten()
-
-ax = axes_f[0]
-vmin, vmax = np.percentile(im, 0.5), np.percentile(im, 99.5)
-ax.imshow(im, cmap='gray', vmin=vmin, vmax=vmax)
-ax.hlines(lims, 0, N_pix, linestyle=':', color='w', lw=0.75)
-ax.vlines(lims, 0, N_pix, linestyle=':', color='w', lw=0.75)
-ax.set_xlim([0, 511])
-ax.set_ylim([0, 511])
-ax.set_title('Tiled image')
-
-df_2_heatmap(df_grid_MSD, axes_f[1], parmCol='k_r_full', boxCol='Bxy', 
-             y_ascending=True, cmap="viridis", annotate=False, colorScale='linear')
-
-df_2_heatmap(df_grid_MSD, axes_f[2], parmCol='k_or_full', boxCol='Bxy', 
-             y_ascending=True, cmap="viridis", annotate=False, colorScale='linear')
-
-df_2_heatmap(df_grid_MSD, axes_f[4], parmCol='D_r_full', boxCol='Bxy', 
-             y_ascending=True, cmap="viridis", annotate=False, colorScale='log')
-
-df_2_heatmap(df_grid_MSD, axes_f[5], parmCol='D_or_full', boxCol='Bxy', 
-             y_ascending=True, cmap="viridis", annotate=False, colorScale='log')
 
 
-plt.show()
+
 
 
 # lims = np.linspace(0, N_pix-1, (M_boxes+1))
@@ -2678,6 +2915,8 @@ pm.setGraphicOptions(mode='print')
 df_centers = pd.read_csv(os.path.join(srcDir, 'OrganizingCenters.csv'), sep=';')
 
 tableNames = [tifName.split('.')[0] + '_partTrajData_RandOR.csv' for tifName in tifNames]
+
+M_boxes=15
 
 ii = 7
 
@@ -2755,14 +2994,14 @@ ax.set_title(f'{parm1} - {parm2}')
 
 plt.show()
 
-
+# %%%% Plot the distributions
 
 fig, axes = plt.subplots(3, 3, figsize = (9, 7), layout='compressed', sharex='col')
 axes_f = axes.flatten()
 
 ax = axes_f[0]
-vmin, vmax = np.percentile(im, 0.5), np.percentile(im, 99.5)
-ax.imshow(im, cmap='gray', vmin=vmin, vmax=vmax)
+# vmin, vmax = np.percentile(im, 0.5), np.percentile(im, 99.5)
+# ax.imshow(im, cmap='gray', vmin=vmin, vmax=vmax)
 # ax.hlines(lims, 0, N_pix, linestyle=':', color='w', lw=0.75)
 # ax.vlines(lims, 0, N_pix, linestyle=':', color='w', lw=0.75)
 ax.set_xlim([0, 511])
@@ -2831,10 +3070,7 @@ ax.hist(df_f['delta'].values, bins=60)
 ax.axvline(0, color='gray', ls='-', lw=0.75, alpha=0.8)
 ax.set_title(f'{parm1} - {parm2}')
 
-
 plt.show()
-    
-
 
 
 fig, axes = plt.subplots(3, 3, figsize = (9, 7), layout='compressed', sharex='col')
@@ -2915,9 +3151,179 @@ ax.set_title(f'{parm1} - {parm2}')
 plt.show()
     
 
+# %%%% Check the nature of the distribution
+
+import statsmodels.api as sm
+
+pm.setGraphicOptions(mode='print')
+
+tableNames = [tifName.split('.')[0] + '_partTrajData_RandOR.csv' for tifName in tifNames]
+
+M_boxes=15
+
+ii = 7
+
+# for ii in range(len(dfNames)): # len(dfNames)
+#     print(ii)
+
+df_particle_MSD_CylCoo = pd.read_csv(os.path.join(dstDir, tableNames[ii]), sep=';')
+# dfName = dfNames[ii]
+# df = pd.read_csv(os.path.join(dstDir, dfName), sep='\t')
+# df.particle = df.particle.astype(int)
+    
+
+
+# -----
+df = df_particle_MSD_CylCoo
+fig, axes = plt.subplots(1, 2, figsize=(8, 4))
+axes_f = axes.flatten()
+
+# ---
+ax = axes_f[0]
+parm = 'D_r_full' # 'D_r_full', 'k_r_full'
+axtitle = r'QQplot for $D$ radial'
+df_f = df[df[parm] > 0] 
+data = df_f[parm].values
+
+ax.set_title(axtitle)
+ax.axline((0, 0), slope=1, color="k", linestyle='-.', linewidth=1, zorder=6)
+sm.qqplot(data, fit=True, line=None, ax=ax, markerfacecolor = pm.cL_Set21[0], 
+          markeredgecolor = 'None', markersize=4, alpha=0.75)
+ax.plot([], [], label='QQplot for\nnormal distribution', ls='', marker='o', 
+        markerfacecolor = pm.cL_Set21[0], markeredgecolor = 'None', markersize=5)
+sm.qqplot(np.log(data), fit=True, line=None, ax=ax, markerfacecolor = pm.cL_Set21[1], 
+          markeredgecolor = 'None', markersize=4, alpha=0.75)
+ax.plot([], [], label='QQplot for\nlog-normal distribution', ls='', marker='o', 
+        markerfacecolor = pm.cL_Set21[1], markeredgecolor = 'None', markersize=5)
+ax.grid()
+ax.set_aspect('equal', adjustable='box')
+ax.set_xlim([-4, 4])
+ax.set_ylim([-4, 4])
+ax.legend(fontsize=8)
+plt.show()
+
+
+# ---
+ax = axes_f[1]
+parm = 'k_r_full' # 'D_r_full', 'k_r_full'
+axtitle = r'QQplot for $\alpha$ radial'
+df_f = df[df[parm] > 0] 
+data = df_f[parm].values
+
+ax.set_title(axtitle)
+ax.axline((0, 0), slope=1, color="k", linestyle='-.', linewidth=1, zorder=6)
+sm.qqplot(data, fit=True, line=None, ax=ax, markerfacecolor = pm.cL_Set21[0], 
+          markeredgecolor = 'None', markersize=4, alpha=0.75)
+ax.plot([], [], label='QQplot for\nnormal distribution', ls='', marker='o', 
+        markerfacecolor = pm.cL_Set21[0], markeredgecolor = 'None', markersize=5)
+sm.qqplot(np.log(data), fit=True, line=None, ax=ax, markerfacecolor = pm.cL_Set21[1], 
+          markeredgecolor = 'None', markersize=4, alpha=0.75)
+ax.plot([], [], label='QQplot for\nlog-normal distribution', ls='', marker='o', 
+        markerfacecolor = pm.cL_Set21[1], markeredgecolor = 'None', markersize=5)
+ax.grid()
+ax.set_aspect('equal', adjustable='box')
+ax.set_xlim([-4, 4])
+ax.set_ylim([-4, 4])
+ax.legend(fontsize=8)
+plt.show()
+
+# %%%% Plot the distributions
+
+
+list_parm_cols = [
+                'D_r_lin',
+                'D_r_full',
+                'k_r_full',
+                'D_r_highDt',
+                'k_r_highDt',
+                'D_r_lowDt',
+                'k_r_lowDt',
+                'D_or_lin',
+                'D_or_full',
+                'k_or_full',
+                'D_or_highDt',
+                'k_or_highDt',
+                'D_or_lowDt',
+                'k_or_lowDt',
+                ]
+
+res_dict = {'Tpf':[], 'N':[]}
+res_dict.update({k + '_mean' : [] for k in list_parm_cols})
+res_dict.update({k + '_std' : [] for k in list_parm_cols})
+
+tableNames = [tifName.split('.')[0] + '_partTrajData_RandOR.csv' for tifName in tifNames]
+
+
+for ii in range(len(tableNames)): #
+    df_particle_MSD_CylCoo = pd.read_csv(os.path.join(dstDir, tableNames[ii]), sep=';')
+    df = df_particle_MSD_CylCoo
+    
+    label = tableNames[ii].split('_')[2]
+    print(label)
+    
+    res_dict['Tpf'].append(label)
+    res_dict['N'].append(len(df))
+    
+    for pcol in list_parm_cols:
+        df_f = df[df[pcol] > 0] 
+        data = df_f[pcol].values
+
+        if 'k_' in pcol:
+            m, std = np.mean(data), np.std(data)
+        elif 'D_' in pcol:
+            data = np.log(data)
+            m, std = np.mean(data), np.std(data)
+            
+        res_dict[pcol + '_mean'].append(m)
+        res_dict[pcol + '_std'].append(std)
+    
+res_df = pd.DataFrame(res_dict)
+res_df['Tpf_s'] = res_df['Tpf'].apply(lambda x : Tpf_str2num(x))
+res_df['Tpf_min'] = res_df['Tpf_s']/60
 
 
 
+fig, axes = plt.subplots(2, 1, figsize=(7, 6), sharex = True, layout='compressed')
+ax = axes[0]
+# ax.plot(res_df.Tpf_min, df_Diffusion.D_full, ls='-', marker='o', label=r'All $\Delta t$')
+# ax.plot(res_df.Tpf_min, df_Diffusion.D_lowDt, ls='-', marker='o', label=r'$\Delta t \leq 0.5s$')
+# ax.plot(res_df.Tpf_min, df_Diffusion.D_highDt, ls='-', marker='o', label=r'$\Delta t \geq 1s$')
+ax.errorbar(res_df.Tpf_min, np.exp(res_df.D_r_full_mean), 
+            ls='-', marker='o', label=r'Radial',
+            yerr=[np.exp(res_df.D_r_full_mean - res_df.D_r_full_std)/(res_df.N**0.5), 
+                  np.exp(res_df.D_r_full_mean + res_df.D_r_full_std)/(res_df.N**0.5)],
+            ecolor='k', capsize=2)
+ax.errorbar(res_df.Tpf_min, np.exp(res_df.D_or_full_mean), 
+        ls='-', marker='o', label=r'Ortho-radial',
+        yerr=[np.exp(res_df.D_or_full_mean - res_df.D_or_full_std)/(res_df.N**0.5), 
+              np.exp(res_df.D_or_full_mean + res_df.D_or_full_std)/(res_df.N**0.5)],
+        ecolor='k', capsize=2)
+ax.set_ylabel(r'$D_{eff}\ (\mu m^2/s^\alpha)$')
+ax.legend(loc='center left', bbox_to_anchor=(1, 0.5))
+ax.grid()
+
+ax = axes[1]
+# ax.plot(res_df.Tpf_min, df_Diffusion.k_full, ls='-', marker='o', label=r'All $\Delta t$')
+# ax.plot(res_df.Tpf_min, df_Diffusion.k_lowDt, ls='-', marker='o', label=r'$\Delta t \leq 0.5s$')
+# ax.plot(res_df.Tpf_min, df_Diffusion.k_highDt, ls='-', marker='o', label=r'$\Delta t \geq 1s$')
+ax.errorbar(res_df.Tpf_min, res_df.k_r_full_mean, 
+        ls='-', marker='o', label=r'Radial',
+        yerr=[(res_df.k_r_full_mean - res_df.k_r_full_std)/(res_df.N**0.5), 
+              (res_df.k_r_full_mean + res_df.k_r_full_std)/(res_df.N**0.5)],
+        ecolor='k', capsize=2)
+ax.errorbar(res_df.Tpf_min, res_df.k_or_full_mean, 
+        ls='-', marker='o', label=r'Ortho-radial',
+        yerr=[(res_df.k_or_full_mean - res_df.k_or_full_std)/(res_df.N**0.5), 
+              (res_df.k_or_full_mean + res_df.k_or_full_std)/(res_df.N**0.5)],
+        ecolor='k', capsize=2)
+ax.set_ylabel(r'$\alpha$')
+ax.set_xticks(df_Diffusion['Tpf_min'].values)
+ax.set_xticklabels(df_Diffusion['Tpf_min'].values, rotation = 20)
+ax.set_xlabel('Tpf (min)')
+ax.legend(loc='center left', bbox_to_anchor=(1, 0.5))
+ax.grid()
+
+plt.show()
 
 
 # %%%% Dev MRSD (Pairwise MSD)
@@ -3340,7 +3746,6 @@ for ii in [2]:
         ax.set_yscale('log')
         idx_start_fit = 30
         
-
         ax.plot(radii[:], N_of_r_normalized[:],
                 'k.', label='Data')
         
@@ -3669,172 +4074,6 @@ for ii in range(len(fileNames)):
     plt.show()
         
         
-    
-# %%% 10. Compare MSD for DDM and SPT
-
-#### PATHS
-
-mainDir = 'C:\\Users\\Joseph\\Desktop\\IntraCellTracking\\26-07-29_FastAcq_NBYolk-Fecondation'
-srcDir = os.path.join(mainDir, 'Crops')
-dstSPTDir = os.path.join(mainDir, 'SPT_results')
-dstDDMDir = os.path.join(mainDir, 'DDM_results')
-
-tifNames = ['26-07-29_PostF_2min_Pos11_10fps_Texp100ms_CSU642_crop.tif',
-            '26-07-29_PostF_6min30_Pos11_10fps_Texp100ms_CSU642_crop.tif',
-            '26-07-29_PostF_12min_Pos11_10fps_Texp100ms_CSU642_crop.tif',
-            '26-07-29_PostF_30min_Pos11_10fps_Texp100ms_CSU642_crop.tif',
-            '26-07-29_PostF_45min_Pos11_10fps_Texp100ms_CSU642_crop.tif',
-            '26-07-29_PostF_70min_Pos11_10fps_Texp100ms_CSU642_crop.tif',
-            '26-07-29_PostF_80min_Pos11_10fps_Texp100ms_CSU642_crop.tif',
-            '26-07-29_PostF_100min_Pos11_10fps_Texp100ms_CSU642_crop.tif',
-            '26-07-29_PostF_120min_Pos11_10fps_Texp100ms_CSU642_crop.tif',
-             ]
-tifPaths = [os.path.join(srcDir, tifName) for tifName in tifNames]
-xmlNames = [tifName.split('.')[0] + '_PyTracks.xml' for tifName in tifNames]
-xmlPaths = [os.path.join(dstDir, xmlName)  for xmlName in xmlNames]
-
-#### SETTINGS
-
-UmPerPix = cd.UmPerPix_60X_W1
-SCALE = 1/UmPerPix
-
-nbimages = 2000
-FPS = 10
-frequencies = [10] * len(tifNames)
-
-maxNCouples = 300
-N_pix = 512
-L_um = N_pix*UmPerPix
-print(f'Pixel size = {UmPerPix:.3f} µm',
-      f'Optical resol = {0.647/(2*1.2):.3f} µm') # Lambda / 2.NA
-dL = min(UmPerPix, 0.647/(2*1.2))
-dq = 2*np.pi / L_um
-qmin = 5*dq
-qmax = ((2*np.pi) / (2*dL)) * 0.4  # 11.7
-
-#### MORE PATHS
-
-ddmFileNames = []
-dtFileNames = []
-for fN, f in zip(tifNames, frequencies):
-    ddmFileNames.append('_'.join(fN.split('_')[:-1]) + f'_Nc{maxNCouples:.0f}_DDM.npy')
-    dtFileNames.append('_'.join(fN.split('_')[:-1]) + f'_Nc{maxNCouples:.0f}_dt.npy')
-    
-frequencies = [10] * len(DDMs)
-
-#### RUN
-
-for ii in [0, 2, 4]:
-    print(fN.split('_')[2])
-    fN = tifNames[ii]
-    DDMname = ddmFileNames[ii]
-    dtname = dtFileNames[ii]
-    DDM = np.load(os.path.join(dstDDMDir, DDMname))
-    dt = np.load(os.path.join(dstDDMDir, dtname))
-    
-    dict_MSDfits = ufun.json2dict(dstDir, jsonNames[ii])
-    res_emsd = pd.read_csv(os.path.join(dstDir, msdNames[ii]), sep='\t')
-    
-    QQ_raw = np.arange(1, 1+DDM.shape[1])*dq
-    
-    valid_iQ, valid_Q = [], []
-    for iq in range(len(QQ_raw)):
-        q = QQ_raw[iq]
-        if q >= qmin and q < qmax:
-            valid_Q.append(q)
-            valid_iQ.append(iq)
-    
-    QQ = np.array(valid_Q)
-    iQ = np.array(valid_iQ)
-    
-    #### DDM
-    
-    AA, BB, GG = fitBrownianModel(DDM, dt, QQ, iQ, fN)
-    
-    
-    #### MSD
-    
-    T, MSD = res_emsd['lagt'], res_emsd['msd']
-    
-    D_linear = dict_MSDfits['D_linear']
-    k_full = dict_MSDfits['k_full']
-    D_full = dict_MSDfits['D_full']
-    k_f4 = dict_MSDfits['k_f4']
-    D_f4 = dict_MSDfits['D_f4']
-    k_l15 = dict_MSDfits['k_l15']
-    D_l15 = dict_MSDfits['D_l15']
-    Tc = (D_f4/D_l15)**(1/(k_l15-k_f4))  
-    
-    #### PLOT
-    
-    fig, ax = plt.subplots(1, 1, figsize=(5, 5))
-    ax.grid()
-    fig.suptitle(fN.split('_')[2])
-    ax.set_xscale('log')
-    ax.set_yscale('log')
-    
-    Xp = np.array([1e-3, 1e3])
-    
-    ax.plot(T, MSD, 'wo', mec='k', label='MSD from SPT')
-    # ax.plot(Xp, 4*D_full*(Xp**k_full), ls='-', color=pm.cL_Set21[0], mec='k', label='Full curve')
-    # ax.plot(Xp, 4*D_f4*(Xp**k_f4), ls='-', color=pm.cL_Set21[1], mec='k', 
-    #         label=f'First 4 pts\n$\\alpha$ = {k_f4:.2f}')
-    # ax.plot(Xp, 4*D_l15*(Xp**k_l15), ls='-', color=pm.cL_Set21[2], mec='k', 
-    #         label=f'Last 15 pts\n$\\alpha$ = {k_l15:.2f}')
-    # ax.axvline(Tc, color='gray', lw=1.5, label=f'$T_c$ = {Tc:.2f}')
-    ax.legend()
-    ax.grid()
-    ax.set_xlim([0.5e-1, 2e1])
-    ax.set_ylim([0.5e-3, 2e0])
-    ax.set_ylabel('MSD (um²)')
-    ax.set_xlabel('T (s)')
-    plt.show()
-    
-    
-    idx = slice(10, len(iQ), 10)
-    cmap = mpl.cm.plasma
-    
-    # idx = slice(0, len(valid_iQ), 10)
-    
-    list_MSD_exp = []
-    list_MSD_fit = []
-    
-    for iq in iQ[idx]:
-        jq = iq - min(iQ)
-        q = QQ[iq]
-        A = AA[jq]
-        B = BB[jq]
-        G = GG[jq]
-        
-        D = DDM[:, iq]
-        color = cmap(jq/(len(iQ)))
-        
-        fR = 1 - ((D-B)/A)
-        fR_fit = np.exp(-G*dt)
-        
-        MSD_exp = -(4/q**2) * np.log(fR)
-        MSD_fit = -(4/q**2) * np.log(fR_fit)
-        
-        list_MSD_exp.append(MSD_exp)
-        list_MSD_fit.append(MSD_fit)
-        
-        
-    list_MSD_exp = np.array(list_MSD_exp)
-    list_MSD_fit = np.array(list_MSD_fit)
-    
-    avg_MSD_exp = np.nanmean(list_MSD_exp, axis=0)
-    avg_MSD_fit = np.nanmean(list_MSD_fit, axis=0)
-    
-    ax = ax
-    ax.plot(dt, avg_MSD_exp, ls='', marker='o', color = 'k', label='MSD from DDM')
-    # ax.plot(dt, avg_MSD_fit, ls='-', marker='', color = 'k')
-    ax.legend()
-    ax.grid()
-        
-    
-    plt.show()
-
-
 
 
 
