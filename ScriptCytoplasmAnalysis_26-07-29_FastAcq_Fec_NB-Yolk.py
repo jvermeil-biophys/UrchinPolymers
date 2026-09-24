@@ -2549,7 +2549,9 @@ for ii in [0, 2, 3, 5, 7]: #range(len(dfNames)): #
     im = ufun.load_stack_region(tifPaths[ii], time_indices=[t])[0]
     df_particle_MSD = pd.read_csv(os.path.join(dstDir, tableNames[ii]), sep=';')
     label = msdNames[ii].split('_')[2]
-
+    
+    M_boxes = 15
+    L_box = N_pix/M_boxes
 
     lims = np.linspace(0, N_pix-1, (M_boxes+1))
     fig, axes = plt.subplots(2, 2, figsize = (8, 6), layout='compressed')
@@ -2830,7 +2832,7 @@ for ii in range(len(dfNames)): # len(dfNames)
     # plt.show()
     
     
-# %%%% Plot the Map
+# %%%% Plot the Maps
 
 df_centers = pd.read_csv(os.path.join(srcDir, 'OrganizingCenters.csv'), sep=';')
 tableNames = [tifName.split('.')[0] + '_partTrajData_RandOR.csv' for tifName in tifNames]
@@ -2876,6 +2878,7 @@ for ii in [0, 2, 3, 5, 7]: #range(len(dfNames)): #
     ax.imshow(im, cmap='gray', vmin=vmin, vmax=vmax)
     ax.hlines(lims, 0, N_pix, linestyle=':', color='w', lw=0.75)
     ax.vlines(lims, 0, N_pix, linestyle=':', color='w', lw=0.75)
+    ax.plot(X_MTcenter, Y_MTcenter, 'ro', markersize=3)
     ax.set_xlim([0, 511])
     ax.set_ylim([0, 511])
     ax.set_title(f'Tpf {label} - tiled image')
@@ -2994,79 +2997,85 @@ M_boxes=15
 
 ii = 7
 
-# for ii in range(len(dfNames)): # len(dfNames)
-#     print(ii)
-X_MTcenter, Y_MTcenter = df_centers.loc[ii, 'xc'], df_centers.loc[ii, 'yc']
+for ii in [0, 2, 3, 5, 7]: # len(dfNames)
+    print(ii)
+    X_MTcenter, Y_MTcenter = df_centers.loc[ii, 'xc'], df_centers.loc[ii, 'yc']
 
-df_particle_MSD_CylCoo = pd.read_csv(os.path.join(dstDir, tableNames[ii]), sep=';')
-# dfName = dfNames[ii]
-# df = pd.read_csv(os.path.join(dstDir, dfName), sep='\t')
-# df.particle = df.particle.astype(int)
-
-
-df = df_particle_MSD_CylCoo
-
-lims = np.linspace(0, N_pix-1, (M_boxes+1))
-fig, axes = plt.subplots(1, 4, figsize = (12, 4), layout='compressed')
-axes_f = axes.flatten()
-
-ax = axes_f[0]
-vmin, vmax = np.percentile(im, 0.5), np.percentile(im, 99.5)
-ax.imshow(im, cmap='gray', vmin=vmin, vmax=vmax)
-# ax.hlines(lims, 0, N_pix, linestyle=':', color='w', lw=0.75)
-# ax.vlines(lims, 0, N_pix, linestyle=':', color='w', lw=0.75)
-ax.set_xlim([0, 511])
-ax.set_ylim([0, 511])
-ax.set_title('Original image')
-
-ax = axes_f[1]
-parm1 = 'D_r_full' # 'D_r_full', 'k_r_full'
-v_high1 = np.percentile(df[parm1], 98)
-df_f = df[df[parm1] < v_high1]
-
-g = ax.scatter(df_f['Xc'], df_f['Yc'], 
-               c=df_f[parm1], cmap='viridis',
-               s = 5, alpha = 1, edgecolor='None',
-               norm=mpl.colors.Normalize(), # LogNorm
-               )
-cbar = fig.colorbar(g)
-ax.set_xlim([0, 511])
-ax.set_ylim([0, 511])
-ax.set_title(parm1)
+    df_particle_MSD_CylCoo = pd.read_csv(os.path.join(dstDir, tableNames[ii]), sep=';')
+    # dfName = dfNames[ii]
+    # df = pd.read_csv(os.path.join(dstDir, dfName), sep='\t')
+    # df.particle = df.particle.astype(int)
+    
+    t = nbimages//2
+    im = ufun.load_stack_region(tifPaths[ii], time_indices=[t])[0]
+    df_particle_MSD_CylCoo = pd.read_csv(os.path.join(dstDir, tableNames[ii]), sep=';')
+    label = tableNames[ii].split('_')[2]
 
 
-ax = axes_f[2]
-parm2 = 'D_or_full' # 'D_or_full', 'k_or_full'
-v_high2 = np.percentile(df[parm2], 98)
-df_f = df[df[parm2] < v_high2]
-
-g = ax.scatter(df_f['Xc'], df_f['Yc'], 
-               c=df_f[parm2], cmap='PuRd',
-               s = 5, alpha = 1, edgecolor='None',
-               norm=mpl.colors.Normalize(),
-               )
-cbar = fig.colorbar(g)
-ax.set_xlim([0, 511])
-ax.set_ylim([0, 511])
-ax.set_title(parm2)
-
-
-ax = axes_f[3]
-df_f = df[(df[parm1] < v_high1) & (df[parm2] < v_high2)]
-df_f['delta'] = df_f[parm1] - df_f[parm2] 
-g = ax.scatter(df_f['Xc'], df_f['Yc'], 
-               c=df_f['delta'], cmap='BuPu',
-               s = 5, alpha = 1, edgecolor='None',
-               norm=mpl.colors.Normalize(),
-               )
-cbar = fig.colorbar(g)
-ax.set_xlim([0, 511])
-ax.set_ylim([0, 511])
-ax.set_title(f'{parm1} - {parm2}')
-
-# Remove the legend and add a colorbar
-
-plt.show()
+    df = df_particle_MSD_CylCoo
+    
+    lims = np.linspace(0, N_pix-1, (M_boxes+1))
+    fig, axes = plt.subplots(1, 4, figsize = (12, 4), layout='compressed')
+    axes_f = axes.flatten()
+    
+    ax = axes_f[0]
+    vmin, vmax = np.percentile(im, 0.5), np.percentile(im, 99.5)
+    ax.imshow(im, cmap='gray', vmin=vmin, vmax=vmax)
+    # ax.hlines(lims, 0, N_pix, linestyle=':', color='w', lw=0.75)
+    # ax.vlines(lims, 0, N_pix, linestyle=':', color='w', lw=0.75)
+    ax.plot(X_MTcenter, Y_MTcenter, 'ro', markersize=3)
+    ax.set_xlim([0, 511])
+    ax.set_ylim([0, 511])
+    ax.set_title('Original image')
+    
+    ax = axes_f[1]
+    parm1 = 'D_r_full' # 'D_r_full', 'k_r_full'
+    v_high1 = np.percentile(df[parm1], 98)
+    df_f = df[df[parm1] < v_high1]
+    
+    g = ax.scatter(df_f['Xc'], df_f['Yc'], 
+                   c=df_f[parm1], cmap='viridis',
+                   s = 5, alpha = 1, edgecolor='None',
+                   norm=mpl.colors.Normalize(), # LogNorm
+                   )
+    cbar = fig.colorbar(g)
+    ax.set_xlim([0, 511])
+    ax.set_ylim([0, 511])
+    ax.set_title(parm1)
+    
+    
+    ax = axes_f[2]
+    parm2 = 'D_or_full' # 'D_or_full', 'k_or_full'
+    v_high2 = np.percentile(df[parm2], 98)
+    df_f = df[df[parm2] < v_high2]
+    
+    g = ax.scatter(df_f['Xc'], df_f['Yc'], 
+                   c=df_f[parm2], cmap='PuRd',
+                   s = 5, alpha = 1, edgecolor='None',
+                   norm=mpl.colors.Normalize(),
+                   )
+    cbar = fig.colorbar(g)
+    ax.set_xlim([0, 511])
+    ax.set_ylim([0, 511])
+    ax.set_title(parm2)
+    
+    
+    ax = axes_f[3]
+    df_f = df[(df[parm1] < v_high1) & (df[parm2] < v_high2)]
+    df_f['delta'] = df_f[parm1] - df_f[parm2] 
+    g = ax.scatter(df_f['Xc'], df_f['Yc'], 
+                   c=df_f['delta'], cmap='BuPu',
+                   s = 5, alpha = 1, edgecolor='None',
+                   norm=mpl.colors.Normalize(),
+                   )
+    cbar = fig.colorbar(g)
+    ax.set_xlim([0, 511])
+    ax.set_ylim([0, 511])
+    ax.set_title(f'{parm1} - {parm2}')
+    
+    # Remove the legend and add a colorbar
+    
+    plt.show()
 
 # %%%% Plot the distributions
 
