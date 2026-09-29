@@ -141,6 +141,51 @@ QQ = np.array(valid_Q)
 iQ = np.array(valid_iQ)
 
 
+# %%%% 1.3.x Plot FT of images
+
+pm.setGraphicOptions(mode = 'screen')
+
+idts = tbca.logSpaced(nbimages, pointsPerDecade)
+dts = [idts/float(freq) for freq in frequencies]
+
+Nstep = 20
+maxNCouples=20
+
+
+for p in tifPaths:
+    print(f'\n\nPlotting for {os.path.split(p)}...')
+    fig, axes = plt.subplots(3, 2, figsize=(12, 9), layout='compressed')
+    
+    stack = tbca.ImageStack(p) #, convert_to_8bits=True)
+    
+    ax = axes[0, 0]
+    i = 0
+    ax.imshow(stack[i], 'gray')
+    ax.set_title(f'Frame no {i+1:.0f}')
+    ax = axes[1, 0]
+    j = Nstep-1
+    ax.imshow(stack[j], 'gray')
+    ax.set_title(f'Frame no {j+1:.0f}')
+    ax = axes[2, 0]
+    ax.imshow(stack[j] - stack[i].astype(float), 'gray')
+    ax.set_title(r'$\Delta I$ for ' + f'f{j+1:.0f} and f{i+1:.0f}')
+    
+    F1, F2, F3 = (Nstep)-1, (Nstep*5)-1, (Nstep*10)-1
+    I_0_N = np.fft.fftshift(tbca.spectrumDiff(stack[0], stack[(Nstep)-1]))
+    I_0_10N = np.fft.fftshift(tbca.spectrumDiff(stack[0], stack[(Nstep*5)-1]))
+    I_0_100N = np.fft.fftshift(tbca.spectrumDiff(stack[0], stack[(Nstep*10)-1]))
+    V1, V2, V3 = np.percentile(I_0_N, 99), np.percentile(I_0_10N, 99), np.percentile(I_0_100N, 99)
+    axes[0, 1].imshow(I_0_N, 'hot', norm=mpl.colors.LogNorm(vmax=V1))
+    axes[0, 1].set_title(r'$TF[\Delta I]$ ' + f'for f0 and f{F1:.0f}')
+    axes[1, 1].imshow(I_0_10N, 'hot', norm=mpl.colors.LogNorm(vmax=V2, ))
+    axes[1, 1].set_title(r'$TF[\Delta I]$ ' + f'for f0 and f{F2:.0f}')
+    axes[2, 1].imshow(I_0_100N, 'hot', norm=mpl.colors.LogNorm(vmax=V3, ))
+    axes[2, 1].set_title(r'$TF[\Delta I]$ ' + f'for f0 and f{F3:.0f}')
+    # print(f"{np.percentile(I_0_N, 99):.2e}")
+    # print(f"{np.percentile(I_0_10N, 99):.2e}")
+    # print(f"{np.percentile(I_0_100N, 99):.2e}")
+
+
 # %%%% 1.3.x Plot typical images
 
 pm.setGraphicOptions(mode = 'screen')
@@ -174,12 +219,13 @@ for p in tifPaths:
     I_0_N = np.fft.fftshift(tbca.spectrumDiff(stack[0], stack[(Nstep)-1]))
     I_0_10N = np.fft.fftshift(tbca.spectrumDiff(stack[0], stack[(Nstep*5)-1]))
     I_0_100N = np.fft.fftshift(tbca.spectrumDiff(stack[0], stack[(Nstep*10)-1]))
+    v1, v2, v3 = np.percentile(I_0_N, 1), np.percentile(I_0_10N, 1), np.percentile(I_0_100N, 1)
     V1, V2, V3 = np.percentile(I_0_N, 99), np.percentile(I_0_10N, 99), np.percentile(I_0_100N, 99)
-    axes[0, 1].imshow(I_0_N, 'hot', vmin=0, vmax=V1)
+    axes[0, 1].imshow(I_0_N, 'hot', norm=mpl.colors.LogNorm(vmin=v1, vmax=V1))
     axes[0, 1].set_title(r'$TF[\Delta I]$ ' + f'for f0 and f{F1:.0f}')
-    axes[1, 1].imshow(I_0_10N, 'hot', vmin=0, vmax=V2)
+    axes[1, 1].imshow(I_0_10N, 'hot', norm=mpl.colors.LogNorm(vmin=v2, vmax=V2, ))
     axes[1, 1].set_title(r'$TF[\Delta I]$ ' + f'for f0 and f{F2:.0f}')
-    axes[2, 1].imshow(I_0_100N, 'hot', vmin=0, vmax=V3)
+    axes[2, 1].imshow(I_0_100N, 'hot', norm=mpl.colors.LogNorm(vmin=v3, vmax=V3, ))
     axes[2, 1].set_title(r'$TF[\Delta I]$ ' + f'for f0 and f{F3:.0f}')
     # print(f"{np.percentile(I_0_N, 99):.2e}")
     # print(f"{np.percentile(I_0_10N, 99):.2e}")
@@ -189,12 +235,13 @@ for p in tifPaths:
     J_0_N10   = tbca.timeAveraged(stack, Nstep//5, maxNCouples=maxNCouples)
     J_0_N  = tbca.timeAveraged(stack, Nstep, maxNCouples=maxNCouples)
     J_0_10N = tbca.timeAveraged(stack, Nstep*5, maxNCouples=maxNCouples)
+    v1, v2, v3 = np.percentile(J_0_N10, 1), np.percentile(J_0_N, 1), np.percentile(J_0_10N, 1)
     V1, V2, V3 = np.percentile(J_0_N10, 99), np.percentile(J_0_N, 99), np.percentile(J_0_10N, 99)
-    axes[0, 2].imshow(np.fft.fftshift(J_0_N10), 'hot', vmin=0, vmax=V1)
+    axes[0, 2].imshow(np.fft.fftshift(J_0_N10), 'hot', norm=mpl.colors.LogNorm(vmin=v1, vmax=V1, ))
     axes[0, 2].set_title(r'$TF[\Delta I]$ for $\Delta t$ = ' + f'{S1:.0f}f')
-    axes[1, 2].imshow(np.fft.fftshift(J_0_N), 'hot', vmin=0, vmax=V2)
+    axes[1, 2].imshow(np.fft.fftshift(J_0_N), 'hot', norm=mpl.colors.LogNorm(vmin=v2, vmax=V2, ))
     axes[1, 2].set_title(r'$TF[\Delta I]$ for $\Delta t$ = ' + f'{S2:.0f}f')
-    axes[2, 2].imshow(np.fft.fftshift(J_0_10N), 'hot', vmin=0, vmax=V3)
+    axes[2, 2].imshow(np.fft.fftshift(J_0_10N), 'hot', norm=mpl.colors.LogNorm(vmin=v3, vmax=V3, ))
     axes[2, 2].set_title(r'$TF[\Delta I]$ for $\Delta t$ = ' + f'{S3:.0f}f')
     
     ra = tbca.RadialAverager(stack.shape[1:])
@@ -211,11 +258,11 @@ for p in tifPaths:
     axes[2, 3].plot(ra(J_0_10N), 'b-')
     axes[2, 3].set_title(r'$RA$ for $\Delta t$ = ' + f'{S3:.0f}f')
     
-    figfile = f'{os.path.split(p)[-1]}'[:-4] + '_summary.png'
-    figpath = os.path.join(srcDir, figfile)
-    fig.suptitle(f'Plotting for {os.path.split(p)[-1]}')
-    fig.savefig(figpath, dpi=500, )
-    plt.show()
+    # figfile = f'{os.path.split(p)[-1]}'[:-4] + '_summary.png'
+    # figpath = os.path.join(srcDir, figfile)
+    # fig.suptitle(f'Plotting for {os.path.split(p)[-1]}')
+    # fig.savefig(figpath, dpi=500, )
+    # plt.show()
 
 
 # %%%% 1.4 Plot the structure matrix D
@@ -306,6 +353,7 @@ plt.show()
 
 AA, BB, GG = [], [], []
 kk_G = []
+AA_G = []
 
 for ii in range(len(DDMs)): # len(DDMs)
     fN = tifNames[ii]
@@ -433,6 +481,7 @@ for ii in range(len(DDMs)): # len(DDMs)
     BB.append(list_B)
     GG.append(list_G)
     
+    
     valid = (QQ < np.inf) & (QQ > 0)
     
     X, Y = np.log(QQ[valid]), np.log(list_G[valid])
@@ -442,6 +491,7 @@ for ii in range(len(DDMs)): # len(DDMs)
     A = np.exp(p1)
     
     kk_G.append(k)
+    AA_G.append(A)
     
     ax = axes[0]
     # ax.set_ylim([1e8, 1e13])
