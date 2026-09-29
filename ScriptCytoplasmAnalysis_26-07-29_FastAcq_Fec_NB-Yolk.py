@@ -3591,9 +3591,152 @@ for k in range(Nc):
     fi, ff = Fi[k], Ff[k]
     TRange = Dict_TRanges[fi]
     df_TRange = df[df['particle'].apply(lambda x : x in TRange)]
+
+
+# %%%% Test Delaunay Dist
+
+import numpy as np
+import matplotlib.pyplot as plt
+from scipy.spatial import Delaunay
+
+points = np.array([[0, 0], [0, 1.1], [1, 0], [1, 1], 
+                   [0.25, 0.25], [0.25, -0.25], [0.2, 0.4], [0.8, 0.95],
+                   [0.1, -0.15], [0.1, 0.98], [0.95, 0.05], [1.2, 0.87],])
+tri = Delaunay(points)
+indptr, indices = tri.vertex_neighbor_vertices
+k = 4
+neigh_k = indices[indptr[k]:indptr[k+1]]
+
+XY = points
+
+for k in range(len(points)):
+    neigh_k = indices[indptr[k]:indptr[k+1]]
+    X, Y = XY[k]
+    X_neigh, Y_neigh = XY[neigh_k, 0], XY[neigh_k, 1]
+    XY_p = np.array([[X, Y]]).T
+    XY_neigh = np.array([X_neigh, Y_neigh])
+    Dist_neigh = np.power(np.sum((XY_neigh - XY_p)**2, axis=1), 0.5)
     
+fig, axes = plt.subplots(1, 2, figsize = (7, 3.5))
+
+ax = axes[0]
+ax.triplot(points[:,0], points[:,1], tri.simplices)
+ax.plot(points[:,0], points[:,1], 'o')
+ax.plot(points[k,0], points[k,1], 'ro')
+ax.plot(points[neigh_k,0], points[neigh_k,1], 'ko')
+
+ax = axes[1]
+ax.triplot(points[:,0], points[:,1], tri.simplices)
+ax.plot(points[:,0], points[:,1], 'o')
+
+plt.show()
+
+
+
+
+
+
+
+pm.setGraphicOptions(mode='screen')
+
+for ii in [2]:   
+    dfName = dfNames[ii]
+    df = pd.read_csv(os.path.join(dstDir, dfName), sep='\t')
+    title = '_'.join(dfName.split('_')[:5])
+    
+    for jj in [1750]:
+        df_j = df[df['frame'] == jj+1]
+        title_j = title + f' - Frame no {jj+1:.0f}'
+        fName_j = title + f'_Fn{jj+1:.0f}_PCF.png'
+        XX, YY = df_j.x*UmPerPix, df_j.y*UmPerPix
+        XXYY = np.array([XX, YY]).T
+        
+        tri = Delaunay(XXYY)
+        indptr, indices = tri.vertex_neighbor_vertices
+        
+
+        
+        fig, axes = plt.subplots(1, 2, figsize=(8, 4), layout='compressed')
+        axes_f = axes.flatten()
+        
+        #### EQUALIZE
+        p1, p99 = np.percentile(im, (1, 99))
+        
+        ax = axes_f[0]
+        ax.set_aspect('equal', adjustable='box')
+        ax.plot(XX, YY, ls='', marker='.')
+        ax.set_xlabel(r'$x\ (\mu m)$')
+        ax.set_ylabel(r'$y\ (\mu m)$')
+        ax.set_xlim([0, 511*UmPerPix])
+        ax.set_ylim([0, 511*UmPerPix])
+        
+        
+        ax = axes_f[1]
+        ax.triplot(XXYY[:, 0], XXYY[:, 1], tri.simplices)
+        ax.plot(XXYY[:, 0], XXYY[:, 1], 'o')
+        
+        plt.show()
+        
 
 # %%%% MSRD functions
+
+def get_pairs_for_TRanges_Delaunay(df, SCALE, FPS, Nframes,
+                                  len_TRanges = 200, delta_TRanges = -1,
+                                  dist_th_um = 5, multipairs = False):
+    df.frame = df.frame.astype(int)
+    df.particle = df.particle.astype(int)
+    dist_th = dist_th_um * SCALE
+    
+    if delta_TRanges < 0:
+        delta_TRanges = len_TRanges
+    FI = np.arange(0, Nframes, step=delta_TRanges)
+    FF = FI + len_TRanges
+    valid = (FF <= Nframes)
+    if valid[-1]:
+        pass
+    else:
+        i_stop = ufun.findFirst(True, (FF>Nframes))
+        FI = FI[:i_stop]
+        FF = FF[:i_stop]
+    
+    dict_TRanges2particles = {f'{fi}_{ff}':{'pid':[], 'xm':[], 'ym':[]} \
+                              for fi, ff in zip(FI, FF)}
+    dict_TRanges2pairs = {f'{fi}_{ff}':[] for fi, ff in zip(FI, FF)}
+    
+    PIDs = df.particle.unique()
+    for pid in PIDs:
+        pfi = np.min(df[df['particle'] == pid]['frame'].values) - 1
+        pff = np.max(df[df['particle'] == pid]['frame'].values) - 1
+        
+        for fi, ff in zip(FI, FF):
+            if (pfi <= fi) and (ff-1 <= pff):
+                xm = np.median(df[df['particle'] == pid]['x'].values)
+                ym = np.median(df[df['particle'] == pid]['y'].values)
+                dict_TRanges2particles[f'{fi}_{ff}']['pid'].append(pid)
+                dict_TRanges2particles[f'{fi}_{ff}']['xm'].append(xm)
+                dict_TRanges2particles[f'{fi}_{ff}']['ym'].append(ym)
+    
+    for TRange in dict_TRanges2particles.keys():
+        df_parts = pd.DataFrame(dict_TRanges2particles[TRange])
+        XY = np.array([df_parts['xm'].values[:],
+                       df_parts['ym'].values[:]]).T
+        
+        listPairs = []
+        
+        tri = Delaunay(XY)
+        indptr, indices = tri.vertex_neighbor_vertices
+        
+        for k in range(len(indptr)):
+            neigh_k = indices[indptr[k]:indptr[k+1]]
+            X, Y = XY[k]
+            X_neigh, Y_neigh = XY[neigh_k, 0], XY[neigh_k, 1]
+            XY_p = np.array([X, Y])
+            XY_neigh = np.array([X_neigh, Y_neigh])
+            Dist_neigh = np.power(np.sum((XY_neigh - XY_p)**2, axis=1), 0.5)
+        
+            
+    return(dict_TRanges2pairs)
+
 
 
 
