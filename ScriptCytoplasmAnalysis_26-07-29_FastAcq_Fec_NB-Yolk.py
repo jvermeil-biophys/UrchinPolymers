@@ -38,7 +38,7 @@ import matplotlib.pyplot as plt
 
 from scipy.signal import savgol_filter
 from scipy.optimize import curve_fit
-from scipy.spatial import ConvexHull
+from scipy.spatial import ConvexHull, Delaunay
 from scipy.interpolate import make_splrep
 
 from shapely.geometry import MultiPoint, Polygon
@@ -61,6 +61,29 @@ def Tpf_str2num(tpf_str):
         tpf_num += int(L[1])
     return(tpf_num)
 
+
+def tri_to_short_edges(tri, points, thresh_d):
+    # Extract all edges from each triangle
+    edges = np.vstack([
+        tri.simplices[:, [0, 1]],
+        tri.simplices[:, [1, 2]],
+        tri.simplices[:, [2, 0]]
+    ])
+
+    # Sort indices within each edge to make (i, j) and (j, i) identical
+    edges = np.sort(edges, axis=1)
+
+    # Remove duplicate edges
+    edges = np.unique(edges, axis=0)
+
+    # Convert to a Python list of pairs
+    edges = np.array(edges)
+    
+    pairs = points[edges]
+    dists = np.power(np.sum((pairs[:,1,:]-pairs[:,0,:])**2, axis=1), 0.5)
+    idx_close_neighbours = (dists < thresh_d)
+    edges_close_neighbours = edges[idx_close_neighbours]
+    return(edges_close_neighbours, dists)
 
 
 def distribute_in_boxes(df, L, M, 
@@ -3597,7 +3620,7 @@ for k in range(Nc):
 
 import numpy as np
 import matplotlib.pyplot as plt
-from scipy.spatial import Delaunay
+
 
 points = np.array([[0, 0], [0, 1.1], [1, 0], [1, 1], 
                    [0.25, 0.25], [0.25, -0.25], [0.2, 0.4], [0.8, 0.95],
@@ -3626,13 +3649,44 @@ ax.plot(points[k,0], points[k,1], 'ro')
 ax.plot(points[neigh_k,0], points[neigh_k,1], 'ko')
 
 ax = axes[1]
-ax.triplot(points[:,0], points[:,1], tri.simplices)
+# ax.triplot(points[:,0], points[:,1], tri.simplices)
 ax.plot(points[:,0], points[:,1], 'o')
 
 plt.show()
 
+# Extract all edges from each triangle
+edges = np.vstack([
+    tri.simplices[:, [0, 1]],
+    tri.simplices[:, [1, 2]],
+    tri.simplices[:, [2, 0]]
+])
 
+# Sort indices within each edge to make (i, j) and (j, i) identical
+edges = np.sort(edges, axis=1)
 
+# Remove duplicate edges
+edges = np.unique(edges, axis=0)
+
+# Convert to a Python list of pairs
+edges = np.array(edges)
+
+print(edges)
+
+dists = []
+for e in edges:
+    i, j = e
+    d = np.power(np.sum((points[i]-points[j])**2), 0.5)
+    dists.append(d)
+
+dists = np.array(dists)
+idx_close_neighbours = (dists < 0.3)
+edges_close_neighbours = edges[idx_close_neighbours]
+
+for e in edges_close_neighbours:
+    i, j = e
+    ax.plot([points[i,0], points[j,0]], [points[i,1], points[j,1]], 'g-')
+
+print(dists)
 
 
 
@@ -3644,7 +3698,7 @@ for ii in [2]:
     df = pd.read_csv(os.path.join(dstDir, dfName), sep='\t')
     title = '_'.join(dfName.split('_')[:5])
     
-    for jj in [1750]:
+    for jj in [1500]:
         df_j = df[df['frame'] == jj+1]
         title_j = title + f' - Frame no {jj+1:.0f}'
         fName_j = title + f'_Fn{jj+1:.0f}_PCF.png'
@@ -3654,13 +3708,10 @@ for ii in [2]:
         tri = Delaunay(XXYY)
         indptr, indices = tri.vertex_neighbor_vertices
         
-
+        short_edges = tri_to_short_edges(tri, XXYY, 3)
         
         fig, axes = plt.subplots(1, 2, figsize=(8, 4), layout='compressed')
         axes_f = axes.flatten()
-        
-        #### EQUALIZE
-        p1, p99 = np.percentile(im, (1, 99))
         
         ax = axes_f[0]
         ax.set_aspect('equal', adjustable='box')
@@ -3672,8 +3723,12 @@ for ii in [2]:
         
         
         ax = axes_f[1]
-        ax.triplot(XXYY[:, 0], XXYY[:, 1], tri.simplices)
+        # ax.triplot(XXYY[:, 0], XXYY[:, 1], tri.simplices)
         ax.plot(XXYY[:, 0], XXYY[:, 1], 'o')
+        
+        for e in short_edges:
+            i, j = e
+            ax.plot([XXYY[i,0], XXYY[j,0]], [XXYY[i,1], XXYY[j,1]], 'g-')
         
         plt.show()
         
@@ -3724,15 +3779,9 @@ def get_pairs_for_TRanges_Delaunay(df, SCALE, FPS, Nframes,
         listPairs = []
         
         tri = Delaunay(XY)
-        indptr, indices = tri.vertex_neighbor_vertices
+        edges_short, dists = tri_to_short_edges(tri, XY, dist_th)
         
-        for k in range(len(indptr)):
-            neigh_k = indices[indptr[k]:indptr[k+1]]
-            X, Y = XY[k]
-            X_neigh, Y_neigh = XY[neigh_k, 0], XY[neigh_k, 1]
-            XY_p = np.array([X, Y])
-            XY_neigh = np.array([X_neigh, Y_neigh])
-            Dist_neigh = np.power(np.sum((XY_neigh - XY_p)**2, axis=1), 0.5)
+        #### TBD !!!
         
             
     return(dict_TRanges2pairs)
