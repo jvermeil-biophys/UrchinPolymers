@@ -3737,7 +3737,7 @@ for ii in [2]:
 
 def get_pairs_for_TRanges_Delaunay(df, SCALE, FPS, Nframes,
                                   len_TRanges = 200, delta_TRanges = -1,
-                                  dist_th_um = 5, multipairs = False):
+                                  dist_th_um = 5):
     df.frame = df.frame.astype(int)
     df.particle = df.particle.astype(int)
     dist_th = dist_th_um * SCALE
@@ -3776,13 +3776,11 @@ def get_pairs_for_TRanges_Delaunay(df, SCALE, FPS, Nframes,
         XY = np.array([df_parts['xm'].values[:],
                        df_parts['ym'].values[:]]).T
         
-        listPairs = []
-        
         tri = Delaunay(XY)
-        edges_short, dists = tri_to_short_edges(tri, XY, dist_th)
+        edges_short, _ = tri_to_short_edges(tri, XY, dist_th)
+        close_pairs = df_parts['pid'].values[edges_short]
         
-        #### TBD !!!
-        
+        dict_TRanges2pairs[TRange] = np.array(close_pairs)        
             
     return(dict_TRanges2pairs)
 
@@ -3853,8 +3851,14 @@ def get_pairs_for_TRanges(df, SCALE, FPS, Nframes,
     return(dict_TRanges2pairs)
 
 
-
-
+def get_pairs_vector_on_TRange(df, pairs, TRange):
+    df.frame = df.frame.astype(int)
+    df.particle = df.particle.astype(int)
+    
+    FI, FF = np.array(TRange.split('_')).astype(int)
+    ids_in_pairs = np.unique(pairs.flatten())
+    df_f = df[df['particle'].apply(lambda x : x in ids_in_pairs)]
+    df_f = df_f[df_f['particle'].apply(lambda x : x in ids_in_pairs)]
 
 
 
@@ -3867,9 +3871,13 @@ SCALE = 1/UmPerPix
 Nframes = 2000
 FPS = 10
 
-dict_TRanges2pairs = get_pairs_for_TRanges(df, SCALE, FPS, Nframes,
-                      len_TRanges = 100, delta_TRanges = -1,
-                      dist_th_um = 5)
+dict_TRanges2pairs_N = get_pairs_for_TRanges(df, SCALE, FPS, Nframes,
+                          len_TRanges = 100, delta_TRanges = -1,
+                          dist_th_um = 5)
+
+dict_TRanges2pairs_D = get_pairs_for_TRanges_Delaunay(df, SCALE, FPS, Nframes,
+                          len_TRanges = 100, delta_TRanges = -1,
+                          dist_th_um = 5)
 
 
 
