@@ -319,7 +319,7 @@ def analyse_white_blobs_MSD(trackPathList, df_Pa, SCALE, FPS,
 
 
 
-def track_spots_in_cell(tifPath, dstDir):
+def TrackSpotsInCell(tifPath, dstDir):
     
     SCALE = SCALE_40X
     SIZE_UM = 1.5
@@ -473,7 +473,7 @@ dstDir = ""
 
 
 #### Function
-def pretreat_image_for_TrackMate(tifPath, **kwargs):
+def PretreatImageForTrackMate(tifPath, **kwargs):
     SETTINGS = {
         # 'SCALE' : SCALE_40X,
         # 'SIZE_UM' : 1.5,
@@ -692,7 +692,7 @@ def pretreatAndTrack(tifPath, dstDir):
     srcDir, tifName = os.path.split(tifPath)
     xmlName = tifName.split('.')[0] + '_PyTracks.xml'
     xmlPath = os.path.join(srcDir, xmlName)
-    PtImage, mask = pretreat_image_for_TrackMate(tifPath, 
+    PtImage, mask = PretreatImageForTrackMate(tifPath, 
                                         N_ERODE = 50,
                                         SAVE_OUTPUT_IMAGE = True,
                                         RETURN_MASK = True)

@@ -26,6 +26,7 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 import os
 import cv2
+import time
 
 import numpy as np
 import pandas as pd
@@ -3764,9 +3765,12 @@ def get_pairs_for_TRanges_Delaunay(df, SCALE, FPS, Nframes,
         pff = np.max(df[df['particle'] == pid]['frame'].values) - 1
         
         for fi, ff in zip(FI, FF):
-            if (pfi <= fi) and (ff-1 <= pff):
-                xm = np.median(df[df['particle'] == pid]['x'].values)
-                ym = np.median(df[df['particle'] == pid]['y'].values)
+            if (pfi <= fi) and (ff <= pff):
+                df_p = df[df['particle'] == pid]
+                df_p_TR = df_p[df_p['frame'].apply(lambda x : fi <= (x-1) < ff)]
+                
+                xm = np.median(df_p_TR['x'].values)
+                ym = np.median(df_p_TR['y'].values)
                 dict_TRanges2particles[f'{fi}_{ff}']['pid'].append(pid)
                 dict_TRanges2particles[f'{fi}_{ff}']['xm'].append(xm)
                 dict_TRanges2particles[f'{fi}_{ff}']['ym'].append(ym)
@@ -3850,18 +3854,6 @@ def get_pairs_for_TRanges(df, SCALE, FPS, Nframes,
             
     return(dict_TRanges2pairs)
 
-
-def get_pairs_vector_on_TRange(df, pairs, TRange):
-    df.frame = df.frame.astype(int)
-    df.particle = df.particle.astype(int)
-    
-    FI, FF = np.array(TRange.split('_')).astype(int)
-    ids_in_pairs = np.unique(pairs.flatten())
-    df_f = df[df['particle'].apply(lambda x : x in ids_in_pairs)]
-    df_f = df_f[df_f['particle'].apply(lambda x : x in ids_in_pairs)]
-
-
-
 # Test run
 dfName = dfNames[2]
 df = pd.read_csv(os.path.join(dstDir, dfName), sep='\t')
@@ -3871,16 +3863,103 @@ SCALE = 1/UmPerPix
 Nframes = 2000
 FPS = 10
 
+top = time.time()
 dict_TRanges2pairs_N = get_pairs_for_TRanges(df, SCALE, FPS, Nframes,
                           len_TRanges = 100, delta_TRanges = -1,
                           dist_th_um = 5)
+print(f'Dt = {time.time()-top:.3f} s')
 
+top = time.time()
 dict_TRanges2pairs_D = get_pairs_for_TRanges_Delaunay(df, SCALE, FPS, Nframes,
                           len_TRanges = 100, delta_TRanges = -1,
                           dist_th_um = 5)
+print(f'Dt = {time.time()-top:.3f} s')
+
+# %%%%
+
+
+def get_pairsXY_byTRange(df, pairs, TRange):
+    df.frame = df.frame.astype(int)
+    df.particle = df.particle.astype(int)
+    
+    FI, FF = np.array(TRange.split('_')).astype(int)
+    # T_array = np.arange(FI, FF)-1 
+    T_array_shifted = np.arange(0, FF-FI)
+    
+    ids_in_pairs = np.unique(pairs.flatten())
+
+    df_f = df
+    df_f = df_f[df_f['frame'].apply(lambda x : FI <= (x-1) < FF)]
+    df_f = df_f[df_f['particle'].apply(lambda x : x in ids_in_pairs)]
+    
+    # pair_2_pairId = {pairs[i] : i for i in range(len(pairs))}
+    # pairs[pairId] = pair
+    # pair_2_pairId[pair] = pairId
+    
+    # df_pairs = pd.DataFrame({'pair_id':[],'x':[],'y':[],'frame':[],})
+    list_df_pairs = []
+    
+    for i in range(len(pairs)):
+        pair = pairs[i]
+        # i = pairId
+        id1, id2 = pair
+        idx1, idx2 = (df_f['particle']==id1), (df_f['particle']==id2)
+        Xpair = df_f[idx2]['x'].values-df_f[idx1]['x'].values
+        Ypair = df_f[idx2]['y'].values-df_f[idx1]['y'].values
+        
+        N = len(T_array_shifted)
+        
+        # df_pairs = pd.concat([df_pairs, pd.DataFrame(
+        #                                              {'pair_id':np.ones(N, dtype=int)*i,
+        #                                               'x':Xpair, 'y':Ypair,
+        #                                               'frame':T_array_shifted,}
+        #                                              )],
+        #                      axis=0)
+        list_df_pairs.append(pd.DataFrame({'pair_id':np.ones(N, dtype=int)*i,
+                                           'x':Xpair, 'y':Ypair,
+                                           'frame':T_array_shifted + 1,}
+                                          ))
+        
+    df_pairs = pd.concat(list_df_pairs, axis=0)
+    return(df_pairs)
+
+pm.setGraphicOptions(mode='screen')
+
+TRanges = np.array(list(dict_TRanges2pairs_D.keys()))
+dict_TRanges2pairMSD = {}
 
 
 
+for TRange in TRanges:
+
+    pairs = dict_TRanges2pairs_D[TRange]
+
+    # top = time.time()
+    df_pairs = get_pairsXY_byTRange(df, pairs, TRange)
+    # print(f'Dt = {time.time()-top:.3f} s')
+    
+    # top = time.time()
+    res_pair_emsd = tp.motion.emsd(df_pairs.rename(columns={'pair_id':'particle'}), 
+                                   UmPerPix, FPS, max_lagtime=50).reset_index()
+    # print(f'Dt = {time.time()-top:.3f} s')
+
+    dict_TRanges2pairMSD[TRange] = res_pair_emsd
+
+    ax.plot(res_pair_emsd.lagt, res_pair_emsd.msd, ls='', marker='.', label=TRange)
+
+
+fig, ax = plt.subplots(1, 1, figsize=(5, 5))
+ax.set_xscale('log')
+ax.set_yscale('log')
+
+for TRange in TRanges[4:]:
+    res_pair_emsd = dict_TRanges2pairMSD[TRange]
+    ax.plot(res_pair_emsd.lagt, res_pair_emsd.msd, ls='', marker='.', label=TRange)
+    
+ax.grid()
+ax.legend(loc='center left', bbox_to_anchor=(1, 0.5))
+
+plt.show()
 
 # %%% 3. Tracking and structure analysis
 
