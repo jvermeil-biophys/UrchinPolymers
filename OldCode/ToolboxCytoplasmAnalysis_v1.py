@@ -109,7 +109,7 @@ def importTrackMateTracks(filepath):
 
 
 
-def get_cell_inner_circle(img, PLOT = False):
+def get_reasonable_inner_cell_contour(img, PLOT = False):
     nT, nY, nX = img.shape
     img_min = np.min(img, axis = 0)
     
@@ -128,55 +128,6 @@ def get_cell_inner_circle(img, PLOT = False):
         axes[1].imshow(img[0]*mask, cmap='gray')
         plt.show()
     return(contour)
-
-
-def get_cell_contour_NbYolk(img, PLOT = False):
-    nT, nY, nX = img.shape
-    img_min = np.min(img, axis = 0)
-    
-    # binarize = True
-    k_th = 1.0
-    zero_padding = 10
-    
-    # 1. Binarize
-    th1 = skm.filters.threshold_otsu(img_min) * k_th
-    # img_min = ndi.binary_fill_holes(img_min)
-    # img_min = ndi.binary_closing(img_min, iterations=5)
-    img_bin = (img_min < th1)
-    img_bin = ndi.binary_opening(img_bin, iterations = 2)
-    FoundContours = skm.measure.find_contours(img_bin, 0.5)
-    
-    # 1. Measure
-    img_label, num_features = ndi.label(img_bin)
-    df = pd.DataFrame(skm.measure.regionprops_table(img_label, img_min, properties = ['label', 'area']))
-    df = df.sort_values(by='area', ascending=False)
-    i_label = df.label.values[0]
-    img_rawCell = (img_label == i_label)
-    if zero_padding > 0:
-        pad_width = zero_padding
-        img_rawCell = np.pad(img_rawCell, pad_width, mode='constant')
-        if PLOT:
-            img_min = np.pad(img_min, pad_width, mode='constant')
-    img_rawCell = ndi.binary_fill_holes(img_rawCell)
-    
-    # [contour_rawCell] = skm.measure.find_contours(img_rawCell, 0.5)
-    FoundContours = skm.measure.find_contours(img_rawCell, 0.5)
-    if len(FoundContours) == 1:
-        contour_rawCell = FoundContours[0]
-    else:
-        L = [len(c) for c in FoundContours]
-        im = np.argmax(L)
-        contour_rawCell = FoundContours[im]   
-
-    contour = []
-    if PLOT:
-        fig, axes = plt.subplots(1, 2)
-        axes[0].imshow(img_min, cmap='gray')
-        axes[0].plot(contour[:,1], contour[:,0], 'r-')
-        mask = ufun.contour_to_mask([nY, nX], contour)
-        axes[1].imshow(img[0]*mask, cmap='gray')
-        plt.show()
-    return('')
 
 
 def get_numbers_following_text(text, target, output = 'integer'):
@@ -368,7 +319,7 @@ def analyse_white_blobs_MSD(trackPathList, df_Pa, SCALE, FPS,
 
 
 
-def track_spots_in_cell(tifPath, dstDir):
+def TrackSpotsInCell(tifPath, dstDir):
     
     SCALE = SCALE_40X
     SIZE_UM = 1.5
@@ -393,7 +344,7 @@ def track_spots_in_cell(tifPath, dstDir):
                                           x_slice=None, y_slice=None)
     image_subset = skm.util.img_as_float32(image_subset)
     
-    inner_cell_contour = get_cell_inner_circle(image_subset, PLOT = False)
+    inner_cell_contour = get_reasonable_inner_cell_contour(image_subset, PLOT = False)
     mask = ufun.contour_to_mask([shape[1], shape[2]], inner_cell_contour)
     mask = ndi.binary_erosion(mask, iterations = N_ERODE)
     
@@ -522,7 +473,7 @@ dstDir = ""
 
 
 #### Function
-def pretreat_image_for_TrackMate(tifPath, **kwargs):
+def PretreatImageForTrackMate(tifPath, **kwargs):
     SETTINGS = {
         # 'SCALE' : SCALE_40X,
         # 'SIZE_UM' : 1.5,
@@ -552,7 +503,7 @@ def pretreat_image_for_TrackMate(tifPath, **kwargs):
                                           x_slice=None, y_slice=None)
     image_subset = skm.util.img_as_float32(image_subset)
     
-    inner_cell_contour = get_cell_inner_circle(image_subset, PLOT = False)
+    inner_cell_contour = get_reasonable_inner_cell_contour(image_subset, PLOT = False)
     mask = ufun.contour_to_mask([shape[1], shape[2]], inner_cell_contour)
     mask = ndi.binary_erosion(mask, iterations = SETTINGS['N_ERODE'])
     
@@ -741,7 +692,7 @@ def pretreatAndTrack(tifPath, dstDir):
     srcDir, tifName = os.path.split(tifPath)
     xmlName = tifName.split('.')[0] + '_PyTracks.xml'
     xmlPath = os.path.join(srcDir, xmlName)
-    PtImage, mask = pretreat_image_for_TrackMate(tifPath, 
+    PtImage, mask = PretreatImageForTrackMate(tifPath, 
                                         N_ERODE = 50,
                                         SAVE_OUTPUT_IMAGE = True,
                                         RETURN_MASK = True)
