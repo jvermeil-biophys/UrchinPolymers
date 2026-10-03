@@ -26,6 +26,7 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 import os
 import cv2
+import time
 
 import numpy as np
 import pandas as pd
@@ -3851,14 +3852,6 @@ def get_pairs_for_TRanges(df, SCALE, FPS, Nframes,
     return(dict_TRanges2pairs)
 
 
-def get_pairs_vector_on_TRange(df, pairs, TRange):
-    df.frame = df.frame.astype(int)
-    df.particle = df.particle.astype(int)
-    
-    FI, FF = np.array(TRange.split('_')).astype(int)
-    ids_in_pairs = np.unique(pairs.flatten())
-    df_f = df[df['particle'].apply(lambda x : x in ids_in_pairs)]
-    df_f = df_f[df_f['particle'].apply(lambda x : x in ids_in_pairs)]
 
 
 
@@ -3871,15 +3864,43 @@ SCALE = 1/UmPerPix
 Nframes = 2000
 FPS = 10
 
+# top = time.time()
 dict_TRanges2pairs_N = get_pairs_for_TRanges(df, SCALE, FPS, Nframes,
                           len_TRanges = 100, delta_TRanges = -1,
                           dist_th_um = 5)
-
+# print(top - time.time())
+# top = time.time()
 dict_TRanges2pairs_D = get_pairs_for_TRanges_Delaunay(df, SCALE, FPS, Nframes,
                           len_TRanges = 100, delta_TRanges = -1,
                           dist_th_um = 5)
+# print(top - time.time())
 
+# %%%%
 
+FI, FF = 1800, 2000
+
+df_f = df[df['frame'].apply(lambda x : (FI <= (x-1) < FF))]
+
+# %%%%
+
+def get_pairs_vector_on_TRange(df, pairs, TRange):
+    df.frame = df.frame.astype(int)
+    df.particle = df.particle.astype(int)
+    
+    FI, FF = np.array(TRange.split('_')).astype(int)
+    ids_in_pairs = np.unique(pairs.flatten())
+    df_f = df
+    df_f = df_f[df_f['frame'].apply(lambda x : FI <= (x-1) < FF)]
+    df_f = df_f[df_f['particle'].apply(lambda x : x in ids_in_pairs)]
+    
+    pairId_2_partId = []
+
+TRanges = np.array(list(dict_TRanges2pairs_D.keys()))
+
+TRange = TRanges[1]
+pairs = dict_TRanges2pairs_D[TRange]
+
+get_pairs_vector_on_TRange(df, pairs, TRange)
 
 
 # %%% 3. Tracking and structure analysis
