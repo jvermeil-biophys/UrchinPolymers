@@ -148,14 +148,15 @@ def MSD_HeatMap(df_grid, M_boxes, xy_col, parm_col,
     yt = np.linspace(0, M_boxes, 3, endpoint=True)
     xticks = xt - 0.5
     yticks = yt - 0.5
-    xlabels = [f'{x*(N_pix)/M_boxes:.0f}' for x in xt]
-    ylabels = [f'{y*(N_pix)/M_boxes:.0f}' for y in yt]
-    xlabels = ['' for x in xt]
-    ylabels = ['' for y in yt]
-    ax.tick_params(axis='both', length=0,)
+    #### HAVE TO BE REDONE FOR NON SQUARE ROIs !!
+    # xlabels = [f'{x*(N_pix)/M_boxes:.0f}' for x in xt]
+    # ylabels = [f'{y*(N_pix)/M_boxes:.0f}' for y in yt]
+    # xlabels = ['' for x in xt]
+    # ylabels = ['' for y in yt]
+    # ax.tick_params(axis='both', length=0,)
 
-    ax.set_xticks(xticks, labels=xlabels,) # rotation=-30, rotation_mode="xtick")
-    ax.set_yticks(yticks, labels=ylabels)
+    # ax.set_xticks(xticks, labels=xlabels,) # rotation=-30, rotation_mode="xtick")
+    # ax.set_yticks(yticks, labels=ylabels)
     # ax.spines[:].set_visible(False)
     ax.grid(which="minor", color="w", linestyle='-', linewidth=0.5)
     ax.tick_params(which="minor", bottom=False, left=False)
@@ -275,21 +276,38 @@ mainDir = os.path.join(up.Path_IntraCellTracking, '26-09-30_FastAcq-Channel_Fec_
 srcDir = os.path.join(mainDir, 'D1')
 dstDir = os.path.join(mainDir, 'SPT_results')
 
-tifNames = [
-            '26-09-30_D1_PostF_52min_C4_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
-            ]
+tifNames = ['26-09-30_D1_PreF_C1_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
+            '26-09-30_D1_PreF_C2_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
+            '26-09-30_D1_PreF_C3_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
+            '26-09-30_D1_PostF_10min_C4_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
+             '26-09-30_D1_PostF_13min_C4_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
+             '26-09-30_D1_PostF_18min_C4_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
+             '26-09-30_D1_PostF_25min_C4_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
+             '26-09-30_D1_PostF_30min_C4_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
+             '26-09-30_D1_PostF_35min_C4_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
+             '26-09-30_D1_PostF_40min_C4_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
+             '26-09-30_D1_PostF_40min_C4_20fps_Texp50ms_L20p2_CSU642.ome.tf2',
+             '26-09-30_D1_PostF_45min_C4_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
+             '26-09-30_D1_PostF_4min_C4_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
+             '26-09-30_D1_PostF_52min_C4_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
+             '26-09-30_D1_PostF_60min_C4_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
+             '26-09-30_D1_PostF_65min_C4_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
+             '26-09-30_D1_PostF_6min_C4_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
+             '26-09-30_D1_PostF_70min_C4_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
+             ]
+             
 
 
 tifPaths = [os.path.join(srcDir, tifName) for tifName in tifNames]
 fileNames = [fN.split('.')[0] for fN in tifNames]
 
-rawTracksDir = 'TrackMate_raw_tracks'
-rawTracksNames = [fN + '_TmTracks.xml' for fN in tifPaths]
-rawTracksPaths = [os.path.join(dstDir, rawTracksDir, rtN)  for rtN in rawTracksNames]
+# rawTracksDir = 'TrackMate_raw_tracks'
+# rawTracksNames = [fN + '_TmTracks.xml' for fN in tifPaths]
+# rawTracksPaths = [os.path.join(dstDir, rawTracksDir, rtN)  for rtN in rawTracksNames]
 
-cleanTracksDir = 'Clean_tracks'
-cleanTracksNames = [fN + '_PyTracks.csv' for fN in tifPaths]
-cleanTracksPaths = [os.path.join(dstDir, cleanTracksDir, ctN)  for ctN in cleanTracksNames]
+# cleanTracksDir = 'Clean_tracks'
+# cleanTracksNames = [fN + '_PyTracks.csv' for fN in tifPaths]
+# cleanTracksPaths = [os.path.join(dstDir, cleanTracksDir, ctN)  for ctN in cleanTracksNames]
 
 suffix_contour = '_cellContour'
 suffix_mask = '_cellMask'
@@ -314,30 +332,35 @@ lowDt_upper = 0.5
 highDt_lower = 1.0
 
 
-# %%%% Make and save cell contours and masks
+# %%%% First Analysis Block (CHANGE NAME)
 
-for i in range(len(tifNames)):
-    tN, tP, fN = tifNames[i], tifPaths[i], fileNames[i]
+#### Make and save cell contours and masks
+# print('\n\n1. Contours step')
+# for i in range(len(fileNames)):
+#     tN, tP, fN = tifNames[i], tifPaths[i], fileNames[i]
+#     print(i+1, len(fileNames), fN)
     
-    shape, dtype = ufun.tiff_inspect(tP)
-    nT = shape[0]
-    TT = range(0, nT, nT//100)
-    img = ufun.load_stack_region(tP, time_indices=TT)
+#     shape, dtype = ufun.tiff_inspect(tP)
+#     nT = shape[0]
+#     TT = range(0, nT, nT//100)
+#     img = ufun.load_stack_region(tP, time_indices=TT)
     
-    Contour_cell, Mask_cell = tbca.make_NbYolkCell_contour_and_mask(img, PixPerUm,
-                                                                    mode = 'dark_background', 
-                                                                    PLOT = True)
+#     Contour_cell, Mask_cell = tbca.make_NbYolkCell_contour_and_mask(img, PixPerUm,
+#                                                                     mode = 'dark_background', 
+#                                                                     PLOT = False)
     
-    contourFile = fN + suffix_contour + '.npy'
-    maskFile = fN + suffix_mask + '.npy'
-    np.save(os.path.join(srcDir, contourFile), Contour_cell)
-    np.save(os.path.join(srcDir, maskFile), Mask_cell)
+#     contourFile = fN + suffix_contour + '.npy'
+#     maskFile = fN + suffix_mask + '.npy'
+#     np.save(os.path.join(srcDir, contourFile), Contour_cell)
+#     np.save(os.path.join(srcDir, maskFile), Mask_cell)
 
 
-# %%%% Run Trackmate
-
+#### Run Trackmate
+print('\n\n2. Tracking step')
 for i in range(len(fileNames)):
     tifPath, fN = tifPaths[i], fileNames[i]
+    print(i+1, len(fileNames), fN)
+    
     rawTrackName = fN + suffix_rawTracks + '.xml'
     maskFile = fN + suffix_mask + '.npy'
     Mask_cell = np.load(os.path.join(srcDir, maskFile))
@@ -347,10 +370,12 @@ for i in range(len(fileNames)):
                                    PLOT = True, SAVEPLOT = True)
 
 
-# %%%% Import & format tracks
-
+#### Import & format tracks
+print('\n\n3. Tracks formatting step')
 for i in range(len(fileNames)):
     tifPath, fN = tifPaths[i], fileNames[i]
+    print(i+1, len(fileNames), fN)
+    
     rawTrackName = fN + suffix_rawTracks + '.xml'
     cleanTrackName = fN + suffix_cleanTracks + '.csv'
     contourPath = os.path.join(srcDir, fN + suffix_contour + '.npy')
@@ -363,40 +388,12 @@ for i in range(len(fileNames)):
                                  edgeBuffer_cutoff = 2.5, nPoints_cuttoff = 30,
                                 )
 
-# %%%% *** 
-
-
-# for i in range(len(tifNames)):
-#     tifPath, fN = tifPaths[i], fileNames[i]
-#     rawTrackName = fN + suffix_rawTracks + '.xml'
-#     cleanTrackName = fN + suffix_cleanTracks + '.csv'
-    
-#     Tracks = tbca.import_TrackMate_tracks(os.path.join(dstDir, rawTrackName))
-    
-#     Np = len(Tracks)
-        
-#     column_names = ['frame', 'x', 'y', 'particle']
-#     all_tracks = []
-#     for i, track in enumerate(Tracks):
-#         nT = len(track)
-#         # test_x_sat = ((np.max(track[:, 1]) - np.min(track[:, 1])) < 1)
-#         # test_y_sat = ((np.max(track[:, 2]) - np.min(track[:, 2])) < 1)
-#         test_x_sat = ((np.max(track[:, 1]) == (N_pix-1)) or (np.min(track[:, 1]) == 0))
-#         test_y_sat = ((np.max(track[:, 2]) == (N_pix-1)) or (np.min(track[:, 2]) == 0))
-#         if (not test_x_sat) and (not test_y_sat) and (nT >= 30):
-#             track = np.concat((track, np.ones((len(track[:,0]), 1), dtype=int) * (i+1)), axis = 1)
-#             track[:, 0] = track[:, 0].astype(int) + 1
-#             all_tracks.append(track)
-    
-#     concat_tracks = np.concat(all_tracks, axis = 0)
-#     df = pd.DataFrame({column_names[k] : concat_tracks[:,k] for k in range(len(column_names))})
-#     df.to_csv(os.path.join(dstDir, cleanTrackName), index=False, sep = '\t')
-    
-
-# %%%% Import tracks, run trackpy.emsd, fit MSD
-
+#### Import tracks, run trackpy.emsd, fit MSD
+print('\n\n3. MSD conpute step')
 for i in range(len(fileNames)):
     tifPath, fN = tifPaths[i], fileNames[i]
+    print(i+1, len(fileNames), fN)
+    
     rawTrackName = fN + suffix_rawTracks + '.xml'
     cleanTrackName = fN + suffix_cleanTracks + '.csv'
     msdName = fN + suffix_globalMsd + '.csv'

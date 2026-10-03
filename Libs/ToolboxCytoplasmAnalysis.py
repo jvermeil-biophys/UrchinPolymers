@@ -73,7 +73,7 @@ import imagej
 import scyjava as sj
 
 # import random
-sj.config.add_options('-Xmx16g')
+sj.config.add_options('-Xmx12g')
 
 
 
@@ -168,7 +168,7 @@ def make_NbYolkCell_contour_and_mask(img, PixPerUm,
     # x_ch, y_ch = points.convex_hull.exterior.xy
     
     # Run the alpha shape
-    # SCALE is in Pix Per Um
+    # PixPerUm is the scale in Pix Per Um
     # 20x -> 2.2 ; 40x -> 4.5 ; 60x -> 9.2
     # -> One cell is more pixels at 60x than 20x
     
@@ -177,13 +177,13 @@ def make_NbYolkCell_contour_and_mask(img, PixPerUm,
     
     # Need to check with other images
     
-    R = SCALE # Radius of 1 µm
+    R = PixPerUm # Radius of 1 µm
     ALPHA = 1/R
     alpha_shape = alphashape.alphashape(concat_contours[:,::-1], ALPHA)
     x_as, y_as = alpha_shape.exterior.xy
     Contour_alpha = np.array([y_as, x_as]).T
     
-    inner_shape = alpha_shape.buffer(- buffer_um * SCALE)
+    inner_shape = alpha_shape.buffer(- buffer_um * PixPerUm)
     x_is, y_is = inner_shape.exterior.xy
     Contour_inner = np.array([y_is, x_is]).T
     
@@ -1058,6 +1058,7 @@ def pretreat_and_track_NbYolk(tifPath, rawTrackName, dstDir,
     image = ufun.load_stack_region(tifPath, time_indices=None, 
                                    x_slice=None, y_slice=None)
     
+    
     # nT = 100
     # image = ufun.load_stack_region(tifPath, time_indices=range(0, 100), 
     #                                x_slice=None, y_slice=None)
@@ -1072,26 +1073,28 @@ def pretreat_and_track_NbYolk(tifPath, rawTrackName, dstDir,
         k = 3
         image[t] = cv2.medianBlur(image[t], k)
     
+    image_0 = image[0,:,:]
     tif_file = ij.py.to_java(image)
+    del(image)
     runTrackMate(tif_file, rawTrackPath)
     
     
     if PLOT:
         pm.setGraphicOptions(mode = 'screen')
         Tracks = import_TrackMate_tracks(rawTrackPath)
-        I0 = ufun.load_stack_region(tifPath, time_indices=[0])[0]
+        image_raw_0 = ufun.load_stack_region(tifPath, time_indices=[0])[0]
         
         fig, axes = plt.subplots(1, 3, figsize=(12, 4))
         fig.suptitle('_'.join(tifName.split('_')[:5]))
         
         ax = axes[0]
-        ax.imshow(I0, cmap='gray')
+        ax.imshow(image_raw_0, cmap='gray')
         
         ax = axes[1]
-        ax.imshow(image[0], cmap='gray')
+        ax.imshow(image_0, cmap='gray')
         
         ax = axes[2]
-        ax.imshow(I0, cmap='gray')
+        ax.imshow(image_raw_0, cmap='gray')
         CL = pm.cL_Set21
         for k in range(len(Tracks)):
             track = Tracks[k]
