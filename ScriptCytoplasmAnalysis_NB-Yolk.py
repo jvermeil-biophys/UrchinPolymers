@@ -286,7 +286,6 @@ tifNames = ['26-09-30_D1_PreF_C1_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
              '26-09-30_D1_PostF_30min_C4_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
              '26-09-30_D1_PostF_35min_C4_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
              '26-09-30_D1_PostF_40min_C4_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
-             '26-09-30_D1_PostF_40min_C4_20fps_Texp50ms_L20p2_CSU642.ome.tf2',
              '26-09-30_D1_PostF_45min_C4_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
              '26-09-30_D1_PostF_4min_C4_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
              '26-09-30_D1_PostF_52min_C4_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
@@ -323,9 +322,20 @@ PixPerUm = 1/UmPerPix
 nbimages = 2000
 FPS = 20
 
+Dict_TrackMate_Settings = {
+    'IMG_UNITS' : 'PIX',
+    'RADIUS_UM' : 0.8, 
+    'THRESH_SPOT_QLT' : 0.25,
+    'THRESH_LINK_UM' : 0.25, 
+    'THRESH_MIN_DURATION' : 30,
+    }
+
 # N_pix = 512
 # C_pix = np.median(np.arange(N_pix)) # Center (pixels)
 # L_um = N_pix*UmPerPix
+
+mask_buffer_um = 2.0
+edge_buffer_cutoff_um = mask_buffer_um + 1.0
 
 max_lagtime = 50
 lowDt_upper = 0.5
@@ -335,10 +345,10 @@ highDt_lower = 1.0
 # %%%% First Analysis Block (CHANGE NAME)
 
 #### Make and save cell contours and masks
-# print('\n\n1. Contours step')
-# for i in range(len(fileNames)):
+# print(pm.BRIGHTORANGE + '\n\n1. Contours step\n' + pm.NORMAL)
+# for i in range(len(fileNames)): # len(fileNames)
 #     tN, tP, fN = tifNames[i], tifPaths[i], fileNames[i]
-#     print(i+1, len(fileNames), fN)
+#     print(pm.CYAN + f'File {i+1:.0f}/{len(fileNames):.0f} - {fN}\n' + pm.NORMAL)
     
 #     shape, dtype = ufun.tiff_inspect(tP)
 #     nT = shape[0]
@@ -346,6 +356,7 @@ highDt_lower = 1.0
 #     img = ufun.load_stack_region(tP, time_indices=TT)
     
 #     Contour_cell, Mask_cell = tbca.make_NbYolkCell_contour_and_mask(img, PixPerUm,
+#                                                                     buffer_um = 0.0,
 #                                                                     mode = 'dark_background', 
 #                                                                     PLOT = False)
     
@@ -355,26 +366,28 @@ highDt_lower = 1.0
 #     np.save(os.path.join(srcDir, maskFile), Mask_cell)
 
 
+
 #### Run Trackmate
-print('\n\n2. Tracking step')
-for i in range(len(fileNames)):
+print(pm.BRIGHTORANGE + '\n\n2. Tracking step\n' + pm.NORMAL)
+for i in range(len(fileNames)): #len(fileNames)
     tifPath, fN = tifPaths[i], fileNames[i]
-    print(i+1, len(fileNames), fN)
+    print(pm.CYAN + f'\nFile {i+1:.0f}/{len(fileNames):.0f} - {fN}' + pm.NORMAL)
     
     rawTrackName = fN + suffix_rawTracks + '.xml'
     maskFile = fN + suffix_mask + '.npy'
     Mask_cell = np.load(os.path.join(srcDir, maskFile))
     
-    tbca.pretreat_and_track_NbYolk(tifPath, rawTrackName, dstDir, 
-                                   Mask_cell = Mask_cell,
-                                   PLOT = True, SAVEPLOT = True)
-
+    tbca.pretreat_and_track_NbYolk(tifPath, rawTrackName, dstDir, PixPerUm,
+                                   Dict_TrackMate_Settings = Dict_TrackMate_Settings,
+                                   Mask_cell = Mask_cell, mask_buffer_um = mask_buffer_um,
+                                   PLOT = True, SHOWPLOT = False, SAVEPLOT = True)
 
 #### Import & format tracks
-print('\n\n3. Tracks formatting step')
-for i in range(len(fileNames)):
-    tifPath, fN = tifPaths[i], fileNames[i]
-    print(i+1, len(fileNames), fN)
+print(pm.BRIGHTORANGE + '\n\n3. Tracks formatting step\n' + pm.NORMAL)
+for i in range(len(fileNames)): #len(fileNames)
+    tP, fN = tifPaths[i], fileNames[i]
+    print(pm.CYAN + f'File {i+1:.0f}/{len(fileNames):.0f} - {fN}' + pm.NORMAL)
+    img_0 = ufun.load_stack_region(tP, time_indices=[0])[0]
     
     rawTrackName = fN + suffix_rawTracks + '.xml'
     cleanTrackName = fN + suffix_cleanTracks + '.csv'
@@ -383,16 +396,19 @@ for i in range(len(fileNames)):
     rawTracks = tbca.import_TrackMate_tracks(os.path.join(dstDir, rawTrackName))
     Contour_cell = np.load(contourPath)
     
+    
     tbca.rawTracks_2_cleanTracks(rawTracks, dstDir, cleanTrackName,
                                  Contour_cell, PixPerUm,
-                                 edgeBuffer_cutoff = 2.5, nPoints_cuttoff = 30,
+                                 edge_buffer_cutoff_um = edge_buffer_cutoff_um, nPoints_cuttoff = 30,
+                                 RefImg = img_0, PLOT = True, SHOWPLOT = False, SAVEPLOT = True,
                                 )
 
+
 #### Import tracks, run trackpy.emsd, fit MSD
-print('\n\n3. MSD conpute step')
-for i in range(len(fileNames)):
+print(pm.BRIGHTORANGE + '\n\n3. MSD compute & fit step\n' + pm.NORMAL)
+for i in range(len(fileNames)): #len(fileNames)
     tifPath, fN = tifPaths[i], fileNames[i]
-    print(i+1, len(fileNames), fN)
+    print(pm.CYAN + f'File {i+1:.0f}/{len(fileNames):.0f} - {fN}' + pm.NORMAL)
     
     rawTrackName = fN + suffix_rawTracks + '.xml'
     cleanTrackName = fN + suffix_cleanTracks + '.csv'
@@ -426,13 +442,18 @@ for i in range(len(fileNames)):
     k_highDt = a
     D_highDt = np.exp(b)/4
     
-    dict_MSDfits = {'D_linear': D_linear,
-                    'k_full': k_full,
-                    'D_full': D_full,
-                    'k_lowDt': k_lowDt,
-                    'D_lowDt': D_lowDt,
-                    'k_highDt': k_highDt,
-                    'D_highDt': D_highDt,}
+    dict_MSDfits = {
+        'max_lagtime': max_lagtime,
+        'lowDt_upper': lowDt_upper,
+        'highDt_lower': highDt_lower,
+        'D_linear': D_linear,
+        'k_full': k_full,
+        'D_full': D_full,
+        'k_lowDt': k_lowDt,
+        'D_lowDt': D_lowDt,
+        'k_highDt': k_highDt,
+        'D_highDt': D_highDt,
+        }
     
     ufun.dict2json(dict_MSDfits, dstDir, msdFitsName)
     
