@@ -305,7 +305,7 @@ def rawTracks_2_cleanTracks(rawTracks, dstDir, cleanTrackName,
     concat_tracks = np.concat(all_tracks, axis = 0)
     df = pd.DataFrame({column_names[k] : concat_tracks[:,k] for k in range(len(column_names))})
     df[column_names[0]] = df[column_names[0]].values.astype(int)
-    df[column_names[3]] = df[column_names[0]].values.astype(int)
+    df[column_names[3]] = df[column_names[3]].values.astype(int)
     df.to_csv(os.path.join(dstDir, cleanTrackName), index=False, sep = '\t')
     
     
@@ -387,12 +387,12 @@ def tri_to_short_edges(tri, points, thresh_d):
     return(edges_close_neighbours, dists)
 
 
-def get_pairs_for_TRanges_Delaunay(df, SCALE, FPS, Nframes,
+def get_pairs_for_TRanges_Delaunay(df, PixPerUm, FPS, Nframes,
                                   len_TRanges = 200, delta_TRanges = -1,
                                   dist_th_um = 5):
     df.frame = df.frame.astype(int)
     df.particle = df.particle.astype(int)
-    dist_th = dist_th_um * SCALE
+    dist_th = dist_th_um * PixPerUm
     
     if delta_TRanges < 0:
         delta_TRanges = len_TRanges
@@ -408,7 +408,9 @@ def get_pairs_for_TRanges_Delaunay(df, SCALE, FPS, Nframes,
     
     dict_TRanges2particles = {f'{fi}_{ff}':{'pid':[], 'xm':[], 'ym':[]} \
                               for fi, ff in zip(FI, FF)}
-    dict_TRanges2pairs = {f'{fi}_{ff}':[] for fi, ff in zip(FI, FF)}
+        
+    list_TRanges = [f'{fi}_{ff}' for fi, ff in zip(FI, FF)]
+    list_Pairs = []
     
     PIDs = df.particle.unique()
     for pid in PIDs:
@@ -426,7 +428,7 @@ def get_pairs_for_TRanges_Delaunay(df, SCALE, FPS, Nframes,
                 dict_TRanges2particles[f'{fi}_{ff}']['xm'].append(xm)
                 dict_TRanges2particles[f'{fi}_{ff}']['ym'].append(ym)
     
-    for TRange in dict_TRanges2particles.keys():
+    for k, TRange in enumerate(list_TRanges):
         df_parts = pd.DataFrame(dict_TRanges2particles[TRange])
         XY = np.array([df_parts['xm'].values[:],
                        df_parts['ym'].values[:]]).T
@@ -435,9 +437,9 @@ def get_pairs_for_TRanges_Delaunay(df, SCALE, FPS, Nframes,
         edges_short, _ = tri_to_short_edges(tri, XY, dist_th)
         close_pairs = df_parts['pid'].values[edges_short]
         
-        dict_TRanges2pairs[TRange] = np.array(close_pairs)        
+        list_Pairs.append(np.array(close_pairs))    
             
-    return(dict_TRanges2pairs)
+    return(list_TRanges, list_Pairs)
 
 
 
@@ -504,6 +506,52 @@ def get_pairs_for_TRanges(df, SCALE, FPS, Nframes,
         dict_TRanges2pairs[TRange] = np.array(listPairs)
             
     return(dict_TRanges2pairs)
+
+
+def get_relative_displacement_by_TRange(df, pairs, TRange):
+    df.frame = df.frame.astype(int)
+    df.particle = df.particle.astype(int)
+    
+    FI, FF = np.array(TRange.split('_')).astype(int)
+    # T_array = np.arange(FI, FF)-1 
+    T_array_shifted = np.arange(0, FF-FI)
+    
+    ids_in_pairs = np.unique(pairs.flatten())
+
+    df_f = df
+    df_f = df_f[df_f['frame'].apply(lambda x : FI <= (x-1) < FF)]
+    df_f = df_f[df_f['particle'].apply(lambda x : x in ids_in_pairs)]
+    
+    # pair_2_pairId = {pairs[i] : i for i in range(len(pairs))}
+    # pairs[pairId] = pair
+    # pair_2_pairId[pair] = pairId
+    
+    # df_pairs = pd.DataFrame({'pair_id':[],'x':[],'y':[],'frame':[],})
+    list_df_pairs = []
+    
+    for i in range(len(pairs)):
+        pair = pairs[i]
+        # i = pairId
+        id1, id2 = pair
+        idx1, idx2 = (df_f['particle']==id1), (df_f['particle']==id2)
+        Xpair = df_f[idx2]['x'].values-df_f[idx1]['x'].values
+        Ypair = df_f[idx2]['y'].values-df_f[idx1]['y'].values
+        
+        N = len(T_array_shifted)
+        
+        # df_pairs = pd.concat([df_pairs, pd.DataFrame(
+        #                                              {'pair_id':np.ones(N, dtype=int)*i,
+        #                                               'x':Xpair, 'y':Ypair,
+        #                                               'frame':T_array_shifted,}
+        #                                              )],
+        #                      axis=0)
+        list_df_pairs.append(pd.DataFrame({'pair_id':np.ones(N, dtype=int)*i,
+                                           'x':Xpair, 'y':Ypair,
+                                           'frame':T_array_shifted + 1,}
+                                          ))
+        
+    df_pairs = pd.concat(list_df_pairs, axis=0)
+    return(df_pairs)
 
 
 # %%% Main functions
