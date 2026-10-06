@@ -25,9 +25,9 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 # %% Imports
 
 import os
-import cv2
 import time
 import alphashape
+# import cv2
 
 import numpy as np
 import pandas as pd
@@ -38,13 +38,7 @@ import matplotlib as mpl
 import scipy.ndimage as ndi
 import matplotlib.pyplot as plt
 
-from scipy.signal import savgol_filter
-from scipy.optimize import curve_fit
-from scipy.spatial import ConvexHull, Delaunay
-from scipy.interpolate import make_splrep
-from scipy.ndimage import gaussian_filter1d
-
-from shapely.geometry import MultiPoint, MultiPolygon, Polygon
+from shapely.geometry import MultiPoint
 
 import Libs.PlotMaker as pm
 import Libs.UrchinPaths as up
@@ -55,7 +49,7 @@ import Libs.ToolboxStructureAnalysis as tbsa
 
 
 
-# %% Utility functions
+# %% Helper functions
 
 def Tpf_str2num(tpf_str):
     L = tpf_str.split('min')
@@ -63,30 +57,6 @@ def Tpf_str2num(tpf_str):
     if len(L) > 1 and len(L[1]) > 0:
         tpf_num += int(L[1])
     return(tpf_num)
-
-
-def tri_to_short_edges(tri, points, thresh_d):
-    # Extract all edges from each triangle
-    edges = np.vstack([
-        tri.simplices[:, [0, 1]],
-        tri.simplices[:, [1, 2]],
-        tri.simplices[:, [2, 0]]
-    ])
-
-    # Sort indices within each edge to make (i, j) and (j, i) identical
-    edges = np.sort(edges, axis=1)
-
-    # Remove duplicate edges
-    edges = np.unique(edges, axis=0)
-
-    # Convert to a Python list of pairs
-    edges = np.array(edges)
-    
-    pairs = points[edges]
-    dists = np.power(np.sum((pairs[:,1,:]-pairs[:,0,:])**2, axis=1), 0.5)
-    idx_close_neighbours = (dists < thresh_d)
-    edges_close_neighbours = edges[idx_close_neighbours]
-    return(edges_close_neighbours, dists)
 
 
 def df_grid_2_matrix(df_grid, Nx, Ny, xy_col = 'Bxy', parm_col = 'k_full'):
@@ -162,93 +132,6 @@ def MSD_HeatMap(df_grid, M_boxes, xy_col, parm_col,
     ax.tick_params(which="minor", bottom=False, left=False)
         
     return(fig, ax)
-
-
-def autocorr_fft(x):
-    N = len(x)
-    F = np.fft.fft(x, n = 2*N)  # 2*N because of zero-padding
-    PSD = F * F.conjugate()
-    res = np.fft.ifft(PSD)
-    res = (res[:N]).real  # now we have the autocorrelation in convention B
-    n = N * np.ones(N) - np.arange(0, N) # divide res(m) by (N-m)
-    return(res / n)  # this is the autocorrelation in convention A
-
-
-def msd_fft_trackpyStyle(traj, mpp, fps, max_lagtime=100, pos_columns=['x', 'y']):
-    """
-    https://github.com/hadim/Public-Notebooks/blob/master/Code/Quick_MSD/notebook.ipynb
-    """
-    
-    r = traj[pos_columns].values
-    r *= mpp
-
-    t = traj['frame']
-
-    max_lagtime = min(max_lagtime, len(t))  # checking to be safe
-    lagtimes = 1 + np.arange(max_lagtime - 1)    
-
-    N = len(r)
-
-    D = np.square(r).sum(axis=1) 
-    D = np.append(D, 0)
-    S2 = sum([autocorr_fft(r[:, i]) for i in range(len(pos_columns))])
-
-    Q = 2 * D.sum()
-    S1 = np.zeros(max_lagtime)
-
-    for m in range(max_lagtime):
-        Q = Q - D[m - 1] - D[N - m]
-        S1[m] = Q / (N - m)
-
-    msd = S1 - 2 * S2[:max_lagtime]
-    msd = msd[1:]
-
-    lagt = lagtimes / fps
-
-    results = pd.DataFrame(np.array([msd, lagt]).T, columns=['msd', 'lagt'])
-    results.index = 1 + np.arange(max_lagtime - 1)
-    results.index.name = 'lagt'
-    
-    return(results)
-
-
-def msd_fft_1D(pos, mpp, fps, max_lagtime=100):
-    """
-    https://stackoverflow.com/questions/34222272/computing-mean-square-displacement-using-python-and-fft/34222273#34222273
-    """
-    
-    r = pos
-    r *= mpp
-
-    t = np.arange(len(pos))
-
-    max_lagtime = min(max_lagtime, len(t))  # checking to be safe
-    lagtimes = 1 + np.arange(max_lagtime)    
-
-    N = len(r)
-
-    D = np.square(r)
-    D = np.append(D, 0)
-    S2 = sum([autocorr_fft(r[:])])
-
-    Q = 2 * D.sum()
-    S1 = np.zeros(max_lagtime+1)
-
-    for m in range(max_lagtime+1):
-        Q = Q - D[m - 1] - D[N - m]
-        S1[m] = Q / (N - m)
-
-    msd = S1 - 2 * S2[:max_lagtime+1]
-    msd = msd[1:]
-
-    lagt = lagtimes / fps
-
-    results = pd.DataFrame(np.array([msd, lagt]).T, columns=['msd', 'lagt'])
-    results.index = 1 + np.arange(max_lagtime)
-    results.index.name = 'lagt'
-    
-    return(results)
-
 
 
 

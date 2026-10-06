@@ -1666,7 +1666,106 @@ def lighten_color(color, amount=0.5):
 
 # %%% Physics
 
+# %%%% MSD
 
+
+def autocorr_fft(x):
+    N = len(x)
+    F = np.fft.fft(x, n = 2*N)  # 2*N because of zero-padding
+    PSD = F * F.conjugate()
+    res = np.fft.ifft(PSD)
+    res = (res[:N]).real  # now we have the autocorrelation in convention B
+    n = N * np.ones(N) - np.arange(0, N) # divide res(m) by (N-m)
+    return(res / n)  # this is the autocorrelation in convention A
+
+
+def msd_fft_trackpyStyle(traj, mpp, fps, 
+                         max_lagtime=100,
+                         time_column='frame',
+                         pos_columns=['x', 'y']):
+    """
+    2D MSD for one particle from a DataFrame with columns
+    'frame' | 'x' | 'y'
+    Using FT to be fast
+    
+    https://github.com/hadim/Public-Notebooks/blob/master/Code/Quick_MSD/notebook.ipynb
+    """
+    
+    r = traj[pos_columns].values
+    r *= mpp
+
+    t = traj[time_column]
+
+    max_lagtime = min(max_lagtime, len(t))  # checking to be safe
+    lagtimes = 1 + np.arange(max_lagtime - 1)    
+
+    N = len(r)
+
+    D = np.square(r).sum(axis=1) 
+    D = np.append(D, 0)
+    S2 = sum([autocorr_fft(r[:, i]) for i in range(len(pos_columns))])
+
+    Q = 2 * D.sum()
+    S1 = np.zeros(max_lagtime)
+
+    for m in range(max_lagtime):
+        Q = Q - D[m - 1] - D[N - m]
+        S1[m] = Q / (N - m)
+
+    msd = S1 - 2 * S2[:max_lagtime]
+    msd = msd[1:]
+
+    lagt = lagtimes / fps
+
+    results = pd.DataFrame(np.array([msd, lagt]).T, columns=['msd', 'lagt'])
+    results.index = 1 + np.arange(max_lagtime - 1)
+    results.index.name = 'lagt'
+    
+    return(results)
+
+
+def msd_fft_1D(pos, mpp, fps, max_lagtime=100):
+    """
+    1D MSD for one particle from an array 'pos'
+    fps: Frames per second; mpp: micron per pixel
+    
+    https://stackoverflow.com/questions/34222272/computing-mean-square-displacement-using-python-and-fft/34222273#34222273
+    """
+    
+    r = pos
+    r *= mpp
+
+    t = np.arange(len(pos))
+
+    max_lagtime = min(max_lagtime, len(t))  # checking to be safe
+    lagtimes = 1 + np.arange(max_lagtime)    
+
+    N = len(r)
+
+    D = np.square(r)
+    D = np.append(D, 0)
+    S2 = sum([autocorr_fft(r[:])])
+
+    Q = 2 * D.sum()
+    S1 = np.zeros(max_lagtime+1)
+
+    for m in range(max_lagtime+1):
+        Q = Q - D[m - 1] - D[N - m]
+        S1[m] = Q / (N - m)
+
+    msd = S1 - 2 * S2[:max_lagtime+1]
+    msd = msd[1:]
+
+    lagt = lagtimes / fps
+
+    results = pd.DataFrame(np.array([msd, lagt]).T, columns=['msd', 'lagt'])
+    results.index = 1 + np.arange(max_lagtime)
+    results.index.name = 'lagt'
+    
+    return(results)
+
+
+# %%%% Magnetic Forces
 
 def computeMag_M270(B, k_batch = 1):
     M = k_batch * 0.74257*1600 * (0.001991*B**3 + 17.54*B**2 + 153.4*B) / (B**2 + 35.53*B + 158.1)
