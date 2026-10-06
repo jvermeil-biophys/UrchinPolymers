@@ -408,25 +408,30 @@ def get_pairs_for_TRanges_Delaunay(df, PixPerUm, FPS, Nframes,
     
     dict_TRanges2particles = {f'{fi}_{ff}':{'pid':[], 'xm':[], 'ym':[]} \
                               for fi, ff in zip(FI, FF)}
-        
     list_TRanges = [f'{fi}_{ff}' for fi, ff in zip(FI, FF)]
     list_Pairs = []
     
-    PIDs = df.particle.unique()
-    for pid in PIDs:
-        pfi = np.min(df[df['particle'] == pid]['frame'].values) - 1
-        pff = np.max(df[df['particle'] == pid]['frame'].values) - 1
-        
+    #### !!!! The syntax below is really cool !
+    grouped = df.groupby('particle')
+    for pid, df_p in grouped:
+        frames = df_p['frame'].to_numpy()
+        x = df_p['x'].to_numpy()
+        y = df_p['y'].to_numpy()
+
+        pfi = frames.min()
+        pff = frames.max()
+
         for fi, ff in zip(FI, FF):
-            if (pfi <= fi) and (ff <= pff):
-                df_p = df[df['particle'] == pid]
-                df_p_TR = df_p[df_p['frame'].apply(lambda x : fi <= (x-1) < ff)]
-                
-                xm = np.median(df_p_TR['x'].values)
-                ym = np.median(df_p_TR['y'].values)
-                dict_TRanges2particles[f'{fi}_{ff}']['pid'].append(pid)
-                dict_TRanges2particles[f'{fi}_{ff}']['xm'].append(xm)
-                dict_TRanges2particles[f'{fi}_{ff}']['ym'].append(ym)
+            if pfi <= fi + 1 and ff <= pff:
+                mask = (fi <= frames - 1) & (frames - 1 < ff)
+                xm = np.median(x[mask])
+                ym = np.median(y[mask])
+
+                key = f'{fi}_{ff}'
+                result = dict_TRanges2particles[key]
+                result['pid'].append(int(pid))
+                result['xm'].append(float(xm))
+                result['ym'].append(float(ym))
     
     for k, TRange in enumerate(list_TRanges):
         df_parts = pd.DataFrame(dict_TRanges2particles[TRange])
@@ -508,50 +513,64 @@ def get_pairs_for_TRanges(df, SCALE, FPS, Nframes,
     return(dict_TRanges2pairs)
 
 
-def get_relative_displacement_by_TRange(df, pairs, TRange):
-    df.frame = df.frame.astype(int)
-    df.particle = df.particle.astype(int)
-    
-    FI, FF = np.array(TRange.split('_')).astype(int)
-    # T_array = np.arange(FI, FF)-1 
-    T_array_shifted = np.arange(0, FF-FI)
-    
-    ids_in_pairs = np.unique(pairs.flatten())
 
-    df_f = df
-    df_f = df_f[df_f['frame'].apply(lambda x : FI <= (x-1) < FF)]
-    df_f = df_f[df_f['particle'].apply(lambda x : x in ids_in_pairs)]
-    
-    # pair_2_pairId = {pairs[i] : i for i in range(len(pairs))}
-    # pairs[pairId] = pair
-    # pair_2_pairId[pair] = pairId
-    
-    # df_pairs = pd.DataFrame({'pair_id':[],'x':[],'y':[],'frame':[],})
+
+def get_relative_displacement_by_TRange(df, pairs, TRange):
+    FI, FF = map(int, TRange.split('_'))
+
+    # Convert once
+    frames = df['frame'].to_numpy(dtype=int)
+    particles = df['particle'].to_numpy(dtype=int)
+    x = df['x'].to_numpy()
+    y = df['y'].to_numpy()
+
+    # Select requested time range
+    frame_mask = (frames >= FI + 1) & (frames <= FF)
+
+    frames = frames[frame_mask]
+    particles = particles[frame_mask]
+    x = x[frame_mask]
+    y = y[frame_mask]
+
+    # Keep only particles that occur in pairs
+    ids_in_pairs = np.unique(pairs)
+    particle_mask = np.isin(particles, ids_in_pairs)
+
+    frames = frames[particle_mask]
+    particles = particles[particle_mask]
+    x = x[particle_mask]
+    y = y[particle_mask]
+
+    # Create a lookup: particle -> (x, y) arrays
+    particle_data = {
+        pid: (x[particles == pid], y[particles == pid])
+        for pid in ids_in_pairs
+    }
+
+    N = FF - FI
+    T_array = np.arange(1, N + 1)
+
     list_df_pairs = []
-    
-    for i in range(len(pairs)):
-        pair = pairs[i]
-        # i = pairId
-        id1, id2 = pair
-        idx1, idx2 = (df_f['particle']==id1), (df_f['particle']==id2)
-        Xpair = df_f[idx2]['x'].values-df_f[idx1]['x'].values
-        Ypair = df_f[idx2]['y'].values-df_f[idx1]['y'].values
+
+    for pair_id, (id1, id2) in enumerate(pairs):
+
+        x1, y1 = particle_data[id1]
+        x2, y2 = particle_data[id2]
+
+        Xpair = x2 - x1
+        Ypair = y2 - y1
+
+        list_df_pairs.append(
+            pd.DataFrame({
+                'pair_id': pair_id,
+                'x': Xpair,
+                'y': Ypair,
+                'frame': T_array
+            })
+        )
         
-        N = len(T_array_shifted)
-        
-        # df_pairs = pd.concat([df_pairs, pd.DataFrame(
-        #                                              {'pair_id':np.ones(N, dtype=int)*i,
-        #                                               'x':Xpair, 'y':Ypair,
-        #                                               'frame':T_array_shifted,}
-        #                                              )],
-        #                      axis=0)
-        list_df_pairs.append(pd.DataFrame({'pair_id':np.ones(N, dtype=int)*i,
-                                           'x':Xpair, 'y':Ypair,
-                                           'frame':T_array_shifted + 1,}
-                                          ))
-        
-    df_pairs = pd.concat(list_df_pairs, axis=0)
-    return(df_pairs)
+    output = pd.concat(list_df_pairs, ignore_index=True)
+    return(output)
 
 
 # %%% Main functions
@@ -1490,3 +1509,51 @@ def mergeDDM(DDMs, dts, frequencies):
     DDMMerge = np.concatenate([DDMs[0][:boundary], transition, DDMs[1][overlap1:]], axis=0)
     return(DDMMerge, dtMerge)
     
+# %% Z. Older versions
+
+# %%% Relative MSD
+
+def get_relative_displacement_by_TRange_old(df, pairs, TRange):
+    df.frame = df.frame.astype(int)
+    df.particle = df.particle.astype(int)
+    
+    FI, FF = np.array(TRange.split('_')).astype(int)
+    # T_array = np.arange(FI, FF)-1 
+    T_array_shifted = np.arange(0, FF-FI)
+    
+    ids_in_pairs = np.unique(pairs.flatten())
+
+    df_f = df
+    df_f = df_f[df_f['frame'].apply(lambda x : FI <= (x-1) < FF)]
+    df_f = df_f[df_f['particle'].apply(lambda x : x in ids_in_pairs)]
+    
+    # pair_2_pairId = {pairs[i] : i for i in range(len(pairs))}
+    # pairs[pairId] = pair
+    # pair_2_pairId[pair] = pairId
+    
+    # df_pairs = pd.DataFrame({'pair_id':[],'x':[],'y':[],'frame':[],})
+    list_df_pairs = []
+    
+    for i in range(len(pairs)):
+        pair = pairs[i]
+        # i = pairId
+        id1, id2 = pair
+        idx1, idx2 = (df_f['particle']==id1), (df_f['particle']==id2)
+        Xpair = df_f[idx2]['x'].values-df_f[idx1]['x'].values
+        Ypair = df_f[idx2]['y'].values-df_f[idx1]['y'].values
+        
+        N = len(T_array_shifted)
+        
+        # df_pairs = pd.concat([df_pairs, pd.DataFrame(
+        #                                              {'pair_id':np.ones(N, dtype=int)*i,
+        #                                               'x':Xpair, 'y':Ypair,
+        #                                               'frame':T_array_shifted,}
+        #                                              )],
+        #                      axis=0)
+        list_df_pairs.append(pd.DataFrame({'pair_id':np.ones(N, dtype=int)*i,
+                                           'x':Xpair, 'y':Ypair,
+                                           'frame':T_array_shifted + 1,}
+                                          ))
+        
+    df_pairs = pd.concat(list_df_pairs, axis=0)
+    return(df_pairs)

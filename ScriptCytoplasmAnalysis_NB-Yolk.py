@@ -51,174 +51,16 @@ import Libs.ToolboxStructureAnalysis as tbsa
 
 # %% Helper functions
 
-def Tpf_str2num(tpf_str):
-    L = tpf_str.split('min')
-    try:
-        tpf_num = int(L[0])*60
-        if len(L) > 1 and len(L[1]) > 0:
-            tpf_num += int(L[1])
-    except:
-        tpf_num = 0
-    return(tpf_num)
-
-
-def df_grid_2_matrix(df_grid, Nx, Ny, xy_col = 'Bxy', parm_col = 'k_full'):
-    V = df_grid[xy_col].values
-    L = [[*tup] for tup in V]
-    XY_g = np.array(L)
-    df_grid['X_g'] = XY_g[:, 0]
-    df_grid['Y_g'] = XY_g[:, 1]
-    if max(XY_g[:, 0]) > (Nx-1):
-        Nx = max(XY_g[:, 0])+1
-    if max(XY_g[:, 1]) > (Ny-1):
-        Ny = max(XY_g[:, 1])+1
-        
-    Hm = np.zeros((Nx, Ny))
-    Hm.fill(np.nan)
-    for xy in XY_g:
-        [x, y] = xy
-        Hm[y, x] = df_grid.loc[(df_grid['X_g'] == x) & (df_grid['Y_g'] == y), parm_col].values[0]
-        
-    return(Hm)
-
-
-def MSD_HeatMap(df_grid, M_boxes, xy_col, parm_col,
-                axtitle = '', cbarlabel = '',
-                cmap='viridis', norm_type = 'lin',
-                c_vmin=None, c_vmax=None,
-                fig=None, ax=None):
-    
-    if ax is None:
-        fig, ax = plt.subplots(1, 1)
-        
-    parm = parm_col
-    if axtitle=='':
-        axtitle=parm
-    ax.set_title(axtitle)
-    
-    HeatMap = df_grid_2_matrix(df_grid_MSD, M_boxes, M_boxes, 
-                               xy_col = xy_col, 
-                               parm_col = parm_col)
-
-    # mpl.colors.Normalize() # mpl.colors.LogNorm()
-    # norm = mpl.colors.Normalize()
-    if norm_type == 'lin':
-        norm = mpl.colors.Normalize(vmin=c_vmin, vmax=c_vmax)
-    elif norm_type == 'log':
-        norm = mpl.colors.LogNorm(vmin=c_vmin, vmax=c_vmax)
-    else:
-        norm = None
-        
-    axim = ax.imshow(HeatMap, aspect='equal',
-                     cmap=cmap, norm=norm, )
-    ax.invert_yaxis()
-
-    # Create colorbar
-    cbar = fig.colorbar(axim, ax=ax, label=cbarlabel)
-    cbar.ax.set_ylabel(cbarlabel, rotation=-90, va="bottom")#, va="bottom")
-
-    xt = np.linspace(0, M_boxes, 3, endpoint=True)
-    yt = np.linspace(0, M_boxes, 3, endpoint=True)
-    xticks = xt - 0.5
-    yticks = yt - 0.5
-    #### HAVE TO BE REDONE FOR NON SQUARE ROIs !!
-    # xlabels = [f'{x*(N_pix)/M_boxes:.0f}' for x in xt]
-    # ylabels = [f'{y*(N_pix)/M_boxes:.0f}' for y in yt]
-    # xlabels = ['' for x in xt]
-    # ylabels = ['' for y in yt]
-    # ax.tick_params(axis='both', length=0,)
-
-    # ax.set_xticks(xticks, labels=xlabels,) # rotation=-30, rotation_mode="xtick")
-    # ax.set_yticks(yticks, labels=ylabels)
-    # ax.spines[:].set_visible(False)
-    ax.grid(which="minor", color="w", linestyle='-', linewidth=0.5)
-    ax.tick_params(which="minor", bottom=False, left=False)
-        
-    return(fig, ax)
-
-
-
-
-def msd_fft_trackpyStyle(traj, mpp, fps, max_lagtime=100, pos_columns=['x', 'y']):
-    """
-    https://github.com/hadim/Public-Notebooks/blob/master/Code/Quick_MSD/notebook.ipynb
-    """
-    
-    r = traj[pos_columns].values
-    r *= mpp
-
-    t = traj['frame']
-
-    max_lagtime = min(max_lagtime, len(t))  # checking to be safe
-    lagtimes = 1 + np.arange(max_lagtime - 1)    
-
-    N = len(r)
-
-    D = np.square(r).sum(axis=1) 
-    D = np.append(D, 0)
-    S2 = sum([autocorr_fft(r[:, i]) for i in range(len(pos_columns))])
-
-    Q = 2 * D.sum()
-    S1 = np.zeros(max_lagtime)
-
-    for m in range(max_lagtime):
-        Q = Q - D[m - 1] - D[N - m]
-        S1[m] = Q / (N - m)
-
-    msd = S1 - 2 * S2[:max_lagtime]
-    msd = msd[1:]
-
-    lagt = lagtimes / fps
-
-    results = pd.DataFrame(np.array([msd, lagt]).T, columns=['msd', 'lagt'])
-    results.index = 1 + np.arange(max_lagtime - 1)
-    results.index.name = 'lagt'
-    
-    return(results)
-
-
-def msd_fft_1D(pos, mpp, fps, max_lagtime=100):
-    """
-    https://stackoverflow.com/questions/34222272/computing-mean-square-displacement-using-python-and-fft/34222273#34222273
-    """
-    
-    r = pos
-    r *= mpp
-
-    t = np.arange(len(pos))
-
-    max_lagtime = min(max_lagtime, len(t))  # checking to be safe
-    lagtimes = 1 + np.arange(max_lagtime)    
-
-    N = len(r)
-
-    D = np.square(r)
-    D = np.append(D, 0)
-    S2 = sum([autocorr_fft(r[:])])
-
-    Q = 2 * D.sum()
-    S1 = np.zeros(max_lagtime+1)
-
-    for m in range(max_lagtime+1):
-        Q = Q - D[m - 1] - D[N - m]
-        S1[m] = Q / (N - m)
-
-    msd = S1 - 2 * S2[:max_lagtime+1]
-    msd = msd[1:]
-
-    lagt = lagtimes / fps
-
-    results = pd.DataFrame(np.array([msd, lagt]).T, columns=['msd', 'lagt'])
-    results.index = 1 + np.arange(max_lagtime)
-    results.index.name = 'lagt'
-    
-    return(results)
-
-# %% 1. Analysis functions
+#### Analysis functions
 
 def NByolk_analysis_sequence(mainDir, srcDir, dstDir, tifNames, Dict_Files_Suffix, 
-                             Dict_Image_Settings, Dict_TrackMate_Settings, Dict_Analysis_Settings,
-                             Do_Contours = True, Do_Tracking = True, Do_TrackCleaning = True, Do_MSD = True):
+                             Dict_Image_Settings, 
+                             Dict_TrackMate_Settings, 
+                             Dict_Analysis_Settings,
+                             Do_Contours = True, 
+                             Do_Tracking = True, 
+                             Do_TrackCleaning = True, 
+                             Do_MSD = True):
     
     tifPaths = [os.path.join(srcDir, tifName) for tifName in tifNames]
     fileNames = [fN.split('.')[0] for fN in tifNames]
@@ -355,6 +197,94 @@ def NByolk_analysis_sequence(mainDir, srcDir, dstDir, tifNames, Dict_Files_Suffi
             ufun.dict2json(dict_MSDfits, dstDir, msdFitsName)
 
 
+#### Plotting functions
+
+def Tpf_str2num(tpf_str):
+    L = tpf_str.split('min')
+    try:
+        tpf_num = int(L[0])*60
+        if len(L) > 1 and len(L[1]) > 0:
+            tpf_num += int(L[1])
+    except:
+        tpf_num = 0
+    return(tpf_num)
+
+
+def df_grid_2_matrix(df_grid, Nx, Ny, xy_col = 'Bxy', parm_col = 'k_full'):
+    V = df_grid[xy_col].values
+    L = [[*tup] for tup in V]
+    XY_g = np.array(L)
+    df_grid['X_g'] = XY_g[:, 0]
+    df_grid['Y_g'] = XY_g[:, 1]
+    if max(XY_g[:, 0]) > (Nx-1):
+        Nx = max(XY_g[:, 0])+1
+    if max(XY_g[:, 1]) > (Ny-1):
+        Ny = max(XY_g[:, 1])+1
+        
+    Hm = np.zeros((Nx, Ny))
+    Hm.fill(np.nan)
+    for xy in XY_g:
+        [x, y] = xy
+        Hm[y, x] = df_grid.loc[(df_grid['X_g'] == x) & (df_grid['Y_g'] == y), parm_col].values[0]
+        
+    return(Hm)
+
+
+def MSD_HeatMap(df_grid, M_boxes, xy_col, parm_col,
+                axtitle = '', cbarlabel = '',
+                cmap='viridis', norm_type = 'lin',
+                c_vmin=None, c_vmax=None,
+                fig=None, ax=None):
+    
+    if ax is None:
+        fig, ax = plt.subplots(1, 1)
+        
+    parm = parm_col
+    if axtitle=='':
+        axtitle=parm
+    ax.set_title(axtitle)
+    
+    HeatMap = df_grid_2_matrix(df_grid_MSD, M_boxes, M_boxes, 
+                               xy_col = xy_col, 
+                               parm_col = parm_col)
+
+    # mpl.colors.Normalize() # mpl.colors.LogNorm()
+    # norm = mpl.colors.Normalize()
+    if norm_type == 'lin':
+        norm = mpl.colors.Normalize(vmin=c_vmin, vmax=c_vmax)
+    elif norm_type == 'log':
+        norm = mpl.colors.LogNorm(vmin=c_vmin, vmax=c_vmax)
+    else:
+        norm = None
+        
+    axim = ax.imshow(HeatMap, aspect='equal',
+                     cmap=cmap, norm=norm, )
+    ax.invert_yaxis()
+
+    # Create colorbar
+    cbar = fig.colorbar(axim, ax=ax, label=cbarlabel)
+    cbar.ax.set_ylabel(cbarlabel, rotation=-90, va="bottom")#, va="bottom")
+
+    xt = np.linspace(0, M_boxes, 3, endpoint=True)
+    yt = np.linspace(0, M_boxes, 3, endpoint=True)
+    xticks = xt - 0.5
+    yticks = yt - 0.5
+    #### HAVE TO BE REDONE FOR NON SQUARE ROIs !!
+    # xlabels = [f'{x*(N_pix)/M_boxes:.0f}' for x in xt]
+    # ylabels = [f'{y*(N_pix)/M_boxes:.0f}' for y in yt]
+    # xlabels = ['' for x in xt]
+    # ylabels = ['' for y in yt]
+    # ax.tick_params(axis='both', length=0,)
+
+    # ax.set_xticks(xticks, labels=xlabels,) # rotation=-30, rotation_mode="xtick")
+    # ax.set_yticks(yticks, labels=ylabels)
+    # ax.spines[:].set_visible(False)
+    ax.grid(which="minor", color="w", linestyle='-', linewidth=0.5)
+    ax.tick_params(which="minor", bottom=False, left=False)
+        
+    return(fig, ax)
+
+
 # %% 1. Tracking and MSD
 
 # %%% 26-09-30_D1
@@ -362,20 +292,7 @@ def NByolk_analysis_sequence(mainDir, srcDir, dstDir, tifNames, Dict_Files_Suffi
 # %%%% Settings
 
 #### Paths    
-# mainDir = os.path.join(up.Path_IntraCellTracking, '26-07-29_FastAcq_Fec_NB-Yolk')
-# srcDir = os.path.join(mainDir, 'Crops')
-# dstDir = os.path.join(mainDir, 'SPT_results')
 
-# tifNames = [
-#             '26-07-29_PostF_2min_Pos11_10fps_Texp100ms_CSU642_crop.tif',
-#             '26-07-29_PostF_6min30_Pos11_10fps_Texp100ms_CSU642_crop.tif',
-#             '26-07-29_PostF_12min_Pos11_10fps_Texp100ms_CSU642_crop.tif',
-#             '26-07-29_PostF_20min_Pos11_10fps_Texp100ms_CSU642_crop.tif',
-#             '26-07-29_PostF_30min_Pos11_10fps_Texp100ms_CSU642_crop.tif',
-#             '26-07-29_PostF_45min_Pos11_10fps_Texp100ms_CSU642_crop.tif',
-#             '26-07-29_PostF_60min_Pos11_10fps_Texp100ms_CSU642_crop.tif',
-#             '26-07-29_PostF_70min_Pos11_10fps_Texp100ms_CSU642_crop.tif',
-#             ]
 
 mainDir = os.path.join(up.Path_IntraCellTracking, '26-09-30_FastAcq-Channel_Fec_NB-Yolk')
 srcDir = os.path.join(mainDir, 'D1')
@@ -619,13 +536,12 @@ ax.grid()
 plt.show()
 
 
-# %%%% MSRD functions -> Not working
+# %%%% MSRD functions I
 
 pm.setGraphicOptions(mode='screen')
 
-i = 13
-
 # for i in range(len(fileNames)):
+i = 13
 tP, fN = tifPaths[i], fileNames[i]
 cleanTrackName = fN + Dict_Files_Suffix['suffix_cleanTracks'] + '.csv'
 df = pd.read_csv(os.path.join(dstDir, cleanTrackName), sep='\t')
@@ -633,13 +549,7 @@ df = pd.read_csv(os.path.join(dstDir, cleanTrackName), sep='\t')
 PixPerUm = Dict_Image_Settings['PixPerUm']
 FPS = Dict_Image_Settings['FPS']
 shape, dtype = ufun.tiff_inspect(tP)
-Nframes = shape[0]
-
-# top = time.time()
-# dict_TRanges2pairs_N = tbca.get_pairs_for_TRanges(df, SCALE, FPS, Nframes,
-#                           len_TRanges = 100, delta_TRanges = -1,
-#                           dist_th_um = 5)
-# print(f'Dt = {time.time()-top:.3f} s')
+Nframes = shape[0]   
 
 list_TRanges, list_Pairs = tbca.get_pairs_for_TRanges_Delaunay(
     df, PixPerUm, FPS, Nframes,
@@ -654,7 +564,7 @@ for k, TRange in enumerate(list_TRanges):
     df_pairs = tbca.get_relative_displacement_by_TRange(df, pairs, TRange)
     res_pair_emsd = tp.motion.emsd(df_pairs.rename(columns={'pair_id':'particle'}), 
                                    UmPerPix, FPS, max_lagtime=50).reset_index()
-    pairMSD[k] = res_pair_emsd
+    pairMSD.append(res_pair_emsd)
 
 
 # Plot
@@ -670,6 +580,67 @@ ax.grid()
 ax.legend(loc='center left', bbox_to_anchor=(1, 0.5))
 
 plt.show()
+
+
+
+# %%% 26-07-29
+
+# %%%% Settings
+
+#### Paths    
+
+mainDir = os.path.join(up.Path_IntraCellTracking, '26-07-29_FastAcq_Fec_NB-Yolk')
+srcDir = os.path.join(mainDir, 'Crops')
+dstDir = os.path.join(mainDir, 'SPT_results')
+
+tifNames = [
+            '26-07-29_PostF_2min_Pos11_10fps_Texp100ms_CSU642_crop.tif',
+            '26-07-29_PostF_6min30_Pos11_10fps_Texp100ms_CSU642_crop.tif',
+            '26-07-29_PostF_12min_Pos11_10fps_Texp100ms_CSU642_crop.tif',
+            '26-07-29_PostF_20min_Pos11_10fps_Texp100ms_CSU642_crop.tif',
+            '26-07-29_PostF_30min_Pos11_10fps_Texp100ms_CSU642_crop.tif',
+            '26-07-29_PostF_45min_Pos11_10fps_Texp100ms_CSU642_crop.tif',
+            '26-07-29_PostF_60min_Pos11_10fps_Texp100ms_CSU642_crop.tif',
+            '26-07-29_PostF_70min_Pos11_10fps_Texp100ms_CSU642_crop.tif',
+            ]
+
+tifPaths = [os.path.join(srcDir, tifName) for tifName in tifNames]
+fileNames = [fN.split('.')[0] for fN in tifNames]
+
+Dict_Files_Suffix = {
+    'suffix_contour' : '_cellContour',
+    'suffix_mask' : '_cellMask',
+    'suffix_rawTracks' : '_TmTracks',
+    'suffix_cleanTracks' : '_PyTracks',
+    'suffix_globalMsd' : '_GlobalMsd',
+    'suffix_globalMsdFits' : '_GlobalMsdFits',
+    }
+
+
+#### Settings
+UmPerPix = cd.UmPerPix_60X_W1
+Dict_Image_Settings = {
+    'UmPerPix' : UmPerPix,
+    'PixPerUm' : 1/UmPerPix,
+    'FPS' : 10,
+    }
+
+Dict_TrackMate_Settings = {
+    'IMG_UNITS' : 'PIX',
+    'RADIUS_UM' : 0.8, 
+    'THRESH_SPOT_QLT' : 0.25,
+    'THRESH_LINK_UM' : 0.4, # increased at 0.4um for 10Hz
+    'THRESH_MIN_DURATION' : 30,
+    }
+
+Dict_Analysis_Settings = {
+    'mask_buffer_um' : 2.0,
+    'edge_buffer_cutoff_um' : 3.0,
+    'max_lagtime' : 50,
+    'lowDt_upper' : 0.5,
+    'highDt_lower' : 1.0,
+    }
+
 
 
 # %%% TBD
