@@ -73,7 +73,7 @@ import imagej
 import scyjava as sj
 
 # import random
-sj.config.add_options('-Xmx12g')
+sj.config.add_options('-Xmx32g')
 
 
 
@@ -279,9 +279,9 @@ def is_track_in_polygon(track, poly):
 
 def rawTracks_2_cleanTracks(rawTracks, dstDir, cleanTrackName,
                             Contour_cell, PixPerUm,
-                            edgeBuffer_cutoff = 2.5,
-                            nPoints_cuttoff = 30,
-                            column_names = None):
+                            edge_buffer_cutoff_um = 2.5, nPoints_cuttoff = 30,
+                            column_names = None,
+                            RefImg = None, PLOT = False, SHOWPLOT = False, SAVEPLOT = False):
     
     if column_names is None:
         column_names = ['frame', 'x', 'y', 'particle']
@@ -291,7 +291,7 @@ def rawTracks_2_cleanTracks(rawTracks, dstDir, cleanTrackName,
                    "roughly equivalent to: ['frame', 'x', 'y', 'particle']")
             
     Poly_cell = Polygon(shell=Contour_cell)
-    Poly_inner_cell = Poly_cell.buffer(- edgeBuffer_cutoff * PixPerUm)
+    Poly_inner_cell = Poly_cell.buffer(- edge_buffer_cutoff_um * PixPerUm)
     
     all_tracks = []
     for i, track in enumerate(rawTracks):
@@ -304,19 +304,95 @@ def rawTracks_2_cleanTracks(rawTracks, dstDir, cleanTrackName,
             
     concat_tracks = np.concat(all_tracks, axis = 0)
     df = pd.DataFrame({column_names[k] : concat_tracks[:,k] for k in range(len(column_names))})
+    df[column_names[0]] = df[column_names[0]].values.astype(int)
+    df[column_names[3]] = df[column_names[3]].values.astype(int)
     df.to_csv(os.path.join(dstDir, cleanTrackName), index=False, sep = '\t')
+    
+    
+    # Plot
+    if PLOT:
+        if not SHOWPLOT:
+            plt.ioff()
+        else:
+            plt.ion()
+            
+        pm.setGraphicOptions(mode = 'screen')
+        fig, axes = plt.subplots(1, 3, figsize=(12, 4))
+        fig.suptitle(cleanTrackName.split('.')[0])
+        ColorList = pm.cL_Set21
+        
+        y_ic, x_ic = Poly_inner_cell.exterior.xy
+        Contour_inner_cell = np.array([y_ic, x_ic]).T
+        
+        ax = axes[0]
+        if not (RefImg is None):
+            ax.imshow(RefImg, cmap='gray')
+        
+        
+        ax = axes[1]
+        if not (RefImg is None):
+            ax.imshow(RefImg, cmap='gray')
+        for k in range(len(rawTracks)):
+            track = rawTracks[k]
+            color = ColorList[k%len(ColorList)]
+            ax.plot(track[:,1], track[:,2], ls='-', color=color, lw=0.25)
+        ax.plot(Contour_cell[:,1], Contour_cell[:,0], ls='-', color='red', lw=1)
+        ax.plot(Contour_inner_cell[:,1], Contour_inner_cell[:,0], ls='-', color='cyan', lw=1)
+        
+        ax = axes[2]
+        if not (RefImg is None):
+            ax.imshow(RefImg, cmap='gray')
+            
+        for k in range(len(all_tracks)):
+            track = all_tracks[k]
+            color = ColorList[k%len(ColorList)]
+            ax.plot(track[:,1], track[:,2], ls='-', color=color, lw=0.25)
+        
+        if SHOWPLOT:
+            plt.show()
+        
+        if SAVEPLOT:
+            figName = '_'.join(cleanTrackName.split('_')[:-1]) + '_cleanTracks.png'
+            figPath = os.path.join(dstDir, figName)
+            fig.savefig(figPath, dpi=500, )
+    
+    if not SHOWPLOT:
+        plt.ion()
     
     return(df)
 
 # %%%% Pairwise MSD
 
+def tri_to_short_edges(tri, points, thresh_d):
+    # Extract all edges from each triangle
+    edges = np.vstack([
+        tri.simplices[:, [0, 1]],
+        tri.simplices[:, [1, 2]],
+        tri.simplices[:, [2, 0]]
+    ])
 
-def get_pairs_for_TRanges_Delaunay(df, SCALE, FPS, Nframes,
+    # Sort indices within each edge to make (i, j) and (j, i) identical
+    edges = np.sort(edges, axis=1)
+
+    # Remove duplicate edges
+    edges = np.unique(edges, axis=0)
+
+    # Convert to a Python list of pairs
+    edges = np.array(edges)
+    
+    pairs = points[edges]
+    dists = np.power(np.sum((pairs[:,1,:]-pairs[:,0,:])**2, axis=1), 0.5)
+    idx_close_neighbours = (dists < thresh_d)
+    edges_close_neighbours = edges[idx_close_neighbours]
+    return(edges_close_neighbours, dists)
+
+
+def get_pairs_for_TRanges_Delaunay(df, PixPerUm, FPS, Nframes,
                                   len_TRanges = 200, delta_TRanges = -1,
                                   dist_th_um = 5):
     df.frame = df.frame.astype(int)
     df.particle = df.particle.astype(int)
-    dist_th = dist_th_um * SCALE
+    dist_th = dist_th_um * PixPerUm
     
     if delta_TRanges < 0:
         delta_TRanges = len_TRanges
@@ -332,7 +408,9 @@ def get_pairs_for_TRanges_Delaunay(df, SCALE, FPS, Nframes,
     
     dict_TRanges2particles = {f'{fi}_{ff}':{'pid':[], 'xm':[], 'ym':[]} \
                               for fi, ff in zip(FI, FF)}
-    dict_TRanges2pairs = {f'{fi}_{ff}':[] for fi, ff in zip(FI, FF)}
+        
+    list_TRanges = [f'{fi}_{ff}' for fi, ff in zip(FI, FF)]
+    list_Pairs = []
     
     PIDs = df.particle.unique()
     for pid in PIDs:
@@ -350,7 +428,7 @@ def get_pairs_for_TRanges_Delaunay(df, SCALE, FPS, Nframes,
                 dict_TRanges2particles[f'{fi}_{ff}']['xm'].append(xm)
                 dict_TRanges2particles[f'{fi}_{ff}']['ym'].append(ym)
     
-    for TRange in dict_TRanges2particles.keys():
+    for k, TRange in enumerate(list_TRanges):
         df_parts = pd.DataFrame(dict_TRanges2particles[TRange])
         XY = np.array([df_parts['xm'].values[:],
                        df_parts['ym'].values[:]]).T
@@ -359,9 +437,9 @@ def get_pairs_for_TRanges_Delaunay(df, SCALE, FPS, Nframes,
         edges_short, _ = tri_to_short_edges(tri, XY, dist_th)
         close_pairs = df_parts['pid'].values[edges_short]
         
-        dict_TRanges2pairs[TRange] = np.array(close_pairs)        
+        list_Pairs.append(np.array(close_pairs))    
             
-    return(dict_TRanges2pairs)
+    return(list_TRanges, list_Pairs)
 
 
 
@@ -428,6 +506,52 @@ def get_pairs_for_TRanges(df, SCALE, FPS, Nframes,
         dict_TRanges2pairs[TRange] = np.array(listPairs)
             
     return(dict_TRanges2pairs)
+
+
+def get_relative_displacement_by_TRange(df, pairs, TRange):
+    df.frame = df.frame.astype(int)
+    df.particle = df.particle.astype(int)
+    
+    FI, FF = np.array(TRange.split('_')).astype(int)
+    # T_array = np.arange(FI, FF)-1 
+    T_array_shifted = np.arange(0, FF-FI)
+    
+    ids_in_pairs = np.unique(pairs.flatten())
+
+    df_f = df
+    df_f = df_f[df_f['frame'].apply(lambda x : FI <= (x-1) < FF)]
+    df_f = df_f[df_f['particle'].apply(lambda x : x in ids_in_pairs)]
+    
+    # pair_2_pairId = {pairs[i] : i for i in range(len(pairs))}
+    # pairs[pairId] = pair
+    # pair_2_pairId[pair] = pairId
+    
+    # df_pairs = pd.DataFrame({'pair_id':[],'x':[],'y':[],'frame':[],})
+    list_df_pairs = []
+    
+    for i in range(len(pairs)):
+        pair = pairs[i]
+        # i = pairId
+        id1, id2 = pair
+        idx1, idx2 = (df_f['particle']==id1), (df_f['particle']==id2)
+        Xpair = df_f[idx2]['x'].values-df_f[idx1]['x'].values
+        Ypair = df_f[idx2]['y'].values-df_f[idx1]['y'].values
+        
+        N = len(T_array_shifted)
+        
+        # df_pairs = pd.concat([df_pairs, pd.DataFrame(
+        #                                              {'pair_id':np.ones(N, dtype=int)*i,
+        #                                               'x':Xpair, 'y':Ypair,
+        #                                               'frame':T_array_shifted,}
+        #                                              )],
+        #                      axis=0)
+        list_df_pairs.append(pd.DataFrame({'pair_id':np.ones(N, dtype=int)*i,
+                                           'x':Xpair, 'y':Ypair,
+                                           'frame':T_array_shifted + 1,}
+                                          ))
+        
+    df_pairs = pd.concat(list_df_pairs, axis=0)
+    return(df_pairs)
 
 
 # %%% Main functions
@@ -853,7 +977,13 @@ def pretreat_image_for_TrackMate(tifPath, **kwargs):
 
 
 
-def runTrackMate(tif_file, xmlPath):
+def runTrackMate(tif_file, xmlPath, Pix_Per_Um,
+                 IMG_UNITS = 'PIX',
+                 RADIUS_UM = 1.0, 
+                 THRESH_SPOT_QLT = 1.0,
+                 THRESH_LINK_UM = 0.2, 
+                 THRESH_MIN_DURATION = 40):
+    
     imp = ij.py.to_imageplus(tif_file)
     dims = imp.getDimensions() # default order: XYCZT
     print(dims)
@@ -901,21 +1031,32 @@ def runTrackMate(tif_file, xmlPath):
     
     settings = Settings(imp)
     
+    # Convert thresholds from Um to Pix if necessary
+    if IMG_UNITS == 'PIX':
+        RADIUS = Pix_Per_Um * RADIUS_UM
+        THRESH_LINK = Pix_Per_Um * THRESH_LINK_UM
+    elif IMG_UNITS == 'UM':
+        RADIUS = RADIUS_UM
+        THRESH_LINK = THRESH_LINK_UM
+    else:
+        raise ValueError("Setting variable IMG_UNITS should be equal to 'PIX' or 'UM'")
+    
     # Configure detector
     settings.detectorFactory = LogDetectorFactory()
     settings.detectorSettings = {
         'DO_SUBPIXEL_LOCALIZATION' : True,
-        'RADIUS' : 6.0,
+        'RADIUS' : RADIUS,
         'TARGET_CHANNEL': ij.py.to_java(1),
         'DO_MEDIAN_FILTERING': False,
-        'THRESHOLD': 1.0 # 0.01
+        'THRESHOLD': THRESH_SPOT_QLT # 0.01
     }
     
-    # Configure tracker
+    # Configure tracker   
     settings.trackerFactory = SparseLAPTrackerFactory()
     settings.trackerSettings = LAPUtils.getDefaultSegmentSettingsMap()
-    settings.trackerSettings['LINKING_MAX_DISTANCE'] = 3.0
-    settings.trackerSettings['GAP_CLOSING_MAX_DISTANCE'] = 3.0
+    settings.trackerSettings['LINKING_MAX_DISTANCE'] = THRESH_LINK
+    settings.trackerSettings['ALLOW_GAP_CLOSING'] = False
+    settings.trackerSettings['GAP_CLOSING_MAX_DISTANCE'] = 1.0
     settings.trackerSettings['MAX_FRAME_GAP'] = ij.py.to_java(0)
     
     # Configure filtering
@@ -926,7 +1067,7 @@ def runTrackMate(tif_file, xmlPath):
         print(key)
         settings.addTrackAnalyzer(trackAnalyzerProvider.getFactory(key))
     
-    filter1 = FeatureFilter('TRACK_DURATION', 40, True)
+    filter1 = FeatureFilter('TRACK_DURATION', THRESH_MIN_DURATION, True)
     settings.addTrackFilter(filter1)
     
     # Run the model
@@ -1046,18 +1187,21 @@ def pretreatAndTrack_CropedYolk(tifPath, xmlName, dstDir,
 
 
 def pretreat_and_track_NbYolk(tifPath, rawTrackName, dstDir,
-                             Mask_cell = None,
-                             return_tracks = False,
-                             PLOT = False, SAVEPLOT = False):
+                              Pix_Per_Um, Dict_TrackMate_Settings = None,
+                              Mask_cell = None, mask_buffer_um = 0.0,
+                              return_tracks = False,
+                              PLOT = False, SHOWPLOT = False, SAVEPLOT = False):
+    
+    
     
     srcDir, tifName = os.path.split(tifPath)
     rawTrackPath = os.path.join(dstDir, rawTrackName)
     
     shape, dtype = ufun.tiff_inspect(tifPath)
     nT = shape[0]
+    
     image = ufun.load_stack_region(tifPath, time_indices=None, 
                                    x_slice=None, y_slice=None)
-    
     
     # nT = 100
     # image = ufun.load_stack_region(tifPath, time_indices=range(0, 100), 
@@ -1066,9 +1210,12 @@ def pretreat_and_track_NbYolk(tifPath, rawTrackName, dstDir,
     if Mask_cell is None:
         pass
     else:
+        mask_buffer_pix = round(mask_buffer_um * Pix_Per_Um)
+        Mask_cell = ndi.binary_erosion(Mask_cell, iterations=mask_buffer_pix)
         image = image * Mask_cell
         
-    #### Pretreatments
+        
+    # Pretreatments
     for t in range(nT):
         k = 3
         image[t] = cv2.medianBlur(image[t], k)
@@ -1076,10 +1223,35 @@ def pretreat_and_track_NbYolk(tifPath, rawTrackName, dstDir,
     image_0 = image[0,:,:]
     tif_file = ij.py.to_java(image)
     del(image)
-    runTrackMate(tif_file, rawTrackPath)
+      
+    # Update TrackMate settings
+    Dict_TrackMate_Settings_DEFAULTS = {
+        'IMG_UNITS' : 'PIX',
+        'RADIUS_UM' : 1.0, 
+        'THRESH_SPOT_QLT' : 1.0,
+        'THRESH_LINK_UM' : 0.2, 
+        'THRESH_MIN_DURATION' : 40,
+        }
+    if Dict_TrackMate_Settings is None:
+        Dict_TrackMate_Settings = Dict_TrackMate_Settings_DEFAULTS
+    else:
+        Dict_TrackMate_Settings_DEFAULTS.update(Dict_TrackMate_Settings)
+        Dict_TrackMate_Settings = Dict_TrackMate_Settings_DEFAULTS
+    print(pm.GREEN + 'Settings: ' + pm.NORMAL, Dict_TrackMate_Settings)
     
     
+    # Run TrackMate
+    runTrackMate(tif_file, rawTrackPath, Pix_Per_Um,
+                 **Dict_TrackMate_Settings)
+    
+    
+    # Plot
     if PLOT:
+        if not SHOWPLOT:
+            plt.ioff()
+        else:
+            plt.ion()
+            
         pm.setGraphicOptions(mode = 'screen')
         Tracks = import_TrackMate_tracks(rawTrackPath)
         image_raw_0 = ufun.load_stack_region(tifPath, time_indices=[0])[0]
@@ -1100,15 +1272,20 @@ def pretreat_and_track_NbYolk(tifPath, rawTrackName, dstDir,
             track = Tracks[k]
             color = CL[k%len(CL)]
             ax.plot(track[:,1], track[:,2], ls='-', color=color, lw=0.25)
-    
-        plt.show()
+        
+        if SHOWPLOT:
+            plt.show()
         
         if SAVEPLOT:
-            figName = tifName.split('.')[0] + '_FigTracks.png'
+            figName = tifName.split('.')[0] + '_rawTracks.png'
             figPath = os.path.join(dstDir, figName)
             fig.savefig(figPath, dpi=500, )
     
+    if not SHOWPLOT:
+        plt.ion()
     
+    
+    # Return tracks
     if return_tracks:
         if not PLOT:
             Tracks = import_TrackMate_tracks(rawTrackPath)

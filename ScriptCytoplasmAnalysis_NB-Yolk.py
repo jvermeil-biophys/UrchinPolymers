@@ -53,9 +53,12 @@ import Libs.ToolboxStructureAnalysis as tbsa
 
 def Tpf_str2num(tpf_str):
     L = tpf_str.split('min')
-    tpf_num = int(L[0])*60
-    if len(L) > 1 and len(L[1]) > 0:
-        tpf_num += int(L[1])
+    try:
+        tpf_num = int(L[0])*60
+        if len(L) > 1 and len(L[1]) > 0:
+            tpf_num += int(L[1])
+    except:
+        tpf_num = 0
     return(tpf_num)
 
 
@@ -135,7 +138,226 @@ def MSD_HeatMap(df_grid, M_boxes, xy_col, parm_col,
 
 
 
+
+def msd_fft_trackpyStyle(traj, mpp, fps, max_lagtime=100, pos_columns=['x', 'y']):
+    """
+    https://github.com/hadim/Public-Notebooks/blob/master/Code/Quick_MSD/notebook.ipynb
+    """
+    
+    r = traj[pos_columns].values
+    r *= mpp
+
+    t = traj['frame']
+
+    max_lagtime = min(max_lagtime, len(t))  # checking to be safe
+    lagtimes = 1 + np.arange(max_lagtime - 1)    
+
+    N = len(r)
+
+    D = np.square(r).sum(axis=1) 
+    D = np.append(D, 0)
+    S2 = sum([autocorr_fft(r[:, i]) for i in range(len(pos_columns))])
+
+    Q = 2 * D.sum()
+    S1 = np.zeros(max_lagtime)
+
+    for m in range(max_lagtime):
+        Q = Q - D[m - 1] - D[N - m]
+        S1[m] = Q / (N - m)
+
+    msd = S1 - 2 * S2[:max_lagtime]
+    msd = msd[1:]
+
+    lagt = lagtimes / fps
+
+    results = pd.DataFrame(np.array([msd, lagt]).T, columns=['msd', 'lagt'])
+    results.index = 1 + np.arange(max_lagtime - 1)
+    results.index.name = 'lagt'
+    
+    return(results)
+
+
+def msd_fft_1D(pos, mpp, fps, max_lagtime=100):
+    """
+    https://stackoverflow.com/questions/34222272/computing-mean-square-displacement-using-python-and-fft/34222273#34222273
+    """
+    
+    r = pos
+    r *= mpp
+
+    t = np.arange(len(pos))
+
+    max_lagtime = min(max_lagtime, len(t))  # checking to be safe
+    lagtimes = 1 + np.arange(max_lagtime)    
+
+    N = len(r)
+
+    D = np.square(r)
+    D = np.append(D, 0)
+    S2 = sum([autocorr_fft(r[:])])
+
+    Q = 2 * D.sum()
+    S1 = np.zeros(max_lagtime+1)
+
+    for m in range(max_lagtime+1):
+        Q = Q - D[m - 1] - D[N - m]
+        S1[m] = Q / (N - m)
+
+    msd = S1 - 2 * S2[:max_lagtime+1]
+    msd = msd[1:]
+
+    lagt = lagtimes / fps
+
+    results = pd.DataFrame(np.array([msd, lagt]).T, columns=['msd', 'lagt'])
+    results.index = 1 + np.arange(max_lagtime)
+    results.index.name = 'lagt'
+    
+    return(results)
+
+# %% 1. Analysis functions
+
+def NByolk_analysis_sequence(mainDir, srcDir, dstDir, tifNames, Dict_Files_Suffix, 
+                             Dict_Image_Settings, Dict_TrackMate_Settings, Dict_Analysis_Settings,
+                             Do_Contours = True, Do_Tracking = True, Do_TrackCleaning = True, Do_MSD = True):
+    
+    tifPaths = [os.path.join(srcDir, tifName) for tifName in tifNames]
+    fileNames = [fN.split('.')[0] for fN in tifNames]
+    
+    suffix_contour = Dict_Files_Suffix['suffix_contour']
+    suffix_mask = Dict_Files_Suffix['suffix_mask']
+    suffix_rawTracks = Dict_Files_Suffix['suffix_rawTracks']
+    suffix_cleanTracks = Dict_Files_Suffix['suffix_cleanTracks']
+    suffix_globalMsd = Dict_Files_Suffix['suffix_globalMsd']
+    suffix_globalMsdFits = Dict_Files_Suffix['suffix_globalMsdFits']
+    
+    UmPerPix = Dict_Image_Settings['UmPerPix']
+    PixPerUm = Dict_Image_Settings['PixPerUm']
+    FPS = Dict_Image_Settings['FPS']
+    
+    mask_buffer_um = Dict_Analysis_Settings['mask_buffer_um']
+    edge_buffer_cutoff_um = Dict_Analysis_Settings['edge_buffer_cutoff_um']
+    max_lagtime = Dict_Analysis_Settings['max_lagtime']
+    lowDt_upper = Dict_Analysis_Settings['lowDt_upper']
+    highDt_lower = Dict_Analysis_Settings['highDt_lower']
+    
+    #### Make and save cell contours and masks
+    if Do_Contours:
+        print(pm.BRIGHTORANGE + '\n\n1. Contours step\n' + pm.NORMAL)
+        for i in range(len(fileNames)): # len(fileNames)
+            tP, fN = tifPaths[i], fileNames[i]
+            print(pm.CYAN + f'File {i+1:.0f}/{len(fileNames):.0f} - {fN}\n' + pm.NORMAL)
+            
+            shape, dtype = ufun.tiff_inspect(tP)
+            nT = shape[0]
+            TT = range(0, nT, nT//100)
+            img = ufun.load_stack_region(tP, time_indices=TT)
+            
+            Contour_cell, Mask_cell = tbca.make_NbYolkCell_contour_and_mask(img, PixPerUm,
+                                                                            buffer_um = 0.0,
+                                                                            mode = 'dark_background', 
+                                                                            PLOT = False)
+            
+            contourFile = fN + suffix_contour + '.npy'
+            maskFile = fN + suffix_mask + '.npy'
+            np.save(os.path.join(srcDir, contourFile), Contour_cell)
+            np.save(os.path.join(srcDir, maskFile), Mask_cell)
+
+    #### Run Trackmate
+    if Do_Tracking:
+        print(pm.BRIGHTORANGE + '\n\n2. Tracking step\n' + pm.NORMAL)
+        for i in range(len(fileNames)): #len(fileNames)
+            tifPath, fN = tifPaths[i], fileNames[i]
+            print(pm.CYAN + f'\nFile {i+1:.0f}/{len(fileNames):.0f} - {fN}' + pm.NORMAL)
+            
+            rawTrackName = fN + suffix_rawTracks + '.xml'
+            maskFile = fN + suffix_mask + '.npy'
+            Mask_cell = np.load(os.path.join(srcDir, maskFile))
+            
+            tbca.pretreat_and_track_NbYolk(tifPath, rawTrackName, dstDir, PixPerUm,
+                                           Dict_TrackMate_Settings = Dict_TrackMate_Settings,
+                                           Mask_cell = Mask_cell, mask_buffer_um = mask_buffer_um,
+                                           PLOT = True, SHOWPLOT = False, SAVEPLOT = True)
+
+    #### Import & format tracks
+    if Do_TrackCleaning:
+        print(pm.BRIGHTORANGE + '\n\n3. Tracks formatting step\n' + pm.NORMAL)
+        for i in range(len(fileNames)): #len(fileNames)
+            tP, fN = tifPaths[i], fileNames[i]
+            print(pm.CYAN + f'File {i+1:.0f}/{len(fileNames):.0f} - {fN}' + pm.NORMAL)
+            img_0 = ufun.load_stack_region(tP, time_indices=[0])[0]
+            
+            rawTrackName = fN + suffix_rawTracks + '.xml'
+            cleanTrackName = fN + suffix_cleanTracks + '.csv'
+            contourPath = os.path.join(srcDir, fN + suffix_contour + '.npy')
+            
+            rawTracks = tbca.import_TrackMate_tracks(os.path.join(dstDir, rawTrackName))
+            Contour_cell = np.load(contourPath)
+            
+            
+            tbca.rawTracks_2_cleanTracks(rawTracks, dstDir, cleanTrackName,
+                                         Contour_cell, PixPerUm,
+                                         edge_buffer_cutoff_um = edge_buffer_cutoff_um, nPoints_cuttoff = 30,
+                                         RefImg = img_0, PLOT = True, SHOWPLOT = False, SAVEPLOT = True,
+                                        )
+
+    #### Import tracks, run trackpy.emsd, fit MSD
+    if Do_MSD:
+        print(pm.BRIGHTORANGE + '\n\n4. MSD compute & fit step\n' + pm.NORMAL)
+        for i in range(len(fileNames)): #len(fileNames)
+            tifPath, fN = tifPaths[i], fileNames[i]
+            print(pm.CYAN + f'File {i+1:.0f}/{len(fileNames):.0f} - {fN}' + pm.NORMAL)
+            
+            rawTrackName = fN + suffix_rawTracks + '.xml'
+            cleanTrackName = fN + suffix_cleanTracks + '.csv'
+            msdName = fN + suffix_globalMsd + '.csv'
+            msdFitsName = fN + suffix_globalMsdFits
+            
+            df = pd.read_csv(os.path.join(dstDir, cleanTrackName), sep='\t')
+            
+            res_emsd = tp.motion.emsd(df, UmPerPix, FPS, max_lagtime=max_lagtime).reset_index()
+            res_emsd.to_csv(os.path.join(dstDir, msdName), index=False, sep='\t')
+            
+            T, MSD = res_emsd['lagt'].values, res_emsd['msd'].values
+            iLow = ufun.findFirst(lowDt_upper, T) + 1
+            iHigh = ufun.findFirst(highDt_lower, T)
+            
+            parms, results = ufun.fitLineHuber(T, MSD, with_intercept = False)
+            D_linear = parms[0]/4
+            
+            parms, results = ufun.fitLineHuber(np.log(T), np.log(MSD), with_intercept = True)
+            b, a = parms
+            k_full = a
+            D_full = np.exp(b)/4
+    
+            parms, results = ufun.fitLineHuber(np.log(T[:iLow]), np.log(MSD[:iLow]), with_intercept = True)
+            b, a = parms
+            k_lowDt = a
+            D_lowDt = np.exp(b)/4
+    
+            parms, results = ufun.fitLineHuber(np.log(T[iHigh:]), np.log(MSD[iHigh:]), with_intercept = True)
+            b, a = parms
+            k_highDt = a
+            D_highDt = np.exp(b)/4
+            
+            dict_MSDfits = {
+                'max_lagtime': max_lagtime,
+                'lowDt_upper': lowDt_upper,
+                'highDt_lower': highDt_lower,
+                'D_linear': D_linear,
+                'k_full': k_full,
+                'D_full': D_full,
+                'k_lowDt': k_lowDt,
+                'D_lowDt': D_lowDt,
+                'k_highDt': k_highDt,
+                'D_highDt': D_highDt,
+                }
+            
+            ufun.dict2json(dict_MSDfits, dstDir, msdFitsName)
+
+
 # %% 1. Tracking and MSD
+
+# %%% 26-09-30_D1
 
 # %%%% Settings
 
@@ -159,166 +381,298 @@ mainDir = os.path.join(up.Path_IntraCellTracking, '26-09-30_FastAcq-Channel_Fec_
 srcDir = os.path.join(mainDir, 'D1')
 dstDir = os.path.join(mainDir, 'SPT_results')
 
-tifNames = ['26-09-30_D1_PreF_C1_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
-            '26-09-30_D1_PreF_C2_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
-            '26-09-30_D1_PreF_C3_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
-            '26-09-30_D1_PostF_10min_C4_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
-             '26-09-30_D1_PostF_13min_C4_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
-             '26-09-30_D1_PostF_18min_C4_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
-             '26-09-30_D1_PostF_25min_C4_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
-             '26-09-30_D1_PostF_30min_C4_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
-             '26-09-30_D1_PostF_35min_C4_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
-             '26-09-30_D1_PostF_40min_C4_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
-             '26-09-30_D1_PostF_40min_C4_20fps_Texp50ms_L20p2_CSU642.ome.tf2',
-             '26-09-30_D1_PostF_45min_C4_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
-             '26-09-30_D1_PostF_4min_C4_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
-             '26-09-30_D1_PostF_52min_C4_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
-             '26-09-30_D1_PostF_60min_C4_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
-             '26-09-30_D1_PostF_65min_C4_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
-             '26-09-30_D1_PostF_6min_C4_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
-             '26-09-30_D1_PostF_70min_C4_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
-             ]
-             
-
+tifNames = [
+    '26-09-30_D1_PreF_C1_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
+    '26-09-30_D1_PreF_C2_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
+    '26-09-30_D1_PreF_C3_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
+    '26-09-30_D1_PostF_4min_C4_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
+    '26-09-30_D1_PostF_6min_C4_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
+    '26-09-30_D1_PostF_10min_C4_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
+    '26-09-30_D1_PostF_13min_C4_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
+    '26-09-30_D1_PostF_18min_C4_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
+    '26-09-30_D1_PostF_25min_C4_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
+    '26-09-30_D1_PostF_30min_C4_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
+    '26-09-30_D1_PostF_35min_C4_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
+    '26-09-30_D1_PostF_40min_C4_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
+    '26-09-30_D1_PostF_45min_C4_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
+    '26-09-30_D1_PostF_52min_C4_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
+    '26-09-30_D1_PostF_60min_C4_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
+    '26-09-30_D1_PostF_65min_C4_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
+    '26-09-30_D1_PostF_70min_C4_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
+    ]
 
 tifPaths = [os.path.join(srcDir, tifName) for tifName in tifNames]
 fileNames = [fN.split('.')[0] for fN in tifNames]
 
-# rawTracksDir = 'TrackMate_raw_tracks'
-# rawTracksNames = [fN + '_TmTracks.xml' for fN in tifPaths]
-# rawTracksPaths = [os.path.join(dstDir, rawTracksDir, rtN)  for rtN in rawTracksNames]
-
-# cleanTracksDir = 'Clean_tracks'
-# cleanTracksNames = [fN + '_PyTracks.csv' for fN in tifPaths]
-# cleanTracksPaths = [os.path.join(dstDir, cleanTracksDir, ctN)  for ctN in cleanTracksNames]
-
-suffix_contour = '_cellContour'
-suffix_mask = '_cellMask'
-suffix_rawTracks = '_TmTracks'
-suffix_cleanTracks = '_PyTracks'
-suffix_globalMsd = '_GlobalMsd'
-suffix_globalMsdFits = '_GlobalMsdFits'
+Dict_Files_Suffix = {
+    'suffix_contour' : '_cellContour',
+    'suffix_mask' : '_cellMask',
+    'suffix_rawTracks' : '_TmTracks',
+    'suffix_cleanTracks' : '_PyTracks',
+    'suffix_globalMsd' : '_GlobalMsd',
+    'suffix_globalMsdFits' : '_GlobalMsdFits',
+    }
 
 #### Settings
 
 UmPerPix = cd.UmPerPix_60X_W1
-PixPerUm = 1/UmPerPix
-nbimages = 2000
-FPS = 20
+Dict_Image_Settings = {
+    'UmPerPix' : UmPerPix,
+    'PixPerUm' : 1/UmPerPix,
+    'FPS' : 20,
+    }
 
-# N_pix = 512
-# C_pix = np.median(np.arange(N_pix)) # Center (pixels)
-# L_um = N_pix*UmPerPix
+Dict_TrackMate_Settings = {
+    'IMG_UNITS' : 'PIX',
+    'RADIUS_UM' : 0.8, 
+    'THRESH_SPOT_QLT' : 0.25,
+    'THRESH_LINK_UM' : 0.25, 
+    'THRESH_MIN_DURATION' : 30,
+    }
 
-max_lagtime = 50
-lowDt_upper = 0.5
-highDt_lower = 1.0
+Dict_Analysis_Settings = {
+    'mask_buffer_um' : 2.0,
+    'edge_buffer_cutoff_um' : 3.0,
+    'max_lagtime' : 50,
+    'lowDt_upper' : 0.5,
+    'highDt_lower' : 1.0,
+    }
 
 
-# %%%% First Analysis Block (CHANGE NAME)
+# %%%% Run analysis
 
-#### Make and save cell contours and masks
-# print('\n\n1. Contours step')
-# for i in range(len(fileNames)):
-#     tN, tP, fN = tifNames[i], tifPaths[i], fileNames[i]
-#     print(i+1, len(fileNames), fN)
+NByolk_analysis_sequence(mainDir, srcDir, dstDir, tifNames, Dict_Files_Suffix, 
+                         Dict_Image_Settings, Dict_TrackMate_Settings, Dict_Analysis_Settings,
+                         Do_Contours = False, Do_Tracking = False, Do_TrackCleaning = False, Do_MSD = True)
+  
+
+# %%% 26-09-30_D2
+
+# %%%% Settings
+
+#### Paths
+mainDir = os.path.join(up.Path_IntraCellTracking, '26-09-30_FastAcq-Channel_Fec_NB-Yolk')
+srcDir = os.path.join(mainDir, 'D2')
+dstDir = os.path.join(mainDir, 'SPT_results')
+tifNames = [
+    '26-09-30_D2-R_PreF_C3_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
+    '26-09-30_D2-R_PreF_C4_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
+    '26-09-30_D2-R_PostF_4min_C5_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
+    '26-09-30_D2-R_PostF_6min_C5_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
+    '26-09-30_D2-R_PostF_8min_C5_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
+    '26-09-30_D2-R_PostF_12min_C5_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
+    '26-09-30_D2-R_PostF_15min_C5_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
+    '26-09-30_D2-R_PostF_20min_C5_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
+    '26-09-30_D2-R_PostF_25min_C5_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
+    '26-09-30_D2-R_PostF_30min_C5_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
+    '26-09-30_D2-R_PostF_36min_C5_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
+    '26-09-30_D2-R_PostF_40min_C5_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
+    '26-09-30_D2-R_PostF_45min_C5_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
+    '26-09-30_D2-R_PostF_50min_C5_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
+    '26-09-30_D2-R_PostF_53min_C5_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
+    '26-09-30_D2-R_PostF_55min_C5_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
+    '26-09-30_D2-R_PostF_60min_C5_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
+    '26-09-30_D2-R_PostF_65min_C5_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
+    ]
+
+tifPaths = [os.path.join(srcDir, tifName) for tifName in tifNames]
+fileNames = [fN.split('.')[0] for fN in tifNames]
+
+Dict_Files_Suffix = {
+    'suffix_contour' : '_cellContour',
+    'suffix_mask' : '_cellMask',
+    'suffix_rawTracks' : '_TmTracks',
+    'suffix_cleanTracks' : '_PyTracks',
+    'suffix_globalMsd' : '_GlobalMsd',
+    'suffix_globalMsdFits' : '_GlobalMsdFits',
+    }
+
+
+#### Settings
+UmPerPix = cd.UmPerPix_60X_W1
+Dict_Image_Settings = {
+    'UmPerPix' : UmPerPix,
+    'PixPerUm' : 1/UmPerPix,
+    'FPS' : 20,
+    }
+
+Dict_TrackMate_Settings = {
+    'IMG_UNITS' : 'PIX',
+    'RADIUS_UM' : 0.8, 
+    'THRESH_SPOT_QLT' : 0.25,
+    'THRESH_LINK_UM' : 0.25, 
+    'THRESH_MIN_DURATION' : 30,
+    }
+
+Dict_Analysis_Settings = {
+    'mask_buffer_um' : 2.0,
+    'edge_buffer_cutoff_um' : 3.0,
+    'max_lagtime' : 50,
+    'lowDt_upper' : 0.5,
+    'highDt_lower' : 1.0,
+    }
+
+
+# %%%% Run analysis
+
+NByolk_analysis_sequence(mainDir, srcDir, dstDir, tifNames, Dict_Files_Suffix, 
+                         Dict_Image_Settings, Dict_TrackMate_Settings, Dict_Analysis_Settings,
+                         Do_Contours = False, Do_Tracking = False, Do_TrackCleaning = False, Do_MSD = True)
+
+
+# %%%% Import MSD & plot
     
-#     shape, dtype = ufun.tiff_inspect(tP)
-#     nT = shape[0]
-#     TT = range(0, nT, nT//100)
-#     img = ufun.load_stack_region(tP, time_indices=TT)
-    
-#     Contour_cell, Mask_cell = tbca.make_NbYolkCell_contour_and_mask(img, PixPerUm,
-#                                                                     mode = 'dark_background', 
-#                                                                     PLOT = False)
-    
-#     contourFile = fN + suffix_contour + '.npy'
-#     maskFile = fN + suffix_mask + '.npy'
-#     np.save(os.path.join(srcDir, contourFile), Contour_cell)
-#     np.save(os.path.join(srcDir, maskFile), Mask_cell)
+max_lagtime = Dict_Analysis_Settings['max_lagtime']
+lowDt_upper = Dict_Analysis_Settings['lowDt_upper']
+highDt_lower = Dict_Analysis_Settings['highDt_lower']
 
+fig, ax = plt.subplots(1, 1, figsize=(7, 5))
+ax.set_xscale('log')
+ax.set_yscale('log')
 
-#### Run Trackmate
-print('\n\n2. Tracking step')
+dict_res = {
+    'label'  : [],
+    'D_full' : [],
+    'k_full' : [],
+    'D_lowDt': [],
+    'k_lowDt': [],
+    'D_highDt':[],
+    'k_highDt':[],
+    }
+
+ColorList = list(sns.color_palette("husl", len(fileNames)))
+
 for i in range(len(fileNames)):
-    tifPath, fN = tifPaths[i], fileNames[i]
-    print(i+1, len(fileNames), fN)
-    
-    rawTrackName = fN + suffix_rawTracks + '.xml'
-    maskFile = fN + suffix_mask + '.npy'
-    Mask_cell = np.load(os.path.join(srcDir, maskFile))
-    
-    tbca.pretreat_and_track_NbYolk(tifPath, rawTrackName, dstDir, 
-                                   Mask_cell = Mask_cell,
-                                   PLOT = True, SAVEPLOT = True)
-
-
-#### Import & format tracks
-print('\n\n3. Tracks formatting step')
-for i in range(len(fileNames)):
-    tifPath, fN = tifPaths[i], fileNames[i]
-    print(i+1, len(fileNames), fN)
-    
-    rawTrackName = fN + suffix_rawTracks + '.xml'
-    cleanTrackName = fN + suffix_cleanTracks + '.csv'
-    contourPath = os.path.join(srcDir, fN + suffix_contour + '.npy')
-    
-    rawTracks = tbca.import_TrackMate_tracks(os.path.join(dstDir, rawTrackName))
-    Contour_cell = np.load(contourPath)
-    
-    tbca.rawTracks_2_cleanTracks(rawTracks, dstDir, cleanTrackName,
-                                 Contour_cell, PixPerUm,
-                                 edgeBuffer_cutoff = 2.5, nPoints_cuttoff = 30,
-                                )
-
-#### Import tracks, run trackpy.emsd, fit MSD
-print('\n\n3. MSD conpute step')
-for i in range(len(fileNames)):
-    tifPath, fN = tifPaths[i], fileNames[i]
-    print(i+1, len(fileNames), fN)
-    
-    rawTrackName = fN + suffix_rawTracks + '.xml'
-    cleanTrackName = fN + suffix_cleanTracks + '.csv'
-    msdName = fN + suffix_globalMsd + '.csv'
-    msdFitsName = fN + suffix_globalMsdFits
+    tP, fN = tifPaths[i], fileNames[i]
+    cleanTrackName = fN + Dict_Files_Suffix['suffix_cleanTracks'] + '.csv'
+    msdName = fN + Dict_Files_Suffix['suffix_globalMsd'] + '.csv'
+    msdFitsName = fN + Dict_Files_Suffix['suffix_globalMsdFits']
     
     df = pd.read_csv(os.path.join(dstDir, cleanTrackName), sep='\t')
+    res_emsd = pd.read_csv(os.path.join(dstDir, msdName), sep='\t')
+    T, MSD = res_emsd['lagt'], res_emsd['msd']
     
-    res_emsd = tp.motion.emsd(df, UmPerPix, FPS, max_lagtime=max_lagtime).reset_index()
-    res_emsd.to_csv(os.path.join(dstDir, msdName), index=False, sep='\t')
+    dict_MSDfits = ufun.json2dict(dstDir, msdFitsName)
+    D_linear = dict_MSDfits['D_linear']
+    k_full = dict_MSDfits['k_full']
+    D_full = dict_MSDfits['D_full']
+    k_lowDt = dict_MSDfits['k_lowDt']
+    D_lowDt = dict_MSDfits['D_lowDt']
+    k_highDt = dict_MSDfits['k_highDt']
+    D_highDt = dict_MSDfits['D_highDt']
     
-    T, MSD = res_emsd['lagt'].values, res_emsd['msd'].values
-    iLow = ufun.findFirst(lowDt_upper, T) + 1
-    iHigh = ufun.findFirst(highDt_lower, T)
-    
-    parms, results = ufun.fitLineHuber(T, MSD, with_intercept = False)
-    D_linear = parms[0]/4
-    
-    parms, results = ufun.fitLineHuber(np.log(T), np.log(MSD), with_intercept = True)
-    b, a = parms
-    k_full = a
-    D_full = np.exp(b)/4
+    Tc = (D_lowDt/D_highDt)**(1/(k_highDt-k_lowDt))
 
-    parms, results = ufun.fitLineHuber(np.log(T[:iLow]), np.log(MSD[:iLow]), with_intercept = True)
-    b, a = parms
-    k_lowDt = a
-    D_lowDt = np.exp(b)/4
+    long_label = '_'.join(fN.split('_')[2:4])
+    short_label = fN.split('_')[3]
 
-    parms, results = ufun.fitLineHuber(np.log(T[iHigh:]), np.log(MSD[iHigh:]), with_intercept = True)
-    b, a = parms
-    k_highDt = a
-    D_highDt = np.exp(b)/4
+    ax.plot(T, MSD, label=long_label, color=ColorList[i], 
+            marker='o', markersize=3, alpha=0.85)
     
-    dict_MSDfits = {'D_linear': D_linear,
-                    'k_full': k_full,
-                    'D_full': D_full,
-                    'k_lowDt': k_lowDt,
-                    'D_lowDt': D_lowDt,
-                    'k_highDt': k_highDt,
-                    'D_highDt': D_highDt,}
+    dict_res['label'].append(short_label)
+    dict_res['D_full'].append(D_full)
+    dict_res['k_full'].append(k_full)
+    dict_res['D_lowDt'].append(D_lowDt)
+    dict_res['k_lowDt'].append(k_lowDt)
+    dict_res['D_highDt'].append(D_highDt)
+    dict_res['k_highDt'].append(k_highDt)
     
-    ufun.dict2json(dict_MSDfits, dstDir, msdFitsName)
+
+Xp1 = np.array([1e-1, 5e-1])
+Xp2 = np.array([1, 2])
+ax.plot(Xp1, 12e-3*Xp1**0.5, color = 'gray', ls=':', label=r'$y \propto x^{1/2}$')
+ax.plot(Xp2, 0.15e-1*Xp2**1, color = 'gray', ls='--', label=r'$y \propto x^{1}$')
+ax.legend(loc='center left', bbox_to_anchor=(1, 0.5), fontsize=8)
+ax.grid()
+# ax.set_xlim([0.4e-1, 0.6e1])
+# ax.set_ylim([2e-3, 0.5e0])
+ax.set_ylabel('MSD (µm²)')
+ax.set_xlabel(r'$\Delta t$ (s)')
+
+plt.show()
+
+
+df_Diffusion = pd.DataFrame(dict_res)
+df_Diffusion['Tpf_s'] = df_Diffusion['label'].apply(lambda x : Tpf_str2num(x))
+df_Diffusion['Tpf_min'] = df_Diffusion['Tpf_s']/60
+
+fig, axes = plt.subplots(2, 1, figsize=(7, 6), sharex = True, layout='compressed')
+ax = axes[0]
+ax.plot(df_Diffusion.Tpf_min, df_Diffusion.D_full, ls='-', marker='o', label=r'All $\Delta t$')
+ax.plot(df_Diffusion.Tpf_min, df_Diffusion.D_lowDt, ls='-', marker='o', label=r'$\Delta t \leq 0.5s$')
+ax.plot(df_Diffusion.Tpf_min, df_Diffusion.D_highDt, ls='-', marker='o', label=r'$\Delta t \geq 1s$')
+ax.set_ylabel(r'$D_{eff}\ (\mu m^2/s^\alpha)$')
+ax.legend(loc='center left', bbox_to_anchor=(1, 0.5))
+ax.grid()
+
+ax = axes[1]
+ax.plot(df_Diffusion.Tpf_min, df_Diffusion.k_full, ls='-', marker='o', label=r'All $\Delta t$')
+ax.plot(df_Diffusion.Tpf_min, df_Diffusion.k_lowDt, ls='-', marker='o', label=r'$\Delta t \leq 0.5s$')
+ax.plot(df_Diffusion.Tpf_min, df_Diffusion.k_highDt, ls='-', marker='o', label=r'$\Delta t \geq 1s$')
+ax.set_ylabel(r'$\alpha$')
+ax.set_xticks(df_Diffusion['Tpf_min'].values)
+ax.set_xticklabels(df_Diffusion['Tpf_min'].values.astype(int), rotation = 30)
+ax.set_xlabel('Tpf (min)')
+ax.legend(loc='center left', bbox_to_anchor=(1, 0.5))
+ax.grid()
+
+plt.show()
+
+
+# %%%% MSRD functions -> Not working
+
+pm.setGraphicOptions(mode='screen')
+
+i = 13
+
+# for i in range(len(fileNames)):
+tP, fN = tifPaths[i], fileNames[i]
+cleanTrackName = fN + Dict_Files_Suffix['suffix_cleanTracks'] + '.csv'
+df = pd.read_csv(os.path.join(dstDir, cleanTrackName), sep='\t')
+
+PixPerUm = Dict_Image_Settings['PixPerUm']
+FPS = Dict_Image_Settings['FPS']
+shape, dtype = ufun.tiff_inspect(tP)
+Nframes = shape[0]
+
+# top = time.time()
+# dict_TRanges2pairs_N = tbca.get_pairs_for_TRanges(df, SCALE, FPS, Nframes,
+#                           len_TRanges = 100, delta_TRanges = -1,
+#                           dist_th_um = 5)
+# print(f'Dt = {time.time()-top:.3f} s')
+
+list_TRanges, list_Pairs = tbca.get_pairs_for_TRanges_Delaunay(
+    df, PixPerUm, FPS, Nframes,
+    len_TRanges = 100, 
+    delta_TRanges = -1,
+    dist_th_um = 4
+    )
+
+pairMSD = []
+for k, TRange in enumerate(list_TRanges):
+    pairs = list_Pairs[k]
+    df_pairs = tbca.get_relative_displacement_by_TRange(df, pairs, TRange)
+    res_pair_emsd = tp.motion.emsd(df_pairs.rename(columns={'pair_id':'particle'}), 
+                                   UmPerPix, FPS, max_lagtime=50).reset_index()
+    pairMSD[k] = res_pair_emsd
+
+
+# Plot
+fig, ax = plt.subplots(1, 1, figsize=(5, 5))
+ax.set_xscale('log')
+ax.set_yscale('log')
+
+for k, TRange in enumerate(list_TRanges):
+    res_pair_emsd = pairMSD[k]
+    ax.plot(res_pair_emsd.lagt, res_pair_emsd.msd, ls='', marker='.', label=TRange)
     
+ax.grid()
+ax.legend(loc='center left', bbox_to_anchor=(1, 0.5))
+
+plt.show()
+
+
+# %%% TBD
     
 # %%%% Import MSD & plot
     
@@ -774,78 +1128,35 @@ Nframes = 2000
 FPS = 10
 
 top = time.time()
-dict_TRanges2pairs_N = get_pairs_for_TRanges(df, SCALE, FPS, Nframes,
+dict_TRanges2pairs_N = tbca.get_pairs_for_TRanges(df, SCALE, FPS, Nframes,
                           len_TRanges = 100, delta_TRanges = -1,
                           dist_th_um = 5)
 print(f'Dt = {time.time()-top:.3f} s')
 
 top = time.time()
-dict_TRanges2pairs_D = get_pairs_for_TRanges_Delaunay(df, SCALE, FPS, Nframes,
+dict_TRanges2pairs_D = tbca.get_pairs_for_TRanges_Delaunay(df, SCALE, FPS, Nframes,
                           len_TRanges = 100, delta_TRanges = -1,
                           dist_th_um = 5)
 print(f'Dt = {time.time()-top:.3f} s')
 
+
+
 # %%%% MSRD functions II
 
 
-def get_pairsXY_byTRange(df, pairs, TRange):
-    df.frame = df.frame.astype(int)
-    df.particle = df.particle.astype(int)
-    
-    FI, FF = np.array(TRange.split('_')).astype(int)
-    # T_array = np.arange(FI, FF)-1 
-    T_array_shifted = np.arange(0, FF-FI)
-    
-    ids_in_pairs = np.unique(pairs.flatten())
 
-    df_f = df
-    df_f = df_f[df_f['frame'].apply(lambda x : FI <= (x-1) < FF)]
-    df_f = df_f[df_f['particle'].apply(lambda x : x in ids_in_pairs)]
-    
-    # pair_2_pairId = {pairs[i] : i for i in range(len(pairs))}
-    # pairs[pairId] = pair
-    # pair_2_pairId[pair] = pairId
-    
-    # df_pairs = pd.DataFrame({'pair_id':[],'x':[],'y':[],'frame':[],})
-    list_df_pairs = []
-    
-    for i in range(len(pairs)):
-        pair = pairs[i]
-        # i = pairId
-        id1, id2 = pair
-        idx1, idx2 = (df_f['particle']==id1), (df_f['particle']==id2)
-        Xpair = df_f[idx2]['x'].values-df_f[idx1]['x'].values
-        Ypair = df_f[idx2]['y'].values-df_f[idx1]['y'].values
-        
-        N = len(T_array_shifted)
-        
-        # df_pairs = pd.concat([df_pairs, pd.DataFrame(
-        #                                              {'pair_id':np.ones(N, dtype=int)*i,
-        #                                               'x':Xpair, 'y':Ypair,
-        #                                               'frame':T_array_shifted,}
-        #                                              )],
-        #                      axis=0)
-        list_df_pairs.append(pd.DataFrame({'pair_id':np.ones(N, dtype=int)*i,
-                                           'x':Xpair, 'y':Ypair,
-                                           'frame':T_array_shifted + 1,}
-                                          ))
-        
-    df_pairs = pd.concat(list_df_pairs, axis=0)
-    return(df_pairs)
 
 pm.setGraphicOptions(mode='screen')
 
 TRanges = np.array(list(dict_TRanges2pairs_D.keys()))
 dict_TRanges2pairMSD = {}
 
-
-
 for TRange in TRanges:
 
     pairs = dict_TRanges2pairs_D[TRange]
 
     # top = time.time()
-    df_pairs = get_pairsXY_byTRange(df, pairs, TRange)
+    df_pairs = tbca.get_relative_displacement_by_TRange(df, pairs, TRange)
     # print(f'Dt = {time.time()-top:.3f} s')
     
     # top = time.time()
