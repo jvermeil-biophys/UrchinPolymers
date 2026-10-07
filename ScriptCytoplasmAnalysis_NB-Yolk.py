@@ -363,6 +363,106 @@ NByolk_analysis_sequence(mainDir, srcDir, dstDir, tifNames, Dict_Files_Suffix,
                          Do_Contours = False, Do_Tracking = False, Do_TrackCleaning = False, Do_MSD = True)
   
 
+# %%%% Import MSD & plot
+    
+max_lagtime = Dict_Analysis_Settings['max_lagtime']
+lowDt_upper = Dict_Analysis_Settings['lowDt_upper']
+highDt_lower = Dict_Analysis_Settings['highDt_lower']
+
+fig, ax = plt.subplots(1, 1, figsize=(7, 5))
+ax.set_xscale('log')
+ax.set_yscale('log')
+
+dict_res = {
+    'label'  : [],
+    'D_full' : [],
+    'k_full' : [],
+    'D_lowDt': [],
+    'k_lowDt': [],
+    'D_highDt':[],
+    'k_highDt':[],
+    }
+
+ColorList = list(sns.color_palette("husl", len(fileNames)))
+
+for i in range(len(fileNames)):
+    tP, fN = tifPaths[i], fileNames[i]
+    cleanTrackName = fN + Dict_Files_Suffix['suffix_cleanTracks'] + '.csv'
+    msdName = fN + Dict_Files_Suffix['suffix_globalMsd'] + '.csv'
+    msdFitsName = fN + Dict_Files_Suffix['suffix_globalMsdFits']
+    
+    df = pd.read_csv(os.path.join(dstDir, cleanTrackName), sep='\t')
+    res_emsd = pd.read_csv(os.path.join(dstDir, msdName), sep='\t')
+    T, MSD = res_emsd['lagt'], res_emsd['msd']
+    
+    dict_MSDfits = ufun.json2dict(dstDir, msdFitsName)
+    D_linear = dict_MSDfits['D_linear']
+    k_full = dict_MSDfits['k_full']
+    D_full = dict_MSDfits['D_full']
+    k_lowDt = dict_MSDfits['k_lowDt']
+    D_lowDt = dict_MSDfits['D_lowDt']
+    k_highDt = dict_MSDfits['k_highDt']
+    D_highDt = dict_MSDfits['D_highDt']
+    
+    Tc = (D_lowDt/D_highDt)**(1/(k_highDt-k_lowDt))
+
+    long_label = '_'.join(fN.split('_')[2:4])
+    short_label = fN.split('_')[3]
+
+    ax.plot(T, MSD, label=long_label, color=ColorList[i], 
+            marker='o', markersize=3, alpha=0.85)
+    
+    dict_res['label'].append(short_label)
+    dict_res['D_full'].append(D_full)
+    dict_res['k_full'].append(k_full)
+    dict_res['D_lowDt'].append(D_lowDt)
+    dict_res['k_lowDt'].append(k_lowDt)
+    dict_res['D_highDt'].append(D_highDt)
+    dict_res['k_highDt'].append(k_highDt)
+    
+
+Xp1 = np.array([1e-1, 5e-1])
+Xp2 = np.array([1, 2])
+ax.plot(Xp1, 12e-3*Xp1**0.5, color = 'gray', ls=':', label=r'$y \propto x^{1/2}$')
+ax.plot(Xp2, 0.15e-1*Xp2**1, color = 'gray', ls='--', label=r'$y \propto x^{1}$')
+ax.legend(loc='center left', bbox_to_anchor=(1, 0.5), fontsize=8)
+ax.grid()
+# ax.set_xlim([0.4e-1, 0.6e1])
+# ax.set_ylim([2e-3, 0.5e0])
+ax.set_ylabel('MSD (µm²)')
+ax.set_xlabel(r'$\Delta t$ (s)')
+
+plt.show()
+
+
+df_Diffusion = pd.DataFrame(dict_res)
+df_Diffusion['Tpf_s'] = df_Diffusion['label'].apply(lambda x : Tpf_str2num(x))
+df_Diffusion['Tpf_min'] = df_Diffusion['Tpf_s']/60
+
+fig, axes = plt.subplots(2, 1, figsize=(7, 6), sharex = True, layout='compressed')
+ax = axes[0]
+ax.plot(df_Diffusion.Tpf_min, df_Diffusion.D_full, ls='-', marker='o', label=r'All $\Delta t$')
+ax.plot(df_Diffusion.Tpf_min, df_Diffusion.D_lowDt, ls='-', marker='o', label=r'$\Delta t \leq 0.5s$')
+ax.plot(df_Diffusion.Tpf_min, df_Diffusion.D_highDt, ls='-', marker='o', label=r'$\Delta t \geq 1s$')
+ax.set_ylabel(r'$D_{eff}\ (\mu m^2/s^\alpha)$')
+ax.legend(loc='center left', bbox_to_anchor=(1, 0.5))
+ax.grid()
+
+ax = axes[1]
+ax.plot(df_Diffusion.Tpf_min, df_Diffusion.k_full, ls='-', marker='o', label=r'All $\Delta t$')
+ax.plot(df_Diffusion.Tpf_min, df_Diffusion.k_lowDt, ls='-', marker='o', label=r'$\Delta t \leq 0.5s$')
+ax.plot(df_Diffusion.Tpf_min, df_Diffusion.k_highDt, ls='-', marker='o', label=r'$\Delta t \geq 1s$')
+ax.set_ylabel(r'$\alpha$')
+ax.set_xticks(df_Diffusion['Tpf_min'].values)
+ax.set_xticklabels(df_Diffusion['Tpf_min'].values.astype(int), rotation = 30)
+ax.set_xlabel('Tpf (min)')
+ax.legend(loc='center left', bbox_to_anchor=(1, 0.5))
+ax.grid()
+
+plt.show()
+
+
+
 # %%% 26-09-30_D2
 
 # %%%% Settings
@@ -563,19 +663,31 @@ for k, TRange in enumerate(list_TRanges):
     pairs = list_Pairs[k]
     df_pairs = tbca.get_relative_displacement_by_TRange(df, pairs, TRange)
     res_pair_emsd = tp.motion.emsd(df_pairs.rename(columns={'pair_id':'particle'}), 
-                                   UmPerPix, FPS, max_lagtime=50).reset_index()
+                                   UmPerPix, FPS, max_lagtime=80).reset_index()
     pairMSD.append(res_pair_emsd)
 
+df_allTRange_pair_MSD = pd.concat([pairMSD[0]['lagt']] + [df['msd'] for df in pairMSD], axis=1)
+df_allTRange_pair_MSD.columns = ['lagt'] + [f'msd_{tr}' for tr in list_TRanges]
+median_msd = np.median(df_allTRange_pair_MSD.loc[:, [f'msd_{tr}' for tr in list_TRanges]].to_numpy(), 
+                       axis = 1)
+mean_msd = np.mean(df_allTRange_pair_MSD.loc[:, [f'msd_{tr}' for tr in list_TRanges]].to_numpy(), 
+                       axis = 1)
+df_allTRange_pair_MSD['msd_median'] = median_msd
+df_allTRange_pair_MSD['msd_mean'] = mean_msd
 
 # Plot
-fig, ax = plt.subplots(1, 1, figsize=(5, 5))
+fig, ax = plt.subplots(1, 1, figsize=(7 , 5))
 ax.set_xscale('log')
 ax.set_yscale('log')
 
 for k, TRange in enumerate(list_TRanges):
     res_pair_emsd = pairMSD[k]
     ax.plot(res_pair_emsd.lagt, res_pair_emsd.msd, ls='', marker='.', label=TRange)
-    
+  
+ax.plot(df_allTRange_pair_MSD['lagt'], df_allTRange_pair_MSD['msd_median'], 
+        ls='', marker='.', color='k', label='Median')
+ax.plot(df_allTRange_pair_MSD['lagt'], df_allTRange_pair_MSD['msd_mean'], 
+        ls='', marker='.', color='w', mec='k', mew=0.2, label='Mean')
 ax.grid()
 ax.legend(loc='center left', bbox_to_anchor=(1, 0.5))
 
