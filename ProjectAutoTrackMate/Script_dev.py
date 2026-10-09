@@ -257,6 +257,13 @@ def runTrackMate(tif_file, xmlPath, Pix_Per_Um,
     # from fiji.plugin.trackmate.visualization.table import TrackTableView
     # from fiji.plugin.trackmate.action import ExportTracksToXML
     
+# =============================================================================
+#     Geometry:
+#   X =  209 -  381, dx = 0,108333
+#   Y =  317 -  512, dy = 0,108333
+#   Z =    0 -    0, dz = 1,00000
+#   T =    0 - 1999, dt = 0,0500075
+# =============================================================================
     
     # Initiate
     model = Model()

@@ -132,6 +132,7 @@ def get_cell_inner_circle(img, PLOT = False):
     return(contour)
 
 
+
 def make_NbYolkCell_contour_and_mask(img, PixPerUm,
                                      mode = 'dark_background', 
                                      buffer_um = 0,
@@ -997,7 +998,7 @@ def pretreat_image_for_TrackMate(tifPath, **kwargs):
 
 
 def runTrackMate(tif_file, xmlPath, Pix_Per_Um,
-                 IMG_UNITS = 'PIX',
+                 # IMG_UNITS = 'PIX',
                  RADIUS_UM = 1.0, 
                  THRESH_SPOT_QLT = 1.0,
                  THRESH_LINK_UM = 0.2, 
@@ -1050,15 +1051,17 @@ def runTrackMate(tif_file, xmlPath, Pix_Per_Um,
     
     settings = Settings(imp)
     
-    # Convert thresholds from Um to Pix if necessary
-    if IMG_UNITS == 'PIX':
-        RADIUS = Pix_Per_Um * RADIUS_UM
-        THRESH_LINK = Pix_Per_Um * THRESH_LINK_UM
-    elif IMG_UNITS == 'UM':
-        RADIUS = RADIUS_UM
-        THRESH_LINK = THRESH_LINK_UM
-    else:
-        raise ValueError("Setting variable IMG_UNITS should be equal to 'PIX' or 'UM'")
+    # # Convert thresholds from Um to Pix if necessary
+    # if IMG_UNITS == 'PIX':
+    #     RADIUS = Pix_Per_Um * RADIUS_UM
+    #     THRESH_LINK = Pix_Per_Um * THRESH_LINK_UM
+    # elif IMG_UNITS == 'UM':
+    #     RADIUS = RADIUS_UM
+    #     THRESH_LINK = THRESH_LINK_UM
+    # else:
+    #     raise ValueError("Setting variable IMG_UNITS should be equal to 'PIX' or 'UM'")
+    RADIUS = RADIUS_UM
+    THRESH_LINK = THRESH_LINK_UM
     
     # Configure detector
     settings.detectorFactory = LogDetectorFactory()
