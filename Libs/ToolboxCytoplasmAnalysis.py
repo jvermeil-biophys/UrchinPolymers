@@ -67,22 +67,22 @@ FPS = 1
 
 # %% Imports 2
 
-os.environ["JAVA_HOME"] = up.Path_JAVA_HOME
+# os.environ["JAVA_HOME"] = up.Path_JAVA_HOME
 
-import imagej
-import scyjava as sj
+# import imagej
+# import scyjava as sj
 
-# import random
-sj.config.add_options('-Xmx32g')
+# # import random
+# sj.config.add_options('-Xmx12g')
 
 
 
-# initialize ImageJ
-# ij = imagej.init()
-# ij = imagej.init('sc.fiji:fiji')
-ij = imagej.init(up.Path_Fiji, add_legacy=False)
+# # initialize ImageJ
+# # ij = imagej.init()
+# # ij = imagej.init('sc.fiji:fiji')
+# ij = imagej.init(up.Path_Fiji, add_legacy=False)
 
-print(f"ImageJ version: {ij.getVersion()}")
+# print(f"ImageJ version: {ij.getVersion()}")
 
 
 # %% I. Single Particle Tracking
