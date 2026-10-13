@@ -33,7 +33,6 @@ import matplotlib.pyplot as plt
 import xml.etree.ElementTree as ET
 
 
-
 import os
 import re
 import json
@@ -162,7 +161,6 @@ def dict2json(d, dirPath, fileName):
             pass
     with open(os.path.join(dirPath, fileName + '.json'), 'w') as fp:
         json.dump(d, fp, indent=4)
-        
         
 def json2dict(dirPath, fileName):
     with open(os.path.join(dirPath, fileName + '.json'), 'r') as fp:
