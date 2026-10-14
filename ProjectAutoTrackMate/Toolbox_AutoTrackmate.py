@@ -1,8 +1,22 @@
 # -*- coding: utf-8 -*-
 """
-Created on Tue Oct 13 11:16:54 2026
+Created on Tue Nov 23 16:50:16 2021
+@authors: Joseph Vermeil
 
-@author: josep
+Toolbox_AutoTrackmate.py - DESCRIPTION
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation, either version 3 of the License, or
+(at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with this program.  If not, see <https://www.gnu.org/licenses/>.
 """
 
 # %% Imports
@@ -10,7 +24,7 @@ Created on Tue Oct 13 11:16:54 2026
 import os
 import cv2
 import sys
-# import json
+import json
 import tifffile
 import alphashape
 
@@ -27,22 +41,10 @@ from PIL import Image, ImageDraw
 
 from shapely.geometry import Polygon, MultiPoint
 
-# import Libs.PlotMaker as pm
-# import Libs.UrchinPaths as up
-# import Libs.CalibrationData as cd
-# import Libs.UtilityFunctions as ufun
-# import Libs.ToolboxCytoplasmAnalysis as tbca
-# import Libs.ToolboxStructureAnalysis as tbsa
-
-# %% Main Paths
-
-
-
-
 # %% Imports 2
 
-Path_Fiji = "C:\\Users\\josep\\Desktop\\Fiji.app\\"
-Path_JAVA_HOME = "C:\\Users\\josep\\miniforge3\\envs\\pyimagej-env\\Library\\lib\\jvm"
+Path_Fiji = "C:\\Users\\Utilisateur\\Desktop\\Fiji_stable.app"
+Path_JAVA_HOME = "C:\\Users\\Utilisateur\\miniforge3\\envs\\pyimagej-env\\Library\\lib\\jvm"
 
 os.environ["JAVA_HOME"] = Path_JAVA_HOME
 
@@ -50,7 +52,7 @@ import imagej
 import scyjava as sj
 
 # initialize ImageJ
-sj.config.add_options('-Xmx15g') # Digits are the amount of RAM assigned
+sj.config.add_options('-Xmx12g') # Digits are the amount of RAM assigned
 ij = imagej.init(Path_Fiji, add_legacy=False)
 
 print(f"ImageJ version: {ij.getVersion()}") # Should return: ImageJ version: 2.16.0/1.54p
@@ -58,16 +60,46 @@ print(f"ImageJ version: {ij.getVersion()}") # Should return: ImageJ version: 2.1
 
 # %% Microscope scales
 
-SCALE_20X_Leica = 2.169
-UmPerPix_20X_Leica = 1/SCALE_20X_Leica
+# LEICA
+PixPerUm_10X_Leica = 1.1
+PixPerUm_20X_Leica = 2.203
+PixPerUm_40X_Leica = 4.292
+UmPerPix_10X_Leica = 1/PixPerUm_10X_Leica
+UmPerPix_20X_Leica = 1/PixPerUm_20X_Leica
+UmPerPix_40X_Leica = 1/PixPerUm_40X_Leica
 
-SCALE_40X_Leica = 4.3725
-UmPerPix_40X_Leica = 1/SCALE_40X_Leica
+# X1 (NIKON1)
+PixPerUm_20X_X1 = 3.7
+PixPerUm_40X_X1 = 7.5
+PixPerUm_60X_X1 = 11.2
+PixPerUm_100X_X1 = 18.3
+UmPerPix_20X_X1 = 1/PixPerUm_20X_X1
+UmPerPix_40X_X1 = 1/PixPerUm_40X_X1
+UmPerPix_60X_X1 = 1/PixPerUm_60X_X1
+UmPerPix_100X_X1 = 1/PixPerUm_100X_X1
 
-SCALE_60X_W1 = 9.26
-UmPerPix_60X_W1 = 1/SCALE_60X_W1
+# NIKON2
+PixPerUm_10X_Nikon2 = 1.55
+PixPerUm_20X_Nikon2 = 3.08445
+PixPerUm_40X_Nikon2 = 6.1
+PixPerUm_100X_Nikon2 = 15.3
+UmPerPix_10X_Nikon2 = 1/PixPerUm_10X_Nikon2
+UmPerPix_20X_Nikon2 = 1/PixPerUm_20X_Nikon2
+UmPerPix_40X_Nikon2 = 1/PixPerUm_40X_Nikon2
+UmPerPix_100X_Nikon2 = 1/PixPerUm_100X_Nikon2
 
-# %% Graphic constants
+# W1 (NIKON3)
+PixPerUm_20X_W1 = 3.086
+PixPerUm_40X_W1 = 6.135
+PixPerUm_60X_W1 = 9.26
+PixPerUm_100X_W1 = 15.601
+UmPerPix_20X_W1 = 1/PixPerUm_20X_W1
+UmPerPix_40X_W1 = 1/PixPerUm_40X_W1
+UmPerPix_60X_W1 = 1/PixPerUm_60X_W1
+UmPerPix_100X_W1 = 1/PixPerUm_100X_W1
+
+
+# %% Graphic settings
 
 palette_Set2 = sns.color_palette("Set2")
 cL_Set2 = palette_Set2.as_hex()
@@ -92,19 +124,52 @@ BRIGHTRED = '\033[1;31m' # red
 BRIGHTORANGE = '\033[1;33m' # orange
 DARKPURPLE = '\033[1;35m' # purple
 
-
-# %% 0. Base subfunctions
-
-# def list2json(L, dirPath, fileName):
-#     L = list(L)
-#     with open(os.path.join(dirPath, fileName + '.json'), 'w') as fp:
-#         json.dump(L, fp, indent=4)
+def setGraphicOptions(mode = 'screen', palette = 'Set2', colorList = cL_Set21):
+    if mode == 'screen':
+        SMALLER_SIZE = 10
+        SMALL_SIZE = 12
+        MEDIUM_SIZE = 14
+        BIGGER_SIZE = 16
+    if mode == 'screen_big':
+        SMALLER_SIZE = 12
+        SMALL_SIZE = 14
+        MEDIUM_SIZE = 16
+        BIGGER_SIZE = 20
+    elif mode == 'print':
+        SMALLER_SIZE = 8
+        SMALL_SIZE = 10
+        MEDIUM_SIZE = 11
+        BIGGER_SIZE = 12
         
-# def json2list(dirPath, fileName):
-#     with open(os.path.join(dirPath, fileName + '.json'), 'r') as fp:
-#         L = json.load(fp)
-#     L = list(L)
-#     return(L)
+    plt.rc('font', size=SMALL_SIZE)          # controls default text sizes
+    plt.rc('axes', titlesize=SMALL_SIZE)     # fontsize of the axes title
+    plt.rc('axes', labelsize=SMALL_SIZE)    # fontsize of the x and y labels
+    plt.rc('xtick', labelsize=SMALLER_SIZE)    # fontsize of the tick labels
+    plt.rc('ytick', labelsize=SMALLER_SIZE)    # fontsize of the tick labels
+    plt.rc('legend', fontsize=SMALLER_SIZE)    # legend fontsize
+    plt.rc('figure', titlesize=MEDIUM_SIZE)  # fontsize of the figure title
+    
+    sns.set_palette(sns.color_palette(palette))
+    mpl.rcParams['axes.prop_cycle'] = mpl.cycler(color=colorList) 
+
+
+
+
+# %% Base subfunctions
+
+
+def list2json(L, filePath):
+    L = list(L)
+    with open(filePath, 'w') as fp:
+        json.dump(L, fp, indent=4)
+        
+
+def json2list(filePath):
+    with open(filePath, 'r') as fp:
+        L = json.load(fp)
+    L = list(L)
+    return(L)
+
 
 def tiff_inspect(filepath):
     with tifffile.TiffFile(filepath) as tif:
@@ -180,35 +245,6 @@ def mask_to_contour(mask, keep_only_longest_contour = True):
             FoundContours = FoundContours[im]
             
     return(FoundContours)
-
-
-def setGraphicOptions(mode = 'screen', palette = 'Set2', colorList = cL_Set21):
-    if mode == 'screen':
-        SMALLER_SIZE = 10
-        SMALL_SIZE = 12
-        MEDIUM_SIZE = 14
-        BIGGER_SIZE = 16
-    if mode == 'screen_big':
-        SMALLER_SIZE = 12
-        SMALL_SIZE = 14
-        MEDIUM_SIZE = 16
-        BIGGER_SIZE = 20
-    elif mode == 'print':
-        SMALLER_SIZE = 8
-        SMALL_SIZE = 10
-        MEDIUM_SIZE = 11
-        BIGGER_SIZE = 12
-        
-    plt.rc('font', size=SMALL_SIZE)          # controls default text sizes
-    plt.rc('axes', titlesize=SMALL_SIZE)     # fontsize of the axes title
-    plt.rc('axes', labelsize=SMALL_SIZE)    # fontsize of the x and y labels
-    plt.rc('xtick', labelsize=SMALLER_SIZE)    # fontsize of the tick labels
-    plt.rc('ytick', labelsize=SMALLER_SIZE)    # fontsize of the tick labels
-    plt.rc('legend', fontsize=SMALLER_SIZE)    # legend fontsize
-    plt.rc('figure', titlesize=MEDIUM_SIZE)  # fontsize of the figure title
-    
-    sns.set_palette(sns.color_palette(palette))
-    mpl.rcParams['axes.prop_cycle'] = mpl.cycler(color=colorList) 
 
 
 
@@ -474,7 +510,6 @@ def get_N_random_square_ROIs_in_cell(mask, L, N,
     if PLOT:
         plt.show()
     
-    list_rois = np.array(list_rois)
     return(list_rois)
 
 
@@ -583,6 +618,7 @@ def export_as_TrackMate_tracks(tracks,
     )
 
 
+
 def run_TrackMate(imp, xmlPath, PixPerUm,  # tif_file
                  ROI = None,
                  RADIUS_UM = 1.0, 
@@ -640,16 +676,7 @@ def run_TrackMate(imp, xmlPath, PixPerUm,  # tif_file
     model.setLogger(Logger.DEFAULT_LOGGER)
     
     settings = Settings(imp)
-    
-    # SettingsClass = settings.getClass()
-    # for method in SettingsClass.getMethods():
-    #     name = str(method.getName()).lower()
-    #     if 'roi' in name or 'region' in name or 'area' in name:
-    #         print(method)
-    
-    # print(sj.jimport('fiji.plugin.trackmate.TrackMate').PLUGIN_NAME_VERSION)
-    # print(settings.getClass().getField('roi'))
-    
+
     RADIUS = PixPerUm * RADIUS_UM
     THRESH_LINK = PixPerUm * THRESH_LINK_UM
     
@@ -666,7 +693,6 @@ def run_TrackMate(imp, xmlPath, PixPerUm,  # tif_file
     #     # )
     #     settings.setRoi(Roi(int(x), int(y), int(width), int(height)))
         
-    
     # Configure detector
     settings.detectorFactory = LogDetectorFactory()
     settings.detectorSettings = {
@@ -711,7 +737,6 @@ def run_TrackMate(imp, xmlPath, PixPerUm,  # tif_file
     simple_xml_file = File(xmlPath)
     ExportTracksToXML.export(model, settings, simple_xml_file)
     
-    print('\nDone!')
     
 
 def pretreat_and_track_NbYolk(tifPath, rawTrackName, dstDir, PixPerUm, 
@@ -728,8 +753,8 @@ def pretreat_and_track_NbYolk(tifPath, rawTrackName, dstDir, PixPerUm,
     nT = shape[0]
     
     if ROI is not None:
-        x0, y0 = ROI[0]
-        x1, y1 = ROI[1]
+        y0, x0 = ROI[0]
+        y1, x1 = ROI[1]
         xroi = min(x0, x1)
         yroi = min(y0, y1)
         width = abs(x1 - x0)
@@ -867,7 +892,7 @@ def pretreat_and_track_NbYolk(tifPath, rawTrackName, dstDir, PixPerUm,
         
         if SAVEPLOT:
             _, rawTrackName = os.path.split(rawTrackPath)
-            figName = rawTrackName.split('.')[0] + '_rawTracks.png'
+            figName = rawTrackName.split('.')[0] + '_Plot.png'
             figPath = os.path.join(dstDir, figName)
             fig.savefig(figPath, dpi=500, )
     

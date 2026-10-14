@@ -1,3 +1,5 @@
+INSTALLATION INSTRUCTIONS
+
 1. Install Python:
 * Install miniforge3 from: https://github.com/conda-forge/miniforge
 * > mamba init
@@ -12,7 +14,7 @@
 	> mamba activate pyimagej-env
 	> mamba install pyimagej openjdk=11
 	> mamba install opencv
-	> mamba install numpy scipy pandas matplotlib seaborn tifffile alphashape pillow scikit-image shapely spyder-kernels
+	> mamba install numpy scipy pandas matplotlib seaborn tifffile alphashape pillow scikit-image shapely json spyder-kernels
 
 2. Install a stable version of Fiji
 * Go to https://imagej.net/software/fiji/downloads
