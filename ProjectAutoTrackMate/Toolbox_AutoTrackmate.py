@@ -10,7 +10,7 @@ Created on Tue Oct 13 11:16:54 2026
 import os
 import cv2
 import sys
-import json
+# import json
 import tifffile
 import alphashape
 
@@ -25,7 +25,7 @@ import xml.etree.ElementTree as ET
 
 from PIL import Image, ImageDraw
 
-# from shapely.geometry import MultiPoint
+from shapely.geometry import Polygon, MultiPoint
 
 # import Libs.PlotMaker as pm
 # import Libs.UrchinPaths as up
@@ -36,24 +36,36 @@ from PIL import Image, ImageDraw
 
 # %% Main Paths
 
-Path_Fiji = "C:\\Users\\josep\\Desktop\\Fiji.app\\"
-Path_JAVA_HOME = "C:\\Users\\josep\\miniforge3\\envs\\pyimagej-env\\Library\\lib\\jvm"
+
 
 
 # %% Imports 2
+
+Path_Fiji = "C:\\Users\\josep\\Desktop\\Fiji.app\\"
+Path_JAVA_HOME = "C:\\Users\\josep\\miniforge3\\envs\\pyimagej-env\\Library\\lib\\jvm"
 
 os.environ["JAVA_HOME"] = Path_JAVA_HOME
 
 import imagej
 import scyjava as sj
 
-sj.config.add_options('-Xmx15g') # Digits are the amount of RAM assigned
-
 # initialize ImageJ
+sj.config.add_options('-Xmx15g') # Digits are the amount of RAM assigned
 ij = imagej.init(Path_Fiji, add_legacy=False)
 
-print(f"ImageJ version: {ij.getVersion()}")
+print(f"ImageJ version: {ij.getVersion()}") # Should return: ImageJ version: 2.16.0/1.54p
 
+
+# %% Microscope scales
+
+SCALE_20X_Leica = 2.169
+UmPerPix_20X_Leica = 1/SCALE_20X_Leica
+
+SCALE_40X_Leica = 4.3725
+UmPerPix_40X_Leica = 1/SCALE_40X_Leica
+
+SCALE_60X_W1 = 9.26
+UmPerPix_60X_W1 = 1/SCALE_60X_W1
 
 # %% Graphic constants
 
@@ -83,16 +95,16 @@ DARKPURPLE = '\033[1;35m' # purple
 
 # %% 0. Base subfunctions
 
-def list2json(L, dirPath, fileName):
-    L = list(L)
-    with open(os.path.join(dirPath, fileName + '.json'), 'w') as fp:
-        json.dump(L, fp, indent=4)
+# def list2json(L, dirPath, fileName):
+#     L = list(L)
+#     with open(os.path.join(dirPath, fileName + '.json'), 'w') as fp:
+#         json.dump(L, fp, indent=4)
         
-def json2list(dirPath, fileName):
-    with open(os.path.join(dirPath, fileName + '.json'), 'r') as fp:
-        L = json.load(fp)
-    L = list(L)
-    return(L)
+# def json2list(dirPath, fileName):
+#     with open(os.path.join(dirPath, fileName + '.json'), 'r') as fp:
+#         L = json.load(fp)
+#     L = list(L)
+#     return(L)
 
 def tiff_inspect(filepath):
     with tifffile.TiffFile(filepath) as tif:
@@ -168,8 +180,6 @@ def mask_to_contour(mask, keep_only_longest_contour = True):
             FoundContours = FoundContours[im]
             
     return(FoundContours)
-
-
 
 
 def setGraphicOptions(mode = 'screen', palette = 'Set2', colorList = cL_Set21):
@@ -464,6 +474,7 @@ def get_N_random_square_ROIs_in_cell(mask, L, N,
     if PLOT:
         plt.show()
     
+    list_rois = np.array(list_rois)
     return(list_rois)
 
 
@@ -705,8 +716,9 @@ def run_TrackMate(imp, xmlPath, PixPerUm,  # tif_file
 
 def pretreat_and_track_NbYolk(tifPath, rawTrackName, dstDir, PixPerUm, 
                               Dict_TrackMate_Settings = None,
-                              ROI = None, correct_on_edges = False,
-                              Mask_cell = None, mask_buffer_um = 0.0, 
+                              ROI_MODE = 'Square ROIs',
+                              ROI = None, Mask_cell = None, mask_buffer_um = 0.0, 
+                              correct_on_edges_buffer_um = 0,
                               PLOT = False, SHOWPLOT = False, SAVEPLOT = False):
     
     srcDir, tifName = os.path.split(tifPath)
@@ -736,7 +748,6 @@ def pretreat_and_track_NbYolk(tifPath, rawTrackName, dstDir, PixPerUm,
     # image = ufun.load_stack_region(tifPath, time_indices=range(0, nT), 
     #                                x_slice=x_slice, y_slice=y_slice)
     
-    
     if Mask_cell is None:
         pass
     else:
@@ -749,14 +760,9 @@ def pretreat_and_track_NbYolk(tifPath, rawTrackName, dstDir, PixPerUm,
     for t in range(nT):
         k = 3
         image[t] = cv2.medianBlur(image[t], k)
-    
     image_0 = image[0,:,:]
-    # tif_file = ij.py.to_java(image)
-    # imp = ij.py.to_imageplus(tif_file)
+    
 
-    imp = ij.py.to_imageplus(image)
-    del(image)
-      
     # Update TrackMate settings
     Dict_TrackMate_Settings_DEFAULTS = {
         'RADIUS_UM' : 1.0, 
@@ -773,40 +779,54 @@ def pretreat_and_track_NbYolk(tifPath, rawTrackName, dstDir, PixPerUm,
     
     
     # Run TrackMate
-    # runTrackMate(tif_file, rawTrackPath, PixPerUm, ROI = ROI,
-    #              **Dict_TrackMate_Settings)
+    imp = ij.py.to_imageplus(image)
+    del(image)
     run_TrackMate(imp, rawTrackPath, PixPerUm, ROI = ROI,
                   **Dict_TrackMate_Settings)
     
     
-    # Open the tracks and do the post-treatment
+    # Open the tracks and filters those that are "sticking" to the edges of the ROI
     Tracks = import_TrackMate_tracks(rawTrackPath)
-    print('len Tracks', len(Tracks))
-    if correct_on_edges:
-        # valid = np.ones(len(Tracks), dtype=bool)
-        Valid_Tracks = []
-        for k, track in enumerate(Tracks):
-            xm = np.median(track[:,1])
-            ym = np.median(track[:,2])
-            dist_x = min(np.abs(xm-0), np.abs(xm-width))
-            dist_y = min(np.abs(ym-0), np.abs(ym-height))
-            if not ((dist_x < 0.5*PixPerUm) or (dist_y < 0.5*PixPerUm)):
-                Valid_Tracks.append(track)
-                # print(f'ok : {k:.0f}')
-            # else:
-                # print(dist_x, dist_y)
-                
-        Tracks = Valid_Tracks
-    print('len Tracks', len(Tracks))
+    
+    if correct_on_edges_buffer_um > 0:
+        buffer_pix = correct_on_edges_buffer_um * PixPerUm
         
+        if ROI_MODE == 'Square ROIs':
+            Valid_Tracks = []
+            for track in Tracks:
+                xm = np.median(track[:, 1])
+                ym = np.median(track[:, 2])
+                dist_x = min(np.abs(xm-0), np.abs(xm-width))
+                dist_y = min(np.abs(ym-0), np.abs(ym-height))
+                test_x = (dist_x < buffer_pix)
+                test_y = (dist_y < buffer_pix)
+                if not (test_x or test_y):
+                    Valid_Tracks.append(track)
+            Tracks = Valid_Tracks
+            
+        elif ROI_MODE == 'Whole cell':
+            Valid_Tracks = []
+            Contour_cell = mask_to_contour(Mask_cell)
+            Poly_cell = Polygon(shell=Contour_cell)
+            Poly_inner_cell = Poly_cell.buffer(-buffer_pix)
+            for track in Tracks:
+                xm = np.median(track[:, 1])
+                ym = np.median(track[:, 2])
+                point = MultiPoint([(ym, xm)])
+                is_track_in_polygon = Poly_inner_cell.contains(point)
+                if is_track_in_polygon:
+                    Valid_Tracks.append(track)
+            Tracks = Valid_Tracks
+        
+    # If rectangular ROIs are used, translate tracks coord to be in the referential of the whole image
     if ROI is not None:
         for track in Tracks:
             track[:, 1] += xroi
             track[:, 2] += yroi
             
+    # Re-save the cleaned tracks
     export_as_TrackMate_tracks(Tracks, rawTrackPath)
             
-    
     # Plot
     if PLOT:
         if not SHOWPLOT:
@@ -846,7 +866,8 @@ def pretreat_and_track_NbYolk(tifPath, rawTrackName, dstDir, PixPerUm,
             plt.show()
         
         if SAVEPLOT:
-            figName = tifName.split('.')[0] + '_rawTracks.png'
+            _, rawTrackName = os.path.split(rawTrackPath)
+            figName = rawTrackName.split('.')[0] + '_rawTracks.png'
             figPath = os.path.join(dstDir, figName)
             fig.savefig(figPath, dpi=500, )
     

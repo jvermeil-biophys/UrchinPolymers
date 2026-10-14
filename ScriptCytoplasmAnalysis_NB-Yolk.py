@@ -1181,11 +1181,11 @@ dict_res = {'label':[],
             'k_highDt':[],
             }
 
-for i in range(len(fileNames)):
+for i in range(len(fileNames)):   
     tifPath, fN = tifPaths[i], fileNames[i]
-    cleanTrackName = fN + suffix_cleanTracks + '.csv'
-    msdName = fN + suffix_globalMsd + '.csv'
-    msdFitsName = fN + suffix_globalMsdFits
+    cleanTrackName = fN + Dict_Files_Suffix['suffix_cleanTracks'] + '.csv'
+    msdName = fN + Dict_Files_Suffix['suffix_globalMsd'] + '.csv'
+    msdFitsName = fN + Dict_Files_Suffix['suffix_globalMsdFits']
     
     df = pd.read_csv(os.path.join(dstDir, cleanTrackName), sep='\t')
     res_emsd = pd.read_csv(os.path.join(dstDir, msdName), sep='\t')
