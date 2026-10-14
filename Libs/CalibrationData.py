@@ -12,14 +12,43 @@ import numpy as np
 
 # %% Microscope scales
 
-SCALE_20X_Leica = 2.169
-UmPerPix_20X_Leica = 1/SCALE_20X_Leica
+# LEICA
+PixPerUm_10X_Leica = 1.1
+PixPerUm_20X_Leica = 2.203
+PixPerUm_40X_Leica = 4.292
+UmPerPix_10X_Leica = 1/PixPerUm_10X_Leica
+UmPerPix_20X_Leica = 1/PixPerUm_20X_Leica
+UmPerPix_40X_Leica = 1/PixPerUm_40X_Leica
 
-SCALE_40X_Leica = 4.3725
-UmPerPix_40X_Leica = 1/SCALE_40X_Leica
+# X1 (NIKON1)
+PixPerUm_20X_X1 = 3.7
+PixPerUm_40X_X1 = 7.5
+PixPerUm_60X_X1 = 11.2
+PixPerUm_100X_X1 = 18.3
+UmPerPix_20X_X1 = 1/PixPerUm_20X_X1
+UmPerPix_40X_X1 = 1/PixPerUm_40X_X1
+UmPerPix_60X_X1 = 1/PixPerUm_60X_X1
+UmPerPix_100X_X1 = 1/PixPerUm_100X_X1
 
-SCALE_60X_W1 = 9.26
-UmPerPix_60X_W1 = 1/SCALE_60X_W1
+# NIKON2
+PixPerUm_10X_Nikon2 = 1.55
+PixPerUm_20X_Nikon2 = 3.08445
+PixPerUm_40X_Nikon2 = 6.1
+PixPerUm_100X_Nikon2 = 15.3
+UmPerPix_10X_Nikon2 = 1/PixPerUm_10X_Nikon2
+UmPerPix_20X_Nikon2 = 1/PixPerUm_20X_Nikon2
+UmPerPix_40X_Nikon2 = 1/PixPerUm_40X_Nikon2
+UmPerPix_100X_Nikon2 = 1/PixPerUm_100X_Nikon2
+
+# W1 (NIKON3)
+PixPerUm_20X_W1 = 3.086
+PixPerUm_40X_W1 = 6.135
+PixPerUm_60X_W1 = 9.26
+PixPerUm_100X_W1 = 15.601
+UmPerPix_20X_W1 = 1/PixPerUm_20X_W1
+UmPerPix_40X_W1 = 1/PixPerUm_40X_W1
+UmPerPix_60X_W1 = 1/PixPerUm_60X_W1
+UmPerPix_100X_W1 = 1/PixPerUm_100X_W1
 
 
 # %% Magnet calibration

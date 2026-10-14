@@ -39,14 +39,14 @@ import scipy.ndimage as ndi
 import matplotlib.pyplot as plt
 
 from shapely.geometry import MultiPoint
-from scipy.spatial import ConvexHull, Delaunay
+from scipy.spatial import Delaunay # ConvexHull
 
 import Libs.PlotMaker as pm
 import Libs.UrchinPaths as up
 import Libs.CalibrationData as cd
 import Libs.UtilityFunctions as ufun
 import Libs.ToolboxCytoplasmAnalysis as tbca
-import Libs.ToolboxStructureAnalysis as tbsa
+# import Libs.ToolboxStructureAnalysis as tbsa
 
 
 
@@ -1004,37 +1004,75 @@ def get_pairs_for_TRanges_Delaunay(df, PixPerUm, FPS, Nframes,
             
     return(list_TRanges, list_Pairs)
 
+plt.ioff()
+pm.setGraphicOptions(mode='print')
 
+i = 0
+print(i)
+tP, fN = tifPaths[i], fileNames[i]
+dirPlots = "C://Users//Utilisateur//Desktop//Plots_film_triangles"
+cleanTrackName = fN + Dict_Files_Suffix['suffix_cleanTracks'] + '.csv'
+df = pd.read_csv(os.path.join(dstDir, cleanTrackName), sep='\t')
+shape, _ = ufun.tiff_inspect(tP)
+nT, nY, nX = shape
 
-def make_snapshot_of_pairs(df, SCALE, FPS, fi, ff, dist_th_um = 5):
-    df.frame = df.frame.astype(int)
-    df.particle = df.particle.astype(int)
-    dist_th = dist_th_um * PixPerUm
+# def make_snapshot_of_pairs(df, SCALE, FPS, fi, ff, dist_th_um = 5):
     
-    df_f = df[(df['frame']>fi) & (df['frame']<=ff)]
-    
-    valid_particles = []
-    
-    grouped = df_f.groupby('particle')
-    for pid, df_p in grouped:
-        if len(df_p) == (ff-fi):
-            valid_particles.append(pid)
-            
-    valid_particles = np.array(valid_particles)
-    df_f = df_f[df_f['particle'].apply(lambda x : x in valid_particles)]
-    
-    grouped = df_f.groupby('frame')
-    for f, df_ff in grouped:
-        XY = np.array([df_ff['x'].to_numpy(),
-                       df_ff['y'].to_numpy()]).T
+PixPerUm = cd.PixPerUm_60X_W1
+FPS = 20
+# fi = 0
+# ff = 40
+plot_frames = np.arange(1, 200, 5)
+dist_th_um = 4
+
+df.frame = df.frame.astype(int)
+df.particle = df.particle.astype(int)
+dist_th = dist_th_um * PixPerUm
+
+# df_f = df[(df['frame']>fi) & (df['frame']<=ff)]
+df_f = df[df['frame'].apply(lambda x : x in plot_frames)]
+
+valid_particles = []
+
+grouped = df_f.groupby('particle')
+for pid, df_p in grouped:
+    if len(df_p) == len(plot_frames):
+    # if len(df_p) == (ff-fi):
+        valid_particles.append(pid)
         
-        tri = Delaunay(XY)
-        edges_short, _ = tri_to_short_edges(tri, XY, dist_th)
-        close_pairs = df_ff['pid'].to_numpy()[edges_short]
-        
-        #### !!!! TBD here !!
-            
+valid_particles = np.array(valid_particles)
+df_f = df_f[df_f['particle'].apply(lambda x : x in valid_particles)]
+
+grouped = df_f.groupby('frame')
+for f, df_ff in grouped:
+    XY = np.array([df_ff['x'].to_numpy(),
+                   df_ff['y'].to_numpy()]).T
     
+    tri = Delaunay(XY)
+    edges_short, _ = tri_to_short_edges(tri, XY, dist_th)
+    close_pairs = df_ff['particle'].to_numpy()[edges_short]
+    
+    fig, axes = plt.subplots(1, 2, figsize = (6, 3), layout='compressed')
+
+    ax = axes[0]
+    ax.set_xlim([0, nX])
+    ax.set_ylim([0, nY])
+    ax.triplot(XY[:, 0], XY[:, 1], tri.simplices, 'g-', lw=1)
+    ax.plot(XY[:, 0], XY[:, 1], ls='', marker='o', ms=2)
+
+    ax = axes[1]
+    ax.set_xlim([0, nX])
+    ax.set_ylim([0, nY])
+    ax.plot(XY[:, 0], XY[:, 1], ls='', marker='o', ms=2, zorder=8)
+    for p in edges_short:
+        i, j = p
+        ax.plot([XY[i, 0], XY[j, 0]], [XY[i, 1], XY[j, 1]], 'g-', lw=1, zorder=7)
+    
+
+    fig.savefig(os.path.join(dirPlots, f'tri_{f:04d}.png'), dpi=200)
+    plt.close('all')
+    
+plt.ion()
 
 
 def get_pairs_for_TRanges(df, SCALE, FPS, Nframes,
