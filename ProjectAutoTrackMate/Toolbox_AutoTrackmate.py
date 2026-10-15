@@ -22,7 +22,6 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 # %% Imports
 
 import os
-import cv2
 import sys
 import json
 import tifffile
@@ -30,6 +29,7 @@ import alphashape
 
 import numpy as np
 import pandas as pd
+import trackpy as tp
 import skimage as skm
 import seaborn as sns
 import matplotlib as mpl
@@ -38,12 +38,18 @@ import matplotlib.pyplot as plt
 import xml.etree.ElementTree as ET
 
 from PIL import Image, ImageDraw
+from scipy.spatial import Delaunay
 
 from shapely.geometry import Polygon, MultiPoint
 
 # %% Imports 2
 
-Path_Fiji = "C:\\Users\\Utilisateur\\Desktop\\Fiji_stable.app"
+# For Jessica
+# Path_Fiji = "C:\\Users\\Admin\\Desktop\\Fiji-stable.app"
+# Path_JAVA_HOME = "C:\\Users\\Admin\\miniconda3\\envs\\pyimagej-env\\Library\\lib\\jvm"
+
+# For Joseph
+Path_Fiji = "C:\\Users\\Utilisateur\\Desktop\\Fiji-stable.app"
 Path_JAVA_HOME = "C:\\Users\\Utilisateur\\miniforge3\\envs\\pyimagej-env\\Library\\lib\\jvm"
 
 os.environ["JAVA_HOME"] = Path_JAVA_HOME
@@ -56,7 +62,7 @@ sj.config.add_options('-Xmx12g') # Digits are the amount of RAM assigned
 ij = imagej.init(Path_Fiji, add_legacy=False)
 
 print(f"ImageJ version: {ij.getVersion()}") # Should return: ImageJ version: 2.16.0/1.54p
-
+# If it returns: ImageJ version: 2.16.0/Inactive -> restart the kernel
 
 # %% Microscope scales
 
@@ -171,6 +177,15 @@ def json2list(filePath):
     return(L)
 
 
+def findFirst(x, A):
+    """
+    Find first occurence of x in array A, in a VERY FAST way.
+    If you like weird one liners, you will like this function.
+    """
+    idx = (A==x).view(bool).argmax()
+    return(idx)
+
+
 def tiff_inspect(filepath):
     with tifffile.TiffFile(filepath) as tif:
         series = tif.series[0]  # first series
@@ -254,6 +269,8 @@ def mask_to_contour(mask, keep_only_longest_contour = True):
 def make_NbYolkCell_contour_and_mask(img, PixPerUm,
                                      mode = 'dark_background', 
                                      buffer_um = 0,
+                                     keep_only_largest = False,
+                                     exclude_on_edges = True,
                                      PLOT = False):
     nT, nY, nX = img.shape
     k_th = 1.0
@@ -268,11 +285,16 @@ def make_NbYolkCell_contour_and_mask(img, PixPerUm,
         th1 = skm.filters.threshold_li(img_proj) * k_th
         img_bin = (img_proj < th1)
     
+    if exclude_on_edges:
+        img_bin = skm.segmentation.clear_border(img_bin)
+    
     img_bin = ndi.binary_opening(img_bin, iterations = 5)
     img_bin = ndi.binary_fill_holes(img_bin)
     
     # Get contours from first mask
     FoundContours = skm.measure.find_contours(img_bin, 0.5)
+    if keep_only_largest:
+        FoundContours = [FoundContours[np.argmax([len(c) for c in FoundContours])]]
     
     # Get additionnal contours by "erroding" the mask
     N_it = 2
@@ -741,7 +763,7 @@ def run_TrackMate(imp, xmlPath, PixPerUm,  # tif_file
 
 def pretreat_and_track_NbYolk(tifPath, rawTrackName, dstDir, PixPerUm, 
                               Dict_TrackMate_Settings = None,
-                              ROI_MODE = 'Square ROIs',
+                              time_indices = None, ROI_MODE = 'Square ROIs', 
                               ROI = None, Mask_cell = None, mask_buffer_um = 0.0, 
                               correct_on_edges_buffer_um = 0,
                               PLOT = False, SHOWPLOT = False, SAVEPLOT = False):
@@ -766,7 +788,7 @@ def pretreat_and_track_NbYolk(tifPath, rawTrackName, dstDir, PixPerUm,
         x_slice=None
         y_slice=None    
     
-    image = load_stack_region(tifPath, time_indices=None, 
+    image = load_stack_region(tifPath, time_indices=time_indices, 
                                    x_slice=x_slice, y_slice=y_slice)
     
     # nT = 400
@@ -784,7 +806,8 @@ def pretreat_and_track_NbYolk(tifPath, rawTrackName, dstDir, PixPerUm,
     # Pretreatments
     for t in range(nT):
         k = 3
-        image[t] = cv2.medianBlur(image[t], k)
+        # image[t] = cv2.medianBlur(image[t], k)
+        image[t] = ndi.median_filter(image[t], size=(k, k))
     image_0 = image[0,:,:]
     
 
@@ -899,9 +922,320 @@ def pretreat_and_track_NbYolk(tifPath, rawTrackName, dstDir, PixPerUm,
     if not SHOWPLOT:
         plt.ion()
     
-    
     # Return tracks    
     return(Tracks)
+
+
+# %% 3. Analysis subfunctions
+
+
+def is_track_in_polygon(track, poly):
+    xm = np.median(track[:, 1])
+    ym = np.median(track[:, 2])
+    point = MultiPoint([(ym, xm)])
+    res = poly.contains(point)
+    return(res)
+
+
+def rawTracks_2_cleanTracks(rawTracks, dstDir, cleanTrackName,
+                            Contour_cell, PixPerUm,
+                            edge_buffer_cutoff_um = 0, nPoints_cuttoff = 30,
+                            column_names = None,
+                            RefImg = None, PLOT = False, SHOWPLOT = False, SAVEPLOT = False):
     
+    if column_names is None:
+        column_names = ['frame', 'x', 'y', 'particle']
+    else:
+        if len(column_names) != 4:
+            raise ValueError("There should be 4 column names and they should be " + \
+                   "roughly equivalent to: ['frame', 'x', 'y', 'particle']")
+            
+    Poly_cell = Polygon(shell=Contour_cell)
+    Poly_inner_cell = Poly_cell.buffer(- edge_buffer_cutoff_um * PixPerUm)
+    
+    all_tracks = []
+    for i, track in enumerate(rawTracks):
+        nT = len(track)
+        
+        if is_track_in_polygon(track, Poly_inner_cell) and (nT >= nPoints_cuttoff):
+            track = np.concat((track, np.ones((len(track[:,0]), 1), dtype=int) * (i+1)), axis = 1)
+            track[:, 0] = track[:, 0].astype(int) + 1
+            all_tracks.append(track)
+            
+    concat_tracks = np.concat(all_tracks, axis = 0)
+    df = pd.DataFrame({column_names[k] : concat_tracks[:,k] for k in range(len(column_names))})
+    df[column_names[0]] = df[column_names[0]].values.astype(int)
+    df[column_names[3]] = df[column_names[3]].values.astype(int)
+    df.to_csv(os.path.join(dstDir, cleanTrackName), index=False, sep = '\t')
+    
+    
+    # Plot
+    if PLOT:
+        if not SHOWPLOT:
+            plt.ioff()
+        else:
+            plt.ion()
+            
+        setGraphicOptions(mode = 'screen')
+        fig, axes = plt.subplots(1, 3, figsize=(12, 4))
+        fig.suptitle(cleanTrackName.split('.')[0])
+        ColorList = cL_Set21
+        
+        y_ic, x_ic = Poly_inner_cell.exterior.xy
+        Contour_inner_cell = np.array([y_ic, x_ic]).T
+        
+        ax = axes[0]
+        if not (RefImg is None):
+            ax.imshow(RefImg, cmap='gray')
+        
+        
+        ax = axes[1]
+        if not (RefImg is None):
+            ax.imshow(RefImg, cmap='gray')
+        for k in range(len(rawTracks)):
+            track = rawTracks[k]
+            color = ColorList[k%len(ColorList)]
+            ax.plot(track[:,1], track[:,2], ls='-', color=color, lw=0.25)
+        ax.plot(Contour_cell[:,1], Contour_cell[:,0], ls='-', color='red', lw=1)
+        ax.plot(Contour_inner_cell[:,1], Contour_inner_cell[:,0], ls='-', color='cyan', lw=1)
+        
+        ax = axes[2]
+        if not (RefImg is None):
+            ax.imshow(RefImg, cmap='gray')
+            
+        for k in range(len(all_tracks)):
+            track = all_tracks[k]
+            color = ColorList[k%len(ColorList)]
+            ax.plot(track[:,1], track[:,2], ls='-', color=color, lw=0.25)
+        
+        if SHOWPLOT:
+            plt.show()
+        
+        if SAVEPLOT:
+            figName = '_'.join(cleanTrackName.split('_')[:-1]) + '_cleanTracks.png'
+            figPath = os.path.join(dstDir, figName)
+            fig.savefig(figPath, dpi=500, )
+    
+    if not SHOWPLOT:
+        plt.ion()
+    
+    return(df)
+
+
+# def compute_MSD(df):
+    # df = pd.read_csv(os.path.join(dstDir, cleanTrackName), sep='\t')
+    # max_lagtime = int(max_Dt_s * FPS)
+    # res_emsd = tp.motion.emsd(df, UmPerPix, FPS, max_lagtime=max_lagtime).reset_index()
+    # res_emsd.to_csv(os.path.join(dstDir, msdName), index=False, sep='\t')
+
+#### Pair MSD functions
+
+def tri_to_short_edges(tri, points, thresh_d):
+    # Extract all edges from each triangle
+    edges = np.vstack([
+        tri.simplices[:, [0, 1]],
+        tri.simplices[:, [1, 2]],
+        tri.simplices[:, [2, 0]]
+    ])
+
+    # Sort indices within each edge to make (i, j) and (j, i) identical
+    edges = np.sort(edges, axis=1)
+
+    # Remove duplicate edges
+    edges = np.unique(edges, axis=0)
+
+    # Convert to a Python list of pairs
+    edges = np.array(edges)
+    
+    pairs = points[edges]
+    dists = np.power(np.sum((pairs[:,1,:]-pairs[:,0,:])**2, axis=1), 0.5)
+    idx_close_neighbours = (dists < thresh_d)
+    edges_close_neighbours = edges[idx_close_neighbours]
+    return(edges_close_neighbours, dists)
+
+
+def get_pairs_for_TRanges_Delaunay(df, PixPerUm, FPS, Nframes,
+                                  len_TRanges = 200, delta_TRanges = -1,
+                                  dist_th_um = 5):
+    df.frame = df.frame.astype(int)
+    df.particle = df.particle.astype(int)
+    dist_th = dist_th_um * PixPerUm
+    
+    if delta_TRanges < 0:
+        delta_TRanges = len_TRanges
+    FI = np.arange(0, Nframes, step=delta_TRanges)
+    FF = FI + len_TRanges
+    valid = (FF <= Nframes)
+    if valid[-1]:
+        pass
+    else:
+        i_stop = findFirst(True, (FF>Nframes))
+        FI = FI[:i_stop]
+        FF = FF[:i_stop]
+    
+    dict_TRanges2particles = {f'{fi}_{ff}':{'pid':[], 'xm':[], 'ym':[]} \
+                              for fi, ff in zip(FI, FF)}
+    list_TRanges = [f'{fi}_{ff}' for fi, ff in zip(FI, FF)]
+    list_Pairs = []
+
+    grouped = df.groupby('particle')
+    for pid, df_p in grouped:
+        frames = df_p['frame'].to_numpy()
+        x = df_p['x'].to_numpy()
+        y = df_p['y'].to_numpy()
+
+        pfi = frames.min()
+        pff = frames.max()
+
+        for fi, ff in zip(FI, FF):
+            if pfi <= fi + 1 and ff <= pff:
+                mask = (fi <= frames - 1) & (frames - 1 < ff)
+                xm = np.median(x[mask])
+                ym = np.median(y[mask])
+
+                key = f'{fi}_{ff}'
+                result = dict_TRanges2particles[key]
+                result['pid'].append(int(pid))
+                result['xm'].append(float(xm))
+                result['ym'].append(float(ym))
+    
+    for k, TRange in enumerate(list_TRanges):
+        df_parts = pd.DataFrame(dict_TRanges2particles[TRange])
+        XY = np.array([df_parts['xm'].values[:],
+                       df_parts['ym'].values[:]]).T
+        
+        tri = Delaunay(XY)
+        edges_short, _ = tri_to_short_edges(tri, XY, dist_th)
+        close_pairs = df_parts['pid'].values[edges_short]
+        
+        list_Pairs.append(np.array(close_pairs))    
+            
+    return(list_TRanges, list_Pairs)
+
+
+
+
+def get_pairs_for_TRanges(df, SCALE, FPS, Nframes,
+                          len_TRanges = 200, delta_TRanges = -1,
+                          dist_th_um = 5):
+    df.frame = df.frame.astype(int)
+    df.particle = df.particle.astype(int)
+    dist_th = dist_th_um * SCALE
+    
+    if delta_TRanges < 0:
+        delta_TRanges = len_TRanges
+    FI = np.arange(0, Nframes, step=delta_TRanges)
+    FF = FI + len_TRanges
+    valid = (FF <= Nframes)
+    if valid[-1]:
+        pass
+    else:
+        i_stop = findFirst(True, (FF>Nframes))
+        FI = FI[:i_stop]
+        FF = FF[:i_stop]
+    
+    dict_TRanges2particles = {f'{fi}_{ff}':{'pid':[],'xm':[],'ym':[]} \
+                              for fi, ff in zip(FI, FF)}
+    dict_TRanges2pairs = {f'{fi}_{ff}':[] for fi, ff in zip(FI, FF)}
+    
+    PIDs = df.particle.unique()
+    for pid in PIDs:
+        pfi = np.min(df[df['particle'] == pid]['frame'].values) - 1
+        pff = np.max(df[df['particle'] == pid]['frame'].values) - 1
+        
+        for fi, ff in zip(FI, FF):
+            if (pfi <= fi) and (ff-1 <= pff):
+                xm = np.median(df[df['particle'] == pid]['x'].values)
+                ym = np.median(df[df['particle'] == pid]['y'].values)
+                dict_TRanges2particles[f'{fi}_{ff}']['pid'].append(pid)
+                dict_TRanges2particles[f'{fi}_{ff}']['xm'].append(xm)
+                dict_TRanges2particles[f'{fi}_{ff}']['ym'].append(ym)
+    
+    for TRange in dict_TRanges2particles.keys():
+        df_parts = pd.DataFrame(dict_TRanges2particles[TRange])
+        listPairs = []
+        while len(df_parts)>1:
+            p1 = df_parts['pid'].values[0]
+            XY1 = np.array([df_parts['xm'].values[0],
+                            df_parts['ym'].values[0]])
+            XYothers = np.array([df_parts['xm'].values[1:],
+                                 df_parts['ym'].values[1:]]).T
+            dists = np.power((np.sum((XYothers - XY1)**2, axis=1)), 0.5)
+            min_d = np.min(dists)
+            if min_d > dist_th:
+                idx_to_drop = df_parts[(df_parts["pid"] == p1)].index
+                df_parts.drop(axis=0, index=idx_to_drop, inplace=True)
+            else:
+                idx_min = np.argmin(dists) + 1
+                p2 = df_parts['pid'].values[idx_min]
+                listPairs.append((p1, p2))
+                idx_to_drop = df_parts[(df_parts["pid"] == p1) | (df_parts["pid"] == p2)].index
+                df_parts.drop(axis=0, index=idx_to_drop, inplace=True)
+                # except:
+                #     print(df_parts)
+                
+        dict_TRanges2pairs[TRange] = np.array(listPairs)
+            
+    return(dict_TRanges2pairs)
+
+
+
+
+def get_relative_displacement_by_TRange(df, pairs, TRange):
+    FI, FF = map(int, TRange.split('_'))
+
+    # Convert once
+    frames = df['frame'].to_numpy(dtype=int)
+    particles = df['particle'].to_numpy(dtype=int)
+    x = df['x'].to_numpy()
+    y = df['y'].to_numpy()
+
+    # Select requested time range
+    frame_mask = (frames >= FI + 1) & (frames <= FF)
+
+    frames = frames[frame_mask]
+    particles = particles[frame_mask]
+    x = x[frame_mask]
+    y = y[frame_mask]
+
+    # Keep only particles that occur in pairs
+    ids_in_pairs = np.unique(pairs)
+    particle_mask = np.isin(particles, ids_in_pairs)
+
+    frames = frames[particle_mask]
+    particles = particles[particle_mask]
+    x = x[particle_mask]
+    y = y[particle_mask]
+
+    # Create a lookup: particle -> (x, y) arrays
+    particle_data = {
+        pid: (x[particles == pid], y[particles == pid])
+        for pid in ids_in_pairs
+    }
+
+    N = FF - FI
+    T_array = np.arange(1, N + 1)
+
+    list_df_pairs = []
+
+    for pair_id, (id1, id2) in enumerate(pairs):
+
+        x1, y1 = particle_data[id1]
+        x2, y2 = particle_data[id2]
+
+        Xpair = x2 - x1
+        Ypair = y2 - y1
+
+        list_df_pairs.append(
+            pd.DataFrame({
+                'pair_id': pair_id,
+                'x': Xpair,
+                'y': Ypair,
+                'frame': T_array
+            })
+        )
+        
+    output = pd.concat(list_df_pairs, ignore_index=True)
+    return(output)
 
   

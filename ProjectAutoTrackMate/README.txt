@@ -10,11 +10,10 @@ INSTALLATION INSTRUCTIONS
 	> mamba install numpy scipy pandas matplotlib
 
 	- pyimagej-env
-	> mamba create --name pyimagej-env python=3.14
+	> mamba create --name pyimagej313-env python=3.13
 	> mamba activate pyimagej-env
 	> mamba install pyimagej openjdk=11
-	> mamba install opencv
-	> mamba install numpy scipy pandas matplotlib seaborn tifffile alphashape pillow scikit-image shapely json spyder-kernels
+	> mamba install numpy scipy pandas matplotlib seaborn tifffile alphashape pillow scikit-image shapely trackpy spyder-kernels
 
 2. Install a stable version of Fiji
 * Go to https://imagej.net/software/fiji/downloads
@@ -37,4 +36,13 @@ Path_JAVA_HOME = "C:\\Users\\<YOUR-USER-NAME>\\miniforge3\\envs\\pyimagej-env\\L
 Manually check they point to existing and correct locations!
 	- Run the two "Imports" cells (using CTRL+ENTER to run the code cell-by-cell). Check that all libraries are imported well (if there is not error returned, then everything's fine).
 	- Imagej version should be "2.16.0/1.54p". If it shows "2.16.0/Inactive" close the console and redo the imports.
+
+
+FEEDBACK FROM INSTALLING THIS WITH JESSICA !
+- Everything worked well in the end (yay!!!)
+- Jessica already had miniconda3, which doesn't include mamba, so we followed the above steps replacing "mamba" with "conda"
+- opencv didn't install well through conda. Fortunately opencv (cv2) was used in only one subfunction and it could be replaced by an equivalent from skimage. So now we Don't need to install opencv anymore.
+- A lot of annoying errors when initializing imagej… Somehow it doesn't always initialize ?!!! -> Chat GPT says try with python=3.12 -> seems to work !!!
+- Added trackpy to allow for analyses down the line...
+
 
