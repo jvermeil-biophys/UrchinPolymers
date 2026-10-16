@@ -11,6 +11,8 @@ import os
 import re
 import pandas as pd
 
+import Libs.UrchinPaths as up
+
 dateFormat1 = re.compile(r'\d{2}-\d{2}-\d{2}')
 #os.rename(r'file path\OLD file name.file type',r'file path\NEW file name.file type')
 
@@ -262,6 +264,22 @@ def findAndRemove(path, target_string, target='file', test = True,
     print(renamedListTarget)
     print(len(renamedListTarget))
     return(renamedListTarget)
+
+
+# -----------------------------------------------------------------------------------------------
+# %% Script Other renaming
+
+s1 = '26-10-07_D1-R'
+s2 = '26-10-07_D1-L'
+
+# path0 = "E:/AnalysisPulls/26-04-30_CalibMagnet_JV01_and_JN"
+path0 = up.Path_IntraCellTracking + "26-10-07_FastAcq-Channel_Fec_NB-Yolk//D1-L"
+sub = ''
+path = path0 + sub
+
+findAndRename(path, s1, s2, 
+              target = 'all', test = False, recursiveAction = True, exceptStrings = [])
+
 
 
 # -----------------------------------------------------------------------------------------------

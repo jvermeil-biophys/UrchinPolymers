@@ -22,6 +22,7 @@ if COMPUTERNAME == 'PROCYON-PC': # Ordi Perso
     Path_AnalysisPulls = "C:\\Users\\josep\\Desktop\\Seafile\\DownloadedFromSeafile\\"
     Path_IntraCellTracking = "C:\\Users\\josep\\Desktop\\Seafile\\DownloadedFromSeafile\\IntraCellTracking\\"
     Path_WorkingData = "E:\\WorkingData\\"
+    Path_Desktop = "C:\\Users\\josep\\Desktop\\"
     Path_Fiji = "C:\\Users\\josep\\Desktop\\Fiji.app\\"
     Path_JAVA_HOME = "C:\\Users\\josep\\miniforge3\\envs\\pyimagej-env\\Library\\lib\\jvm"
     
@@ -30,6 +31,7 @@ elif COMPUTERNAME == 'MINC05': # IJM
     Path_AnalysisPulls = "F:\\AnalysisPulls\\"
     Path_IntraCellTracking = "F:\\IntraCellTracking\\"
     Path_WorkingData = "F:\\WorkingData\\"
+    Path_Desktop = "C:\\Users\\Utilisateur\\Desktop\\"
     Path_Fiji = "C:\\Users\\Utilisateur\\Desktop\\Fiji-stable.app"
     Path_JAVA_HOME = "C:\\Users\\Utilisateur\\miniforge3\\envs\\pyimagej-env\\Library\\lib\\jvm"
     
@@ -38,6 +40,7 @@ elif COMPUTERNAME == 'DESKTOP-9J5NPMO': # LJP
     Path_AnalysisPulls = "C:\\Users\\Joseph\\Desktop\\AnalysisPulls\\"
     Path_IntraCellTracking = "C:\\Users\\Joseph\\Desktop\\IntraCellTracking\\"
     Path_WorkingData = "C:\\Users\\Joseph\\Desktop\\WorkingData\\"
+    Path_Desktop = "C:\\Users\\Joseph\\Desktop\\"
     Path_Fiji = "C:\\Users\\Joseph\\Desktop\\Fiji-stable.app"
     Path_JAVA_HOME = "C:\\Users\\Joseph\\miniforge3\\envs\\spyder-env\\Library\\lib\\jvm"
     

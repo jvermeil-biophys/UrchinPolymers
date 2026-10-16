@@ -66,7 +66,7 @@ import imagej
 import scyjava as sj
 
 # import random
-sj.config.add_options('-Xmx12g')
+sj.config.add_options('-Xmx48g')
 
 
 
@@ -567,6 +567,130 @@ def get_relative_displacement_by_TRange(df, pairs, TRange):
     return(output)
 
 
+
+def make_film_of_pairs_V1(df, PixPerUm, FPS, shape, dirPlots,
+                          plot_frames, dist_th_um = 4):  
+    plt.ioff()
+    pm.setGraphicOptions(mode='print')
+    nT, nY, nX = shape
+    df.frame = df.frame.astype(int)
+    df.particle = df.particle.astype(int)
+    dist_th = dist_th_um * PixPerUm
+    
+    # df_f = df[(df['frame']>fi) & (df['frame']<=ff)]
+    df_f = df[df['frame'].apply(lambda x : x in plot_frames)]
+    
+    valid_particles = []
+    
+    grouped = df_f.groupby('particle')
+    for pid, df_p in grouped:
+        if len(df_p) == len(plot_frames):
+        # if len(df_p) == (ff-fi):
+            valid_particles.append(pid)
+            
+    valid_particles = np.array(valid_particles)
+    df_f = df_f[df_f['particle'].apply(lambda x : x in valid_particles)]
+    
+    grouped = df_f.groupby('frame')
+    for f, df_ff in grouped:
+        XY = np.array([df_ff['x'].to_numpy(),
+                       df_ff['y'].to_numpy()]).T
+        
+        tri = Delaunay(XY)
+        edges_short, _ = tri_to_short_edges(tri, XY, dist_th)
+        # close_pairs = df_ff['particle'].to_numpy()[edges_short]
+        
+        fig, axes = plt.subplots(1, 2, figsize = (6, 3), layout='compressed')
+    
+        ax = axes[0]
+        ax.set_xlim([0, nX])
+        ax.set_ylim([0, nY])
+        ax.triplot(XY[:, 0], XY[:, 1], tri.simplices, 'g-', lw=0.75)
+        ax.plot(XY[:, 0], XY[:, 1], ls='', marker='o', ms=1.5)
+    
+        ax = axes[1]
+        ax.set_xlim([0, nX])
+        ax.set_ylim([0, nY])
+        ax.plot(XY[:, 0], XY[:, 1], ls='', marker='o', ms=1.5, zorder=8)
+        for p in edges_short:
+            i, j = p
+            ax.plot([XY[i, 0], XY[j, 0]], [XY[i, 1], XY[j, 1]], 'g-', lw=0.75, zorder=7)
+        
+    
+        fig.savefig(os.path.join(dirPlots, f'triA_{f:04d}.png'), dpi=200)
+        plt.close('all')
+        
+    plt.ion()
+
+
+
+def make_film_of_pairs_V2(df, PixPerUm, FPS, shape, dirPlots, 
+                          plot_frames, dist_th_um = 4):
+    plt.ioff()
+    pm.setGraphicOptions(mode='print')
+    # PixPerUm = cd.PixPerUm_60X_W1
+    # FPS = 20
+    # plot_frames = np.arange(1, 200, 5)
+    # dist_th_um = 4
+    nT, nY, nX = shape
+    df.frame = df.frame.astype(int)
+    df.particle = df.particle.astype(int)
+    dist_th = dist_th_um * PixPerUm
+    
+    # df_f = df[(df['frame']>fi) & (df['frame']<=ff)]
+    df_f = df[df['frame'].apply(lambda x : x in plot_frames)]
+    
+    valid_particles = []
+    
+    grouped = df_f.groupby('particle')
+    for pid, df_p in grouped:
+        if len(df_p) == len(plot_frames):
+        # if len(df_p) == (ff-fi):
+            valid_particles.append(pid)
+            
+    valid_particles = np.array(valid_particles)
+    df_f = df_f[df_f['particle'].apply(lambda x : x in valid_particles)]
+    
+    grouped = df_f.groupby('particle')
+    df_p = grouped.agg({'x':'median', 'y':'median'})
+    XY = np.array([df_p['x'].to_numpy(),
+                   df_p['y'].to_numpy()]).T
+    tri = Delaunay(XY)
+    edges_short, _ = tri_to_short_edges(tri, XY, dist_th)
+    
+    
+    grouped = df_f.groupby('frame')
+    for f, df_ff in grouped:
+        XY = np.array([df_ff['x'].to_numpy(),
+                       df_ff['y'].to_numpy()]).T
+        
+        # tri = Delaunay(XY)
+        # edges_short, _ = tri_to_short_edges(tri, XY, dist_th)
+        # close_pairs = df_ff['particle'].to_numpy()[edges_short]
+        
+        fig, axes = plt.subplots(1, 2, figsize = (6, 3), layout='compressed')
+    
+        ax = axes[0]
+        ax.set_xlim([0, nX])
+        ax.set_ylim([0, nY])
+        ax.triplot(XY[:, 0], XY[:, 1], tri.simplices, 'g-', lw=0.75)
+        ax.plot(XY[:, 0], XY[:, 1], ls='', marker='o', ms=1.5)
+    
+        ax = axes[1]
+        ax.set_xlim([0, nX])
+        ax.set_ylim([0, nY])
+        ax.plot(XY[:, 0], XY[:, 1], ls='', marker='o', ms=1.5, zorder=8)
+        for p in edges_short:
+            i, j = p
+            ax.plot([XY[i, 0], XY[j, 0]], [XY[i, 1], XY[j, 1]], 'g-', lw=0.75, zorder=7)
+        
+    
+        fig.savefig(os.path.join(dirPlots, f'triB_{f:04d}.png'), dpi=200)
+        plt.close('all')
+        
+    plt.ion()
+
+
 # %%% Main functions
 
 
@@ -991,7 +1115,6 @@ def pretreat_image_for_TrackMate(tifPath, **kwargs):
 
 
 def runTrackMate(tif_file, xmlPath, Pix_Per_Um,
-                 # IMG_UNITS = 'PIX',
                  RADIUS_UM = 1.0, 
                  THRESH_SPOT_QLT = 1.0,
                  THRESH_LINK_UM = 0.2, 
@@ -1053,8 +1176,8 @@ def runTrackMate(tif_file, xmlPath, Pix_Per_Um,
     #     THRESH_LINK = THRESH_LINK_UM
     # else:
     #     raise ValueError("Setting variable IMG_UNITS should be equal to 'PIX' or 'UM'")
-    RADIUS = RADIUS_UM
-    THRESH_LINK = THRESH_LINK_UM
+    RADIUS = Pix_Per_Um * RADIUS_UM
+    THRESH_LINK = Pix_Per_Um * THRESH_LINK_UM
     
     # Configure detector
     settings.detectorFactory = LogDetectorFactory()
@@ -1241,7 +1364,6 @@ def pretreat_and_track_NbYolk(tifPath, rawTrackName, dstDir,
       
     # Update TrackMate settings
     Dict_TrackMate_Settings_DEFAULTS = {
-        'IMG_UNITS' : 'PIX',
         'RADIUS_UM' : 1.0, 
         'THRESH_SPOT_QLT' : 1.0,
         'THRESH_LINK_UM' : 0.2, 

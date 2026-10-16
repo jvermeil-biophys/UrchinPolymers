@@ -212,7 +212,7 @@ def compute_pairwise_MSD(df, PixPerUm, FPS, Nframes,
         pairs = list_Pairs[k]
         df_pairs = tbca.get_relative_displacement_by_TRange(df, pairs, TRange)
         res_pair_emsd = tp.motion.emsd(df_pairs.rename(columns={'pair_id':'particle'}), 
-                                       UmPerPix, FPS, max_lagtime=80).reset_index()
+                                       UmPerPix, FPS, max_lagtime=max_lagtime).reset_index()
         pairMSD.append(res_pair_emsd)
 
     df_allTRange_pair_MSD = pd.concat([pairMSD[0]['lagt']] + [df['msd'] for df in pairMSD], axis=1)
@@ -310,11 +310,230 @@ def MSD_HeatMap(df_grid, M_boxes, xy_col, parm_col,
     # ax.spines[:].set_visible(False)
     ax.grid(which="minor", color="w", linestyle='-', linewidth=0.5)
     ax.tick_params(which="minor", bottom=False, left=False)
-        
     return(fig, ax)
 
 
 # %% 1. Tracking and MSD
+
+# %%% 26-10-07_D1-L - Noco
+
+#### %%%% Settings
+
+#### Paths
+mainDir = os.path.join(up.Path_IntraCellTracking, '26-10-07_FastAcq-Channel_Fec_NB-Yolk')
+srcDir = os.path.join(mainDir, 'D1-L')
+dstDir = os.path.join(mainDir, 'SPT_results')
+# os.listdir(srcDir)
+
+tifNames = [
+    '26-10-07_D1-L_PreF_0min_C1_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
+    '26-10-07_D1-L_PreF_0min_C2_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
+    '26-10-07_D1-L_PreF_0min_C3_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
+    '26-10-07_D1-L_PostF_3min_C4_20fps_Texp50ms_L20p1_CSU642.ome.tif',
+    '26-10-07_D1-L_PostF_7min_C4_20fps_Texp50ms_L30p1_CSU642.ome.tf2',
+    '26-10-07_D1-L_PostF_12min_C4_20fps_Texp50ms_L30p1_CSU642.ome.tf2',
+    '26-10-07_D1-L_PostF_17min_C4_20fps_Texp50ms_L30p1_CSU642.ome.tf2',
+    '26-10-07_D1-L_PostF_20min_C4_20fps_Texp50ms_L30p1_CSU642.ome.tf2',
+    '26-10-07_D1-L_PostF_25min_C4_20fps_Texp50ms_L30p1_CSU642.ome.tf2',
+    '26-10-07_D1-L_PostF_29min_C4_20fps_Texp50ms_L30p1_CSU642.ome.tf2',
+    '26-10-07_D1-L_PostF_35min_noco_C4_20fps_Texp50ms_L30p1_CSU642.ome.tf2',
+    '26-10-07_D1-L_PostF_38min_noco_C4_20fps_Texp50ms_L30p1_CSU642.ome.tf2',
+    '26-10-07_D1-L_PostF_45min_nocoWashed_C4_20fps_Texp50ms_L30p1_CSU642.ome.tf2',
+    '26-10-07_D1-L_PostF_51min_nocoWashed2_C4_20fps_Texp50ms_L30p1_CSU642.ome.tf2',
+    '26-10-07_D1-L_PostF_55min_nocoWashed2_C4_20fps_Texp50ms_L30p1_CSU642.ome.tf2',
+    '26-10-07_D1-L_PostF_60min_nocoWashed2_C4_20fps_Texp50ms_L30p1_CSU642.ome.tf2',
+    '26-10-07_D1-L_PostF_65min_nocoWashed2_C4_20fps_Texp50ms_L30p1_CSU642.ome.tf2',
+    '26-10-07_D1-L_PostF_70min_nocoWashed2_C4_20fps_Texp50ms_L30p1_CSU642.ome.tf2',
+    '26-10-07_D1-L_PostF_75min_nocoWashed2_C4_20fps_Texp50ms_L30p1_CSU642.ome.tf2',
+    '26-10-07_D1-L_PostF_80min_nocoWashed2_C4_20fps_Texp50ms_L30p1_CSU642.ome.tf2',
+    '26-10-07_D1-L_PostF_85min_nocoWashed2_C4_20fps_Texp50ms_L30p1_CSU642.ome.tf2',
+    '26-10-07_D1-L_PostF_90min_nocoWashed3_C4_20fps_Texp50ms_L30p1_CSU642.ome.tf2',
+    '26-10-07_D1-L_PostF_95min_nocoWashed3_C4_20fps_Texp50ms_L30p1_CSU642.ome.tf2',
+    '26-10-07_D1-L_PostF_100min_nocoWashed3_C4_20fps_Texp50ms_L30p1_CSU642.ome.tf2',
+    '26-10-07_D1-L_PostF_124min_nocoWashed3_C4_20fps_Texp50ms_L30p1_CSU642.ome.tf2',
+    ]
+
+tifPaths = [os.path.join(srcDir, tifName) for tifName in tifNames]
+fileNames = [fN.split('.')[0] for fN in tifNames]
+
+Dict_Files_Suffix = {
+    'suffix_contour' : '_cellContour',
+    'suffix_mask' : '_cellMask',
+    'suffix_rawTracks' : '_TmTracks',
+    'suffix_cleanTracks' : '_PyTracks',
+    'suffix_globalMsd' : '_GlobalMsd',
+    'suffix_globalMsdFits' : '_GlobalMsdFits',
+    'suffix_globalPairMsd' : '_GlobalPairMsd',
+    'suffix_globalPairMsdFits' : '_GlobalPairMsdFits',
+    }
+
+
+#### Settings
+UmPerPix = cd.UmPerPix_60X_W1
+Dict_Image_Settings = {
+    'UmPerPix' : UmPerPix,
+    'PixPerUm' : 1/UmPerPix,
+    'FPS' : 20,
+    }
+
+Dict_TrackMate_Settings = {
+    'RADIUS_UM' : 0.8, 
+    'THRESH_SPOT_QLT' : 0.25,
+    'THRESH_LINK_UM' : 0.25, 
+    'THRESH_MIN_DURATION' : 30,
+    }
+
+Dict_Analysis_Settings = {
+    'mask_buffer_um' : 2.0,
+    'edge_buffer_cutoff_um' : 3.0,
+    'max_Dt_s' : 5,
+    'lowDt_upper' : 0.5,
+    'highDt_lower' : 1.0,
+    }
+
+
+#### Run analysis
+
+NByolk_analysis_sequence(mainDir, srcDir, dstDir, tifNames, Dict_Files_Suffix, 
+                         Dict_Image_Settings, Dict_TrackMate_Settings, Dict_Analysis_Settings,
+                         Do_Contours = True, Do_Tracking = True, Do_TrackCleaning = True, Do_MSD = True)
+
+
+# -----------------------------------------------------------------------------
+#### %%% 26-10-07_D1-s - ctrl
+
+#### %%%% Settings
+
+#### Paths
+mainDir = os.path.join(up.Path_IntraCellTracking, '26-10-07_FastAcq-Channel_Fec_NB-Yolk')
+srcDir = os.path.join(mainDir, 'D1-s')
+dstDir = os.path.join(mainDir, 'SPT_results')
+os.listdir(srcDir)
+
+tifNames = [
+    '26-10-07_D1-s_PreF_0min_C1_20fps_Texp50ms_L30p1_CSU642.ome.tf2',
+    '26-10-07_D1-s_PreF_0min_C2_20fps_Texp50ms_L30p1_CSU642.ome.tf2',
+    '26-10-07_D1-s_PreF_0min_C3_20fps_Texp50ms_L30p1_CSU642.ome.tf2',
+    # '26-10-07_D1-s_PreF_0min_C3_5fps_Texp200ms_L30p1_CSU642.ome.tf2',
+    '26-10-07_D1-s_PostF_3min_C4_20fps_Texp50ms_L30p1_CSU642.ome.tf2',
+    '26-10-07_D1-s_PostF_6min_C4_20fps_Texp50ms_L30p1_CSU642.ome.tf2',
+    '26-10-07_D1-s_PostF_9min_C4_20fps_Texp50ms_L30p1_CSU642.ome.tf2',
+    '26-10-07_D1-s_PostF_12min_C4_20fps_Texp50ms_L30p1_CSU642.ome.tf2',
+    '26-10-07_D1-s_PostF_15min_C4_20fps_Texp50ms_L30p1_CSU642.ome.tf2',
+    '26-10-07_D1-s_PostF_20min_C4_20fps_Texp50ms_L30p1_CSU642.ome.tf2',
+    '26-10-07_D1-s_PostF_25min_C4_20fps_Texp50ms_L30p1_CSU642.ome.tf2',
+    '26-10-07_D1-s_PostF_30min_C4_20fps_Texp50ms_L30p1_CSU642.ome.tf2',
+    '26-10-07_D1-s_PostF_35min_C4_20fps_Texp50ms_L30p1_CSU642.ome.tf2',
+    '26-10-07_D1-s_PostF_40min_C4_20fps_Texp50ms_L30p1_CSU642.ome.tf2',
+    '26-10-07_D1-s_PostF_45min_C4_20fps_Texp50ms_L30p1_CSU642.ome.tf2',
+    '26-10-07_D1-s_PostF_50min_C4_20fps_Texp50ms_L30p1_CSU642.ome.tf2',
+    '26-10-07_D1-s_PostF_55min_C4_20fps_Texp50ms_L30p1_CSU642.ome.tf2',
+    '26-10-07_D1-s_PostF_60min_C4_20fps_Texp50ms_L30p1_CSU642.ome.tf2',
+    '26-10-07_D1-s_PostF_66min_C4_20fps_Texp50ms_L30p1_CSU642.ome.tf2',
+    '26-10-07_D1-s_PostF_71min_C4_20fps_Texp50ms_L30p1_CSU642.ome.tf2',
+    '26-10-07_D1-s_PostF_83min_C4_20fps_Texp50ms_L30p1_CSU642.ome.tf2',
+    ]
+
+tifPaths = [os.path.join(srcDir, tifName) for tifName in tifNames]
+fileNames = [fN.split('.')[0] for fN in tifNames]
+
+Dict_Files_Suffix = {
+    'suffix_contour' : '_cellContour',
+    'suffix_mask' : '_cellMask',
+    'suffix_rawTracks' : '_TmTracks',
+    'suffix_cleanTracks' : '_PyTracks',
+    'suffix_globalMsd' : '_GlobalMsd',
+    'suffix_globalMsdFits' : '_GlobalMsdFits',
+    'suffix_globalPairMsd' : '_GlobalPairMsd',
+    'suffix_globalPairMsdFits' : '_GlobalPairMsdFits',
+    }
+
+
+#### Settings
+UmPerPix = cd.UmPerPix_60X_W1
+Dict_Image_Settings = {
+    'UmPerPix' : UmPerPix,
+    'PixPerUm' : 1/UmPerPix,
+    'FPS' : 20,
+    }
+
+Dict_TrackMate_Settings = {
+    'RADIUS_UM' : 0.8, 
+    'THRESH_SPOT_QLT' : 0.25,
+    'THRESH_LINK_UM' : 0.25, 
+    'THRESH_MIN_DURATION' : 30,
+    }
+
+Dict_Analysis_Settings = {
+    'mask_buffer_um' : 2.0,
+    'edge_buffer_cutoff_um' : 3.0,
+    'max_Dt_s' : 5,
+    'lowDt_upper' : 0.5,
+    'highDt_lower' : 1.0,
+    }
+
+
+#### Run analysis
+
+NByolk_analysis_sequence(mainDir, srcDir, dstDir, tifNames, Dict_Files_Suffix, 
+                         Dict_Image_Settings, Dict_TrackMate_Settings, Dict_Analysis_Settings,
+                         Do_Contours = True, Do_Tracking = True, Do_TrackCleaning = True, Do_MSD = True)
+
+#### %%%% Settings - Long & Slow
+
+#### Paths
+mainDir = os.path.join(up.Path_IntraCellTracking, '26-10-07_FastAcq-Channel_Fec_NB-Yolk')
+srcDir = os.path.join(mainDir, 'D1-s')
+dstDir = os.path.join(mainDir, 'SPT_results')
+os.listdir(srcDir)
+
+tifNames = [
+    '26-10-07_D1-s_PreF_0min_C3_5fps_Texp200ms_L30p1_CSU642.ome.tf2',
+    ]
+
+tifPaths = [os.path.join(srcDir, tifName) for tifName in tifNames]
+fileNames = [fN.split('.')[0] for fN in tifNames]
+
+Dict_Files_Suffix = {
+    'suffix_contour' : '_cellContour',
+    'suffix_mask' : '_cellMask',
+    'suffix_rawTracks' : '_TmTracks',
+    'suffix_cleanTracks' : '_PyTracks',
+    'suffix_globalMsd' : '_GlobalMsd',
+    'suffix_globalMsdFits' : '_GlobalMsdFits',
+    'suffix_globalPairMsd' : '_GlobalPairMsd',
+    'suffix_globalPairMsdFits' : '_GlobalPairMsdFits',
+    }
+
+
+#### Settings
+UmPerPix = cd.UmPerPix_60X_W1
+Dict_Image_Settings = {
+    'UmPerPix' : UmPerPix,
+    'PixPerUm' : 1/UmPerPix,
+    'FPS' : 5,
+    }
+
+Dict_TrackMate_Settings = {
+    'RADIUS_UM' : 0.8, 
+    'THRESH_SPOT_QLT' : 0.25,
+    'THRESH_LINK_UM' : 0.5, 
+    'THRESH_MIN_DURATION' : 30,
+    }
+
+Dict_Analysis_Settings = {
+    'mask_buffer_um' : 2.0,
+    'edge_buffer_cutoff_um' : 3.0,
+    'max_Dt_s' : 10,
+    'lowDt_upper' : 0.5,
+    'highDt_lower' : 1.0,
+    }
+
+#### Run analysis
+
+NByolk_analysis_sequence(mainDir, srcDir, dstDir, tifNames, Dict_Files_Suffix, 
+                         Dict_Image_Settings, Dict_TrackMate_Settings, Dict_Analysis_Settings,
+                         Do_Contours = True, Do_Tracking = True, Do_TrackCleaning = True, Do_MSD = True)
 
 # %%% 26-09-30_D1
 
@@ -369,7 +588,6 @@ Dict_Image_Settings = {
     }
 
 Dict_TrackMate_Settings = {
-    'IMG_UNITS' : 'PIX',
     'RADIUS_UM' : 0.8, 
     'THRESH_SPOT_QLT' : 0.25,
     'THRESH_LINK_UM' : 0.25, 
@@ -545,7 +763,6 @@ Dict_Image_Settings = {
     }
 
 Dict_TrackMate_Settings = {
-    'IMG_UNITS' : 'PIX',
     'RADIUS_UM' : 0.8, 
     'THRESH_SPOT_QLT' : 0.25,
     'THRESH_LINK_UM' : 0.25, 
@@ -919,227 +1136,23 @@ ax.grid()
 plt.show()
 
 
-# %%%% Make movie
-
-def tri_to_short_edges(tri, points, thresh_d):
-    # Extract all edges from each triangle
-    edges = np.vstack([
-        tri.simplices[:, [0, 1]],
-        tri.simplices[:, [1, 2]],
-        tri.simplices[:, [2, 0]]
-    ])
-
-    # Sort indices within each edge to make (i, j) and (j, i) identical
-    edges = np.sort(edges, axis=1)
-
-    # Remove duplicate edges
-    edges = np.unique(edges, axis=0)
-
-    # Convert to a Python list of pairs
-    edges = np.array(edges)
-    
-    pairs = points[edges]
-    dists = np.power(np.sum((pairs[:,1,:]-pairs[:,0,:])**2, axis=1), 0.5)
-    idx_close_neighbours = (dists < thresh_d)
-    edges_close_neighbours = edges[idx_close_neighbours]
-    return(edges_close_neighbours, dists)
-
-
-def get_pairs_for_TRanges_Delaunay(df, PixPerUm, FPS, Nframes,
-                                   len_TRanges = 200, delta_TRanges = -1,
-                                   dist_th_um = 5):
-    df.frame = df.frame.astype(int)
-    df.particle = df.particle.astype(int)
-    dist_th = dist_th_um * PixPerUm
-    
-    if delta_TRanges < 0:
-        delta_TRanges = len_TRanges
-    FI = np.arange(0, Nframes, step=delta_TRanges)
-    FF = FI + len_TRanges
-    valid = (FF <= Nframes)
-    if valid[-1]:
-        pass
-    else:
-        i_stop = ufun.findFirst(True, (FF>Nframes))
-        FI = FI[:i_stop]
-        FF = FF[:i_stop]
-    
-    dict_TRanges2particles = {f'{fi}_{ff}':{'pid':[], 'xm':[], 'ym':[]} \
-                              for fi, ff in zip(FI, FF)}
-    list_TRanges = [f'{fi}_{ff}' for fi, ff in zip(FI, FF)]
-    list_Pairs = []
-    
-    #### !!!! The syntax below is really cool !
-    grouped = df.groupby('particle')
-    for pid, df_p in grouped:
-        frames = df_p['frame'].to_numpy()
-        x = df_p['x'].to_numpy()
-        y = df_p['y'].to_numpy()
-
-        pfi = frames.min()
-        pff = frames.max()
-
-        for fi, ff in zip(FI, FF):
-            if pfi <= fi + 1 and ff <= pff:
-                mask = (fi <= frames - 1) & (frames - 1 < ff)
-                xm = np.median(x[mask])
-                ym = np.median(y[mask])
-
-                key = f'{fi}_{ff}'
-                result = dict_TRanges2particles[key]
-                result['pid'].append(int(pid))
-                result['xm'].append(float(xm))
-                result['ym'].append(float(ym))
-    
-    for k, TRange in enumerate(list_TRanges):
-        df_parts = pd.DataFrame(dict_TRanges2particles[TRange])
-        XY = np.array([df_parts['xm'].values[:],
-                       df_parts['ym'].values[:]]).T
-        
-        tri = Delaunay(XY)
-        edges_short, _ = tri_to_short_edges(tri, XY, dist_th)
-        close_pairs = df_parts['pid'].values[edges_short]
-        
-        list_Pairs.append(np.array(close_pairs))    
-            
-    return(list_TRanges, list_Pairs)
-
-plt.ioff()
-pm.setGraphicOptions(mode='print')
+# %%%% Make movie of triangulation
 
 i = 0
 print(i)
 tP, fN = tifPaths[i], fileNames[i]
-dirPlots = "C://Users//Utilisateur//Desktop//Plots_film_triangles"
+dirPlots = os.path.join(up.Path_Desktop, "Plots_film_triangles")
 cleanTrackName = fN + Dict_Files_Suffix['suffix_cleanTracks'] + '.csv'
 df = pd.read_csv(os.path.join(dstDir, cleanTrackName), sep='\t')
 shape, _ = ufun.tiff_inspect(tP)
-nT, nY, nX = shape
-
-# def make_snapshot_of_pairs(df, SCALE, FPS, fi, ff, dist_th_um = 5):
-    
 PixPerUm = cd.PixPerUm_60X_W1
 FPS = 20
-# fi = 0
-# ff = 40
-plot_frames = np.arange(1, 200, 5)
-dist_th_um = 4
-
-df.frame = df.frame.astype(int)
-df.particle = df.particle.astype(int)
-dist_th = dist_th_um * PixPerUm
-
-# df_f = df[(df['frame']>fi) & (df['frame']<=ff)]
-df_f = df[df['frame'].apply(lambda x : x in plot_frames)]
-
-valid_particles = []
-
-grouped = df_f.groupby('particle')
-for pid, df_p in grouped:
-    if len(df_p) == len(plot_frames):
-    # if len(df_p) == (ff-fi):
-        valid_particles.append(pid)
-        
-valid_particles = np.array(valid_particles)
-df_f = df_f[df_f['particle'].apply(lambda x : x in valid_particles)]
-
-grouped = df_f.groupby('frame')
-for f, df_ff in grouped:
-    XY = np.array([df_ff['x'].to_numpy(),
-                   df_ff['y'].to_numpy()]).T
-    
-    tri = Delaunay(XY)
-    edges_short, _ = tri_to_short_edges(tri, XY, dist_th)
-    close_pairs = df_ff['particle'].to_numpy()[edges_short]
-    
-    fig, axes = plt.subplots(1, 2, figsize = (6, 3), layout='compressed')
-
-    ax = axes[0]
-    ax.set_xlim([0, nX])
-    ax.set_ylim([0, nY])
-    ax.triplot(XY[:, 0], XY[:, 1], tri.simplices, 'g-', lw=1)
-    ax.plot(XY[:, 0], XY[:, 1], ls='', marker='o', ms=2)
-
-    ax = axes[1]
-    ax.set_xlim([0, nX])
-    ax.set_ylim([0, nY])
-    ax.plot(XY[:, 0], XY[:, 1], ls='', marker='o', ms=2, zorder=8)
-    for p in edges_short:
-        i, j = p
-        ax.plot([XY[i, 0], XY[j, 0]], [XY[i, 1], XY[j, 1]], 'g-', lw=1, zorder=7)
-    
-
-    fig.savefig(os.path.join(dirPlots, f'tri_{f:04d}.png'), dpi=200)
-    plt.close('all')
-    
-plt.ion()
-
-
-def get_pairs_for_TRanges(df, SCALE, FPS, Nframes,
-                          len_TRanges = 200, delta_TRanges = -1,
-                          dist_th_um = 5):
-    df.frame = df.frame.astype(int)
-    df.particle = df.particle.astype(int)
-    dist_th = dist_th_um * SCALE
-    
-    if delta_TRanges < 0:
-        delta_TRanges = len_TRanges
-    FI = np.arange(0, Nframes, step=delta_TRanges)
-    FF = FI + len_TRanges
-    valid = (FF <= Nframes)
-    if valid[-1]:
-        pass
-    else:
-        i_stop = ufun.findFirst(True, (FF>Nframes))
-        FI = FI[:i_stop]
-        FF = FF[:i_stop]
-    
-    dict_TRanges2particles = {f'{fi}_{ff}':{'pid':[],'xm':[],'ym':[]} \
-                              for fi, ff in zip(FI, FF)}
-    dict_TRanges2pairs = {f'{fi}_{ff}':[] for fi, ff in zip(FI, FF)}
-    
-    PIDs = df.particle.unique()
-    for pid in PIDs:
-        pfi = np.min(df[df['particle'] == pid]['frame'].values) - 1
-        pff = np.max(df[df['particle'] == pid]['frame'].values) - 1
-        
-        for fi, ff in zip(FI, FF):
-            if (pfi <= fi) and (ff-1 <= pff):
-                xm = np.median(df[df['particle'] == pid]['x'].values)
-                ym = np.median(df[df['particle'] == pid]['y'].values)
-                dict_TRanges2particles[f'{fi}_{ff}']['pid'].append(pid)
-                dict_TRanges2particles[f'{fi}_{ff}']['xm'].append(xm)
-                dict_TRanges2particles[f'{fi}_{ff}']['ym'].append(ym)
-    
-    for TRange in dict_TRanges2particles.keys():
-        df_parts = pd.DataFrame(dict_TRanges2particles[TRange])
-        listPairs = []
-        while len(df_parts)>1:
-            p1 = df_parts['pid'].values[0]
-            XY1 = np.array([df_parts['xm'].values[0],
-                            df_parts['ym'].values[0]])
-            XYothers = np.array([df_parts['xm'].values[1:],
-                                 df_parts['ym'].values[1:]]).T
-            dists = np.power((np.sum((XYothers - XY1)**2, axis=1)), 0.5)
-            min_d = np.min(dists)
-            if min_d > dist_th:
-                idx_to_drop = df_parts[(df_parts["pid"] == p1)].index
-                df_parts.drop(axis=0, index=idx_to_drop, inplace=True)
-            else:
-                idx_min = np.argmin(dists) + 1
-                p2 = df_parts['pid'].values[idx_min]
-                listPairs.append((p1, p2))
-                idx_to_drop = df_parts[(df_parts["pid"] == p1) | (df_parts["pid"] == p2)].index
-                df_parts.drop(axis=0, index=idx_to_drop, inplace=True)
-                # except:
-                #     print(df_parts)
-                
-        dict_TRanges2pairs[TRange] = np.array(listPairs)
-            
-    return(dict_TRanges2pairs)
-
-
-
+plot_frames = np.arange(1001, 1101, 2)
+dist_th_um = 5
+# tbca.make_film_of_pairs_V1(df, PixPerUm, FPS, shape, dirPlots,
+#                           plot_frames, dist_th_um = 4)
+tbca.make_film_of_pairs_V2(df, PixPerUm, FPS, shape, dirPlots, 
+                          plot_frames, dist_th_um = 4)
 
 
 # %%% 26-07-29
@@ -1200,6 +1213,94 @@ Dict_Analysis_Settings = {
     'highDt_lower' : 1.0,
     }
 
+
+
+# %% Test
+
+import numpy as np
+import matplotlib.pyplot as plt
+from scipy.interpolate import RBFInterpolator
+from scipy.stats.qmc import Halton
+
+rng = np.random.default_rng()
+xyobs = 2*Halton(2, seed=rng).random(400)
+pobs = np.sum(xyobs, axis=1)*np.exp(-6*np.sum(xyobs**4, axis=1))
+
+x1 = np.linspace(0, 2, 50)
+xygrid = np.asarray(np.meshgrid(x1, x1, indexing='ij'))
+xyflat = xygrid.reshape(2, -1).T     # make it a 2-D array
+# pflat = RBFInterpolator(xyobs, pobs, kernel='gaussian', epsilon=2)(xyflat)
+# pgrid = pflat.reshape(50, 50)
+
+# fig, axes = plt.subplots(1, 3, figsize=(9, 3))
+# ax = axes[0]
+# # ax.pcolormesh(*xgrid, ygrid, vmin=-0.25, vmax=0.25, shading='gouraud')
+# p = ax.scatter(*xyobs.T, c=pobs, s=20, ec='k', vmin=-0.25, vmax=0.25)
+
+# ax = axes[1]
+# ax.pcolormesh(*xygrid, pgrid, vmin=-0.25, vmax=0.25, shading='gouraud')
+# # p = ax.scatter(*xobs.T, c=yobs, s=50, ec='k', vmin=-0.25, vmax=0.25)
+
+# ax = axes[2]
+# ax.pcolormesh(*xygrid, pgrid, vmin=-0.25, vmax=0.25, shading='gouraud')
+# p = ax.scatter(*xyobs.T, c=pobs, s=20, ec='k', vmin=-0.25, vmax=0.25)
+
+# fig.colorbar(p)
+# plt.show()
+
+df = pd.DataFrame({'x':xyobs[:,0],
+                   'y':xyobs[:,1],
+                   'p':pobs})
+
+def gaussian_weights(yx0, Y, X, P, sigma=1):
+    dx = X-yx0[1]
+    dy = Y-yx0[0]
+    D2 = (dx**2 + dy**2)**0.5
+    w = np.exp(-D2/(2*sigma**2))
+    wP = P*w
+    wAvgP = np.sum(wP)/np.sum(w)
+    return(wAvgP)
+
+def make_smoothed_grid(X, Y, P, shape, Mx, My, sigma):
+    NpixY, NpixX = shape
+    xx = np.linspace(0, NpixX, Mx)
+    yy = np.linspace(0, NpixY, My)
+    yxgrid = np.asarray(np.meshgrid(yy, xx, indexing='ij'))
+    yxflat = yxgrid.reshape(2, -1).T     # make it a 2-D array
+    pflat = np.array([gaussian_weights(yx0, Y, X, P, sigma=sigma) for yx0 in yxflat])
+    pgrid = pflat.reshape(My, Mx)
+    return(pgrid, yxgrid)
+    
+
+X = df['x'].to_numpy()
+Y = df['y'].to_numpy()
+P = df['p'].to_numpy()
+shape = [2, 2]
+Mx, My = 20, 20
+sigma = 0.1
+
+pgrid2, yxgrid2 = make_smoothed_grid(X, Y, P, shape, Mx, My, sigma)
+
+
+fig, axes = plt.subplots(1, 3, figsize=(9, 3))
+ax = axes[0]
+# ax.pcolormesh(*xgrid, ygrid, vmin=-0.25, vmax=0.25, shading='gouraud')
+p = ax.scatter(*xyobs.T, c=pobs, s=20, ec='k', vmin=-0.25, vmax=0.25)
+
+ax = axes[1]
+ax.pcolormesh(*yxgrid2, pgrid2, vmin=-0.25, vmax=0.25, shading='gouraud')
+# ax.imshow(pgrid2)
+# p = ax.scatter(*xobs.T, c=yobs, s=50, ec='k', vmin=-0.25, vmax=0.25)
+
+ax = axes[2]
+ax.pcolormesh(*yxgrid2, pgrid2, vmin=-0.25, vmax=0.25, shading='gouraud')
+# ax.imshow(pgrid2)
+p = ax.scatter(*xyobs.T, c=pobs, s=20, ec='k', vmin=-0.25, vmax=0.25)
+
+fig.colorbar(p)
+plt.show()
+
+# %%
 
 
 # %%% TBD
