@@ -269,6 +269,23 @@ def findAndRemove(path, target_string, target='file', test = True,
 # -----------------------------------------------------------------------------------------------
 # %% Script Other renaming
 
+s1 = '.json.json'
+s2 = '.json'
+
+# path0 = "E:/AnalysisPulls/26-04-30_CalibMagnet_JV01_and_JN"
+path0 = up.Path_IntraCellTracking + "26-09-30_FastAcq-Channel_Fec_NB-Yolk//SPT_results"
+sub = ''
+path = path0 + sub
+
+findAndRename(path, s1, s2, 
+              target = 'all', test = True, recursiveAction = True, exceptStrings = [])
+
+
+
+
+# -----------------------------------------------------------------------------------------------
+# %% Script Other renaming
+
 s1 = '26-10-07_D1-R'
 s2 = '26-10-07_D1-L'
 

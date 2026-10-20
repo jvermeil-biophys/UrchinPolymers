@@ -36,6 +36,7 @@ import alphashape
 
 import numpy as np
 import pandas as pd
+import trackpy as tp
 import skimage as skm
 import seaborn as sns
 import matplotlib as mpl
@@ -667,8 +668,7 @@ def get_pairs_for_TRanges_Delaunay(df, PixPerUm, FPS, Nframes,
                               for fi, ff in zip(FI, FF)}
     list_TRanges = [f'{fi}_{ff}' for fi, ff in zip(FI, FF)]
     list_Pairs = []
-    
-    #### !!!! The syntax below is really cool !
+
     grouped = df.groupby('particle')
     for pid, df_p in grouped:
         frames = df_p['frame'].to_numpy()
@@ -706,12 +706,12 @@ def get_pairs_for_TRanges_Delaunay(df, PixPerUm, FPS, Nframes,
 
 
 
-def get_pairs_for_TRanges(df, SCALE, FPS, Nframes,
+def get_pairs_for_TRanges(df, PixPerUm, FPS, Nframes,
                           len_TRanges = 200, delta_TRanges = -1,
                           dist_th_um = 5):
     df.frame = df.frame.astype(int)
     df.particle = df.particle.astype(int)
-    dist_th = dist_th_um * SCALE
+    dist_th = dist_th_um * PixPerUm
     
     if delta_TRanges < 0:
         delta_TRanges = len_TRanges
@@ -952,6 +952,40 @@ def make_film_of_pairs_V2(df, PixPerUm, FPS, shape, dirPlots,
         plt.close('all')
         
     plt.ion()
+    
+    
+    
+def compute_pairwise_MSD(df, PixPerUm, FPS, Nframes,
+                         len_TRanges = 100, delta_TRanges = -1, 
+                         dist_th_um = 4, max_Dt_s = 2.5):
+    
+    list_TRanges, list_Pairs = get_pairs_for_TRanges_Delaunay(
+        df, PixPerUm, FPS, Nframes,
+        len_TRanges = 100, 
+        delta_TRanges = -1,
+        dist_th_um = 4
+        )
+    
+    pairMSD = []
+    max_lagtime = int(max_Dt_s * FPS)
+    
+    for k, TRange in enumerate(list_TRanges):
+        pairs = list_Pairs[k]
+        df_pairs = get_relative_displacement_by_TRange(df, pairs, TRange)
+        res_pair_emsd = tp.motion.emsd(df_pairs.rename(columns={'pair_id':'particle'}), 
+                                       1/PixPerUm, FPS, max_lagtime=max_lagtime).reset_index()
+        pairMSD.append(res_pair_emsd)
+
+    df_allTRange_pair_MSD = pd.concat([pairMSD[0]['lagt']] + [df['msd'] for df in pairMSD], axis=1)
+    df_allTRange_pair_MSD.columns = ['lagt'] + [f'msd_{tr}' for tr in list_TRanges]
+    median_msd = np.median(df_allTRange_pair_MSD.loc[:, [f'msd_{tr}' for tr in list_TRanges]].to_numpy(), 
+                           axis = 1)
+
+    df_allTRange_pair_MSD['msd_median'] = median_msd
+    
+    return(df_allTRange_pair_MSD)
+    
+    
 
 # %%% Pipeline main functions
 
