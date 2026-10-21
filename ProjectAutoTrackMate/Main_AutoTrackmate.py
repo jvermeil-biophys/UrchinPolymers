@@ -42,6 +42,11 @@ import Toolbox_AutoTrackmate as tbat
 # Path_IntraCellTracking = "F:\\IntraCellTracking\\"
 Path_IntraCellTracking = ".//Test_Dataset"
 
+#### For tests
+
+from scipy.signal import savgol_filter
+import skimage as skm
+
 
 # %% Function for the all-in-one pipeline
 
@@ -382,6 +387,11 @@ def correct_drift_in_Tracks(df, fN, dstDir, PixPerUm, FPS,
     sDxy = savgol_filter(Dxy, 5, 3, axis=0)
     sum_sDxy = np.array([np.sum(sDxy[:k, :], axis=0) for k in range(1, nF)])
     
+    list_df_f = [(f, df_f) for f, df_f in grouped]
+    for f, df_f in list_df_f[1:]:
+        df_f['x'] = df_f['x'] - sum_sDxy[f-2, 0]
+        df_f['y'] = df_f['y'] - sum_sDxy[f-2, 1]
+    
     if PLOT:
         if not SHOWPLOT:
             plt.ioff()
@@ -430,9 +440,8 @@ def correct_drift_in_Tracks(df, fN, dstDir, PixPerUm, FPS,
             
         fpath = os.path.join(dstDir, fN + '_DriftCorr.tif')
         skm.io.imsave(fpath, tf_img)
-
-
-
+        
+    return(df)
 
 
 for i in range(len(fileNames)):
@@ -475,8 +484,7 @@ for i in range(len(fileNames)): #len(fileNames)
     # res_emsd = tp.motion.emsd(df, UmPerPix, FPS, max_lagtime=max_lagtime).reset_index()
     # res_emsd.to_csv(os.path.join(dstDir, msdName), index=False, sep='\t')
 
-from scipy.signal import savgol_filter
-import skimage as skm
+
 
 # %%%% Next step
 

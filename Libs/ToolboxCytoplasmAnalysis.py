@@ -36,8 +36,10 @@ import alphashape
 
 import numpy as np
 import pandas as pd
+import trackpy as tp
 import skimage as skm
 import seaborn as sns
+import matplotlib as mpl
 import scipy.ndimage as ndi
 import matplotlib.pyplot as plt
 import xml.etree.ElementTree as ET
@@ -82,6 +84,30 @@ print(f"ImageJ version: {ij.getVersion()}")
 
 # %%% Helper functions
 
+# %%%% Files IO
+
+
+def get_numbers_following_text(text, target, output = 'integer'):
+    if output == 'integer':
+        m = re.search(r''+target, text)
+        m_num = re.search(r'[\d]+', text[m.end():m.end()+10])
+        res = int(text[m.end():m.end()+10][m_num.start():m_num.end()])
+    elif output == 'string':
+        m = re.search(r''+target, text)
+        m_num = re.search(r'[\d-]+', text[m.end():m.end()+10])
+        res = str(text[m.end():m.end()+10][m_num.start():m_num.end()])
+    return(res)
+    
+
+
+def check_if_file_has_tracks(fileName, srcDir):
+    fN_root = fileName.split('.')[0]
+    fN_contour = fN_root + '_Tracks.xml'
+    has_contours = os.path.isfile(os.path.join(srcDir, fN_contour))
+    return(has_contours)
+
+
+
 def import_TrackMate_tracks(filepath):
     """
     Parse a TrackMate XML file and return list of tracks.
@@ -103,6 +129,89 @@ def import_TrackMate_tracks(filepath):
     return(tracks)
 
 
+def export_as_TrackMate_tracks(tracks,
+                               filepath,
+                               spaceUnits="pixels",
+                               frameInterval=1.0,
+                               timeUnits="frames",
+                               generationDateTime=None,
+                               from_version="TrackMate v7.14.0"):
+    """
+    Export a list of particle tracks to a TrackMate-style XML file.
+
+    Parameters
+    ----------
+    tracks : list of numpy.ndarray
+        Each array has shape (N, 3), with columns [t, x, y].
+    filepath : str
+        Output XML file path.
+    spaceUnits : str
+        Spatial units, e.g. "pixels" or "microns".
+    frameInterval : float
+        Time interval between frames.
+    timeUnits : str
+        Time units, e.g. "frames" or "seconds".
+    generationDateTime : str or None
+        Date/time string for the XML header.
+    from_version : str
+        TrackMate version string for the XML header.
+    """
+
+    if generationDateTime is None:
+        generationDateTime = ""
+
+    # Root element
+    root = ET.Element("Tracks",
+        {
+            "nTracks": str(len(tracks)),
+            "spaceUnits": str(spaceUnits),
+            "frameInterval": str(frameInterval),
+            "timeUnits": str(timeUnits),
+            "generationDateTime": str(generationDateTime),
+            "from": str(from_version),
+        })
+
+    # Add each particle and its detections
+    for track in tracks:
+        track = np.asarray(track)
+
+        if track.size == 0:
+            particle = ET.SubElement(root, "particle", {"nSpots": "0"})
+            continue
+
+        if track.ndim != 2 or track.shape[1] != 3:
+            raise ValueError("Each track must be a 2D array with columns [t, x, y].")
+
+        particle = ET.SubElement(
+            root,
+            "particle",
+            {"nSpots": str(len(track))}
+        )
+
+        for t, x, y in track:
+            ET.SubElement(
+                particle,
+                "detection",
+                {
+                    "t": str(t),
+                    "x": str(x),
+                    "y": str(y),
+                    "z": "0.0",
+                })
+
+    # Pretty-print the XML with indentation
+    ET.indent(root, space="  ")
+
+    # Write XML to disk
+    tree = ET.ElementTree(root)
+    tree.write(
+        filepath,
+        encoding="UTF-8",
+        xml_declaration=True
+    )
+
+
+# %%%% Segmentation
 
 def get_cell_inner_circle(img, PLOT = False):
     nT, nY, nX = img.shape
@@ -124,11 +233,11 @@ def get_cell_inner_circle(img, PLOT = False):
         plt.show()
     return(contour)
 
-
-
 def make_NbYolkCell_contour_and_mask(img, PixPerUm,
                                      mode = 'dark_background', 
                                      buffer_um = 0,
+                                     keep_only_largest = False,
+                                     exclude_on_edges = True,
                                      PLOT = False):
     nT, nY, nX = img.shape
     k_th = 1.0
@@ -143,11 +252,16 @@ def make_NbYolkCell_contour_and_mask(img, PixPerUm,
         th1 = skm.filters.threshold_li(img_proj) * k_th
         img_bin = (img_proj < th1)
     
+    if exclude_on_edges:
+        img_bin = skm.segmentation.clear_border(img_bin)
+    
     img_bin = ndi.binary_opening(img_bin, iterations = 5)
     img_bin = ndi.binary_fill_holes(img_bin)
     
     # Get contours from first mask
     FoundContours = skm.measure.find_contours(img_bin, 0.5)
+    if keep_only_largest:
+        FoundContours = [FoundContours[np.argmax([len(c) for c in FoundContours])]]
     
     # Get additionnal contours by "erroding" the mask
     N_it = 2
@@ -226,42 +340,84 @@ def make_NbYolkCell_contour_and_mask(img, PixPerUm,
 
 
 
+def make_NbYolkPronucleus_contour_and_mask(img, PixPerUm,
+                                           Contour_cell, Mask_cell,
+                                           mode = 'dark_background', 
+                                           buffer_pix = 3,
+                                           PLOT = False):
 
-def get_numbers_following_text(text, target, output = 'integer'):
-    if output == 'integer':
-        m = re.search(r''+target, text)
-        m_num = re.search(r'[\d]+', text[m.end():m.end()+10])
-        res = int(text[m.end():m.end()+10][m_num.start():m_num.end()])
-    elif output == 'string':
-        m = re.search(r''+target, text)
-        m_num = re.search(r'[\d-]+', text[m.end():m.end()+10])
-        res = str(text[m.end():m.end()+10][m_num.start():m_num.end()])
-    return(res)
+    # Contour_inner = Contour_cell
+    Mask_inner = Mask_cell
     
-
-
-def check_if_file_has_tracks(fileName, srcDir):
-    fN_root = fileName.split('.')[0]
-    fN_contour = fN_root + '_Tracks.xml'
-    has_contours = os.path.isfile(os.path.join(srcDir, fN_contour))
-    return(has_contours)
-
-
-
-def draw_circles(img, blobs, 
-                 fig = None, ax = None):
-    # this is the basic function that will be used to draw detected blobs 
-    if fig == None:
-        fig, ax = plt.subplots(1, 1, figsize=(10, 10))
+    # ---
     
-    ax.imshow(img, cmap='gray')
-    for blob in blobs:
-        y, x, radius = blob
-        c = plt.Circle((x, y), radius*np.sqrt(2), color='white', linewidth=2, fill=False)
-        ax.add_patch(c)
+    # k_th = 0.9
+    nT, nY, nX = img.shape
+    th_fun = skm.filters.threshold_otsu
+    Mask_inner_f = Mask_inner.flatten()
+    
+    step = nT//10
+    img_masked = img[::step] * Mask_inner
+    img_bin = np.zeros_like(img_masked)
+    
+    if mode == 'dark_background':
+        for k, im in enumerate(img_masked):
+            im_f = im.flatten()
+            th1 = th_fun(im_f[Mask_inner_f]) # * k_th
+            img_bin[k] = (im < th1)
+            img_bin[k] = ndi.binary_opening(img_bin[k], iterations = 2)
+    elif mode == 'bright_background':
+        for k, im in enumerate(img_masked):
+            im_f = im.flatten()
+            th1 = th_fun(im_f[Mask_inner_f]) # * k_th
+            img_bin[k] = (im > th1)
+            img_bin[k] = ndi.binary_opening(img_bin[k], iterations = 2)
+    
+    img_bin = np.median(img_bin, axis = 0)
+    img_bin = ndi.binary_opening(img_bin, iterations = 10)
+    img_bin = ndi.binary_dilation(img_bin, iterations = 1)
+    
+    img_label, num_features = ndi.label(img_bin)
+    properties = ['label', 'area', 'perimeter']
+    df = pd.DataFrame(skm.measure.regionprops_table(img_label, img_bin, properties = properties))
+    df['circularity'] = 4*np.pi*df['area']/(df['perimeter']**2)
+    df = df[df['area'] > 6000]
+    df = df[df['area'] < 15000]
+    df = df[df['circularity'] > 0.55]
 
-    # plt.show()  
+    if len(df) > 0:
+        df = df.sort_values(by='area', ascending=False)
+        best_label = df['label'].to_numpy()[0]
+        mask_pronuc = (img_label == best_label)
+        mask_pronuc = ndi.binary_dilation(mask_pronuc, iterations = buffer_pix)
+        contour_pronuc = skm.measure.find_contours(mask_pronuc, 0.5)[0]
+    else:
+        mask_pronuc = None
+        contour_pronuc = None
+        
 
+    if PLOT:
+        fig, axes = plt.subplots(1, 3, figsize=(12, 4), sharex=True, sharey=True)
+        axes_f = axes.flatten()
+        
+        ax = axes_f[0]
+        ax.set_aspect('equal', adjustable='box')
+        ax.imshow(img[0], cmap='gray')
+        if not (contour_pronuc is None):
+            ax.plot(contour_pronuc[:,1], contour_pronuc[:,0], 'r-')
+        
+        ax = axes_f[1]
+        ax.set_aspect('equal', adjustable='box')
+        ax.imshow(img_bin, cmap='gray')
+        
+        if not (mask_pronuc is None):
+            ax = axes_f[2]
+            ax.set_aspect('equal', adjustable='box')
+            ax.imshow(mask_pronuc, cmap='gray')
+        
+        plt.show()
+    
+    return contour_pronuc, mask_pronuc
 
 def is_track_in_polygon(track, poly):
     xm = np.median(track[:, 1])
@@ -270,9 +426,95 @@ def is_track_in_polygon(track, poly):
     res = poly.contains(point)
     return(res)
 
+def update_masks(yx, L, total_mask, allowed_mask, NyNx, 
+                 force_distribution = False):
+    Ny, Nx = NyNx
+    y, x = yx
+    y1, x1 = y+L, x+L   
+    y0, x0 = y-L, x-L
+    total_mask[y:y1, x:x1] = False
+    
+    y1, x1 = min(y1, Ny), min(x1, Nx)
+    y0, x0 = max(y0, 0), max(x0, 0)
+    allowed_mask[y0:y1, x0:x1] = False
+    
+    if force_distribution:
+        allowed_mask[int(y-L/2):int(y+L/2), :] = False
+        allowed_mask[:, int(x-L/2):int(x+L/2)] = False
+    
+    return(total_mask, allowed_mask)
 
-def rawTracks_2_cleanTracks(rawTracks, dstDir, cleanTrackName,
-                            Contour_cell, PixPerUm,
+
+def get_N_random_square_ROIs_in_cell(mask, L, N, 
+                                     excluded_mask=None,
+                                     force_distribution = False,
+                                     seed=None, PLOT = False):
+    Ny, Nx = mask.shape
+    
+    if not (excluded_mask is None):
+        total_mask = mask & (~excluded_mask)
+    else:
+        total_mask = mask
+    
+    kernel = np.zeros((L*2 - 1, L*2 - 1), dtype=bool)
+    kernel[L:, L:] = True
+    
+    allowed_mask = ndi.binary_erosion(total_mask, structure=kernel, iterations=1)
+    # allowed_mask = cv2.erode(total_mask, kernel, iterations=1)
+    
+    if PLOT:
+        fig, axes = plt.subplots(1, N+1, figsize=((N+1)*3, 3.5))
+        ax = axes[0]
+        ax.set_aspect('equal', adjustable='box')
+        ax.imshow(total_mask*0.5 + allowed_mask*0.5, 
+                  cmap='gray', vmin=0, vmax=1)
+    
+    list_rois = []
+    
+    for k in range(N):
+    
+        coords = np.argwhere(allowed_mask)
+        rng = np.random.default_rng(seed)
+        idx = rng.integers(0, coords.shape[0], 1, dtype=int)
+        
+        y0, x0 = coords[idx,:][0]
+        y1, x1 = y0+L, x0+L
+        list_rois.append([[int(y0), int(x0)], 
+                          [int(y1), int(x1)]])
+        
+        # total_mask[y0:y1, x0:x1] = False
+        # erroded_mask = ndi.binary_erosion(total_mask, structure=kernel, iterations=1)
+        
+        total_mask, allowed_mask = update_masks((y0, x0), L, 
+                                                total_mask, allowed_mask, (Ny, Nx),
+                                                force_distribution = force_distribution)
+    
+        if PLOT:
+            ax = axes[k+1]
+            ax.set_aspect('equal', adjustable='box')
+            ax.imshow(total_mask*0.5 + allowed_mask*0.5, 
+                      cmap='gray', vmin=0, vmax=1)
+            for roi in list_rois:
+                y0, x0 = roi[0]
+                ax.plot([x0-0.5], [y0-0.5], 'ro', markersize=2)
+                rect = mpl.patches.Rectangle((x0-0.5, y0-0.5), L, L,
+                                             facecolor='None', edgecolor='g')
+                ax.add_patch(rect)
+
+    if PLOT:
+        plt.show()
+    
+    return(list_rois)
+
+
+
+
+
+# %%%% Data
+
+
+def rawTracks_2_cleanTracks(rawTracks, dstDir, cleanTrackName, PixPerUm, 
+                            Contour_cell = None, shape = None,
                             edge_buffer_cutoff_um = 2.5, nPoints_cuttoff = 30,
                             column_names = None,
                             RefImg = None, PLOT = False, SHOWPLOT = False, SAVEPLOT = False):
@@ -283,20 +525,39 @@ def rawTracks_2_cleanTracks(rawTracks, dstDir, cleanTrackName,
         if len(column_names) != 4:
             raise ValueError("There should be 4 column names and they should be " + \
                    "roughly equivalent to: ['frame', 'x', 'y', 'particle']")
-            
-    Poly_cell = Polygon(shell=Contour_cell)
-    Poly_inner_cell = Poly_cell.buffer(- edge_buffer_cutoff_um * PixPerUm)
+                
+    if (Contour_cell is None) and (shape is None):
+        raise ValueError("Please provide either a Contour for the ROI or the image shape")
     
-    all_tracks = []
-    for i, track in enumerate(rawTracks):
-        nT = len(track)
-        
-        if is_track_in_polygon(track, Poly_inner_cell) and (nT >= nPoints_cuttoff):
-            track = np.concat((track, np.ones((len(track[:,0]), 1), dtype=int) * (i+1)), axis = 1)
-            track[:, 0] = track[:, 0].astype(int) + 1
-            all_tracks.append(track)
+    Valid_Tracks = []
+    buffer_pix = edge_buffer_cutoff_um * PixPerUm
+    
+    if Contour_cell is not None:
+        Poly_cell = Polygon(shell=Contour_cell)
+        Poly_inner_cell = Poly_cell.buffer(-buffer_pix)
+        for i, track in enumerate(rawTracks):
+            nT = len(track)
+            if is_track_in_polygon(track, Poly_inner_cell) and (nT >= nPoints_cuttoff):
+                track = np.concat((track, np.ones((len(track[:,0]), 1), dtype=int) * (i+1)), axis = 1)
+                track[:, 0] = track[:, 0].astype(int) + 1
+                Valid_Tracks.append(track)
+    
+    else:
+        height, width = shape
+        for i, track in enumerate(rawTracks):
+            nT = len(track)
+            xm = np.median(track[:, 1])
+            ym = np.median(track[:, 2])
+            dist_x = min(np.abs(xm-0), np.abs(xm-width))
+            dist_y = min(np.abs(ym-0), np.abs(ym-height))
+            test_x = (dist_x < buffer_pix)
+            test_y = (dist_y < buffer_pix)
+            if (not (test_x or test_y)) and (nT >= nPoints_cuttoff):
+                track = np.concat((track, np.ones((len(track[:,0]), 1), dtype=int) * (i+1)), axis = 1)
+                track[:, 0] = track[:, 0].astype(int) + 1
+                Valid_Tracks.append(track)
             
-    concat_tracks = np.concat(all_tracks, axis = 0)
+    concat_tracks = np.concat(Valid_Tracks, axis = 0)
     df = pd.DataFrame({column_names[k] : concat_tracks[:,k] for k in range(len(column_names))})
     df[column_names[0]] = df[column_names[0]].values.astype(int)
     df[column_names[3]] = df[column_names[3]].values.astype(int)
@@ -315,8 +576,7 @@ def rawTracks_2_cleanTracks(rawTracks, dstDir, cleanTrackName,
         fig.suptitle(cleanTrackName.split('.')[0])
         ColorList = pm.cL_Set21
         
-        y_ic, x_ic = Poly_inner_cell.exterior.xy
-        Contour_inner_cell = np.array([y_ic, x_ic]).T
+        
         
         ax = axes[0]
         if not (RefImg is None):
@@ -326,19 +586,23 @@ def rawTracks_2_cleanTracks(rawTracks, dstDir, cleanTrackName,
         ax = axes[1]
         if not (RefImg is None):
             ax.imshow(RefImg, cmap='gray')
+        if not (Contour_cell is None):
+            y_ic, x_ic = Poly_inner_cell.exterior.xy
+            Contour_inner_cell = np.array([y_ic, x_ic]).T
+            ax.plot(Contour_cell[:,1], Contour_cell[:,0], ls='-', color='red', lw=1)
+            ax.plot(Contour_inner_cell[:,1], Contour_inner_cell[:,0], ls='-', color='cyan', lw=1)
+            
         for k in range(len(rawTracks)):
             track = rawTracks[k]
             color = ColorList[k%len(ColorList)]
             ax.plot(track[:,1], track[:,2], ls='-', color=color, lw=0.25)
-        ax.plot(Contour_cell[:,1], Contour_cell[:,0], ls='-', color='red', lw=1)
-        ax.plot(Contour_inner_cell[:,1], Contour_inner_cell[:,0], ls='-', color='cyan', lw=1)
         
         ax = axes[2]
         if not (RefImg is None):
             ax.imshow(RefImg, cmap='gray')
             
-        for k in range(len(all_tracks)):
-            track = all_tracks[k]
+        for k in range(len(Valid_Tracks)):
+            track = Valid_Tracks[k]
             color = ColorList[k%len(ColorList)]
             ax.plot(track[:,1], track[:,2], ls='-', color=color, lw=0.25)
         
@@ -404,8 +668,7 @@ def get_pairs_for_TRanges_Delaunay(df, PixPerUm, FPS, Nframes,
                               for fi, ff in zip(FI, FF)}
     list_TRanges = [f'{fi}_{ff}' for fi, ff in zip(FI, FF)]
     list_Pairs = []
-    
-    #### !!!! The syntax below is really cool !
+
     grouped = df.groupby('particle')
     for pid, df_p in grouped:
         frames = df_p['frame'].to_numpy()
@@ -443,12 +706,12 @@ def get_pairs_for_TRanges_Delaunay(df, PixPerUm, FPS, Nframes,
 
 
 
-def get_pairs_for_TRanges(df, SCALE, FPS, Nframes,
+def get_pairs_for_TRanges(df, PixPerUm, FPS, Nframes,
                           len_TRanges = 200, delta_TRanges = -1,
                           dist_th_um = 5):
     df.frame = df.frame.astype(int)
     df.particle = df.particle.astype(int)
-    dist_th = dist_th_um * SCALE
+    dist_th = dist_th_um * PixPerUm
     
     if delta_TRanges < 0:
         delta_TRanges = len_TRanges
@@ -689,309 +952,40 @@ def make_film_of_pairs_V2(df, PixPerUm, FPS, shape, dirPlots,
         plt.close('all')
         
     plt.ion()
+    
+    
+    
+def compute_pairwise_MSD(df, PixPerUm, FPS, Nframes,
+                         len_TRanges = 100, delta_TRanges = -1, 
+                         dist_th_um = 4, max_Dt_s = 2.5):
+    
+    list_TRanges, list_Pairs = get_pairs_for_TRanges_Delaunay(
+        df, PixPerUm, FPS, Nframes,
+        len_TRanges = 100, 
+        delta_TRanges = -1,
+        dist_th_um = 4
+        )
+    
+    pairMSD = []
+    max_lagtime = int(max_Dt_s * FPS)
+    
+    for k, TRange in enumerate(list_TRanges):
+        pairs = list_Pairs[k]
+        df_pairs = get_relative_displacement_by_TRange(df, pairs, TRange)
+        res_pair_emsd = tp.motion.emsd(df_pairs.rename(columns={'pair_id':'particle'}), 
+                                       1/PixPerUm, FPS, max_lagtime=max_lagtime).reset_index()
+        pairMSD.append(res_pair_emsd)
 
+    df_allTRange_pair_MSD = pd.concat([pairMSD[0]['lagt']] + [df['msd'] for df in pairMSD], axis=1)
+    df_allTRange_pair_MSD.columns = ['lagt'] + [f'msd_{tr}' for tr in list_TRanges]
+    median_msd = np.median(df_allTRange_pair_MSD.loc[:, [f'msd_{tr}' for tr in list_TRanges]].to_numpy(), 
+                           axis = 1)
 
-# %%% Main functions
-
-
-def compute_acor(image, mask, window_length, FPS, 
-                 EQUALIZE = True, PLOT = False):
-    if EQUALIZE:
-        for t in range(image.shape[0]):
-            p1, p99 = np.percentile(image[t].flatten()[mask.flatten()], (1, 99))
-            image[t] = skm.exposure.rescale_intensity(image[t], in_range=(p1, p99))
+    df_allTRange_pair_MSD['msd_median'] = median_msd
     
-    if PLOT:
-        fig, axes = plt.subplots(1, 2)
-        axes[0].imshow(image[0]*mask, cmap = 'gray')
-        axes[1].imshow(image[-1]*mask, cmap = 'gray')
-        plt.show()
-    
-    short_len = window_length
-    long_len = image.shape[0] - short_len + 1
-    image_acor = np.zeros((long_len, image.shape[1], image.shape[2]))
-    
-    Zero_std_found = False
-    
-    image_mean = np.mean(image, axis=0)
-    image_std = np.std(image, axis=0)
-    non_zero_std = (image_std > 0)
-    mask_2 = (mask & non_zero_std)
-    image_normalized = (image - image_mean) / (image_std + (1-mask_2))
-    
-    for i in range(image.shape[1]):
-        for j in range(image.shape[2]):
-            if mask_2[i, j]:
-                acor = signal.correlate(image_normalized[:,i,j], 
-                                        image_normalized[:short_len,i,j], 
-                                        mode="valid")
-                acor = acor / acor[0]
-                image_acor[:, i, j] = acor
-                    
-    total_acor = np.zeros(long_len)
-    lags = np.arange(long_len) * (1/FPS)
-    for t in range(len(total_acor)):
-        total_acor[t] = np.mean(image_acor[t].flatten()[mask.flatten()])
-    
-    if PLOT:
-        fig, ax = plt.subplots(1, 1)
-        ax.imshow(mask, cmap='gray')
-        plt.show()
-        fig, ax = plt.subplots(1, 1)
-        ax.plot(lags, total_acor)
-        plt.show()
-        
-    return(total_acor, image_acor)
-
-
-
-def analyse_white_blobs_MSD(trackPathList, df_Pa, SCALE, FPS,
-                            PLOT = False):
-    res_dict = {
-                'id':[],
-                'pos_id':[],
-                'cell_id':[],
-                'D':[],
-                'k_nl':[],
-                'D_nl':[],
-                }
-    tables_dict = {}
-    MSD_dict = {}
-
-    print(pm.BLUE + 'Starting MSD analysis' + pm.NORMAL)    
-    
-    if PLOT:
-        fig, ax = plt.subplots(1, 1)
-        Nt = len(trackPathList)
-        Nc = len(pm.cL_Set21)
-        if Nt <= Nc:
-            listColors = pm.cL_Set21[:Nt]
-        else:
-            listColors = pm.cL_Set21
-    
-    for k, p in enumerate(trackPathList):
-        T0 = time.time()
-        
-        # Ids
-        _, fN = os.path.split(p)
-        print(pm.GREEN + f'Analysing {fN}' + pm.NORMAL)
-        
-        full_id = '_'.join(fN.split('_')[:5])
-        manip_id = '_'.join(fN.split('_')[:2])
-        pos_id = get_numbers_following_text(fN, '_Pos')
-        cell_id = get_numbers_following_text(fN, '_C')
-        
-        # MSD
-        Tracks = import_TrackMate_tracks(p)
-        column_names = ['frame', 'x', 'y', 'particle']
-        all_tracks = []
-        for i, track in enumerate(Tracks):
-            nT = len(track)
-            if nT >= 30:
-                track = np.concat((track, np.ones((len(track[:,0]), 1), dtype=int) * (i+1)), axis = 1)
-                track[:,0] = track[:,0].astype(int) + 1
-                all_tracks.append(track)
-        concat_tracks = np.concat(all_tracks, axis = 0)
-        df = pd.DataFrame({column_names[k] : concat_tracks[:,k] for k in range(len(column_names))})
-        tables_dict[full_id] = df
-        
-        #### Run imsd -> Might be useful for SEM computation
-        # res_imsd = tp.motion.imsd(df, SCALE, FPS).reset_index()
-    
-        #### Run msd
-        res_emsd = tp.motion.emsd(df, SCALE, FPS, max_lagtime=30).reset_index()
-        T, MSD = res_emsd['lagt'], res_emsd['msd']
-        MSD_dict[full_id] = np.array([T, MSD]).T
-        
-        parms, results = ufun.fitLineHuber(T, MSD, with_intercept = False)
-        D = parms.values[0]/4
-        
-        if PLOT:
-            color = listColors[k%Nc]
-            dark_color = pm.lighten_color(color, 0.5)
-            ax.plot(res_emsd['lagt'], res_emsd['msd'], color=color, marker='.', lw=0.5, 
-                    label=full_id)
-            ax.axline(xy1=(0,0), slope=D*4, color=dark_color, ls='-', lw=1, 
-                      label=f'D = {D:.2e} µm²\\s')
-        
-        parms, results = ufun.fitLineHuber(np.log(T), np.log(MSD), with_intercept = True)
-        b, a = parms
-        k_nl = a
-        D_nl = np.exp(b)/4
-        
-        res_dict['id'].append(full_id)
-        res_dict['pos_id'].append(pos_id)
-        res_dict['cell_id'].append(cell_id)
-        res_dict['D'].append(D)
-        res_dict['k_nl'].append(k_nl)
-        res_dict['D_nl'].append(D_nl)
-        
-        Dt = time.time() - T0
-        print(f'Done in Dt = {Dt:.4f}')
-        
-    if PLOT:
-        ax.set_xlabel('Lag times (s)')
-        ax.set_ylabel('MSD (µm²)')
-        ax.grid()
-        ax.legend()
-        fig.tight_layout()
-        plt.show()
-        
-    res_df = pd.DataFrame(res_dict)
-        
-    return(res_df, MSD_dict)
-
-
-
-def track_spots_in_cell(tifPath, dstDir):
-    
-    SCALE = SCALE_40X
-    SIZE_UM = 1.5
-    SIZE_PIX = SIZE_UM/SCALE
-    print(SIZE_PIX)
-    EQUALIZE = True
-    N_ERODE = 40
-    TOP_HAT = True
-    MEDIAN_FILTER = True
+    return(df_allTRange_pair_MSD)
     
     
-    fig, axes = plt.subplots(2, 3, figsize=(12, 8), sharex=True, sharey=True)
-    axes = axes.flatten()
-    
-    # Get image and mask
-    shape, dtype = ufun.tiff_inspect(tifPath)
-    nT = shape[0]
-    
-    nT_subset = min(100, nT)
-    subset_T = np.linspace(0, nT-1, num = nT_subset, dtype=int)
-    image_subset = ufun.load_stack_region(tifPath, time_indices=subset_T, 
-                                          x_slice=None, y_slice=None)
-    image_subset = skm.util.img_as_float32(image_subset)
-    
-    inner_cell_contour = get_cell_inner_circle(image_subset, PLOT = False)
-    mask = ufun.contour_to_mask([shape[1], shape[2]], inner_cell_contour)
-    mask = ndi.binary_erosion(mask, iterations = N_ERODE)
-    
-    image = ufun.load_stack_region(tifPath, time_indices=None, 
-                                   x_slice=None, y_slice=None)
-    image = skm.util.img_as_float32(image)  
-    # image = skm.util.img_as_ubyte(image)
-    
-    # image = image_subset
-    # nT = nT_subset
-    nT = 1
-    
-    image_pt = np.zeros_like(image)
-    
-    #### EQUALIZE
-    if EQUALIZE:
-        top = time.time()
-        for t in range(nT):
-            p1, p99 = np.percentile(image[t].flatten()[mask.flatten()], (1, 99))
-            image_pt[t] = skm.exposure.rescale_intensity(image[t], in_range=(p1, p99))
-        print(f'Equalize {time.time() - top:.1f} s')    
-        
-    else:
-        for t in range(nT):
-            image_pt[t] = image[t, :, :]
-    
-    #### CROP
-    for t in range(nT):
-        image_pt[t] = image_pt[t] * mask
-            
-    ax = axes[0]
-    ax.imshow(image_pt[0], cmap='gray')
-    
-    ax = axes[1]
-    ax.imshow(image_pt[0], cmap='gray')
-    
-    #### FILTER
-    if MEDIAN_FILTER:
-        top = time.time()
-        for t in range(nT):
-            k = 3
-            image_pt[t] = cv2.medianBlur(image_pt[t], k)
-        print(f'Median filter {time.time() - top:.1f} s') 
-            
-    ax = axes[2]
-    ax.imshow(image_pt[0], cmap='gray')
-    
-    
-    if TOP_HAT: # Applying the Top-Hat operation
-        top = time.time()
-        filterSize = (15, 15)
-        kernel = cv2.getStructuringElement(cv2.MORPH_RECT, filterSize)
-        for t in range(nT):
-            image_pt[t] = cv2.morphologyEx(image_pt[t], cv2.MORPH_TOPHAT, kernel)
-            p1, p99 = np.percentile(image_pt[t].flatten()[mask.flatten()], (1, 99))
-            image_pt[t] = skm.exposure.rescale_intensity(image_pt[t], in_range=(p1, p99))
-        print(f'Top hat {time.time() - top:.1f} s') 
-        
-    ax = axes[3]
-    ax.imshow(image_pt[0], cmap='gray')
-    
-    
-    #### LOCATE
-    list_df = []
-    
-    top = time.time()
-    for t in range(nT):
-        blobs = skm.feature.blob_dog(image_pt[t], min_sigma=7, max_sigma=7, 
-                                     threshold=0.05, overlap=.5, exclude_border=True)
-        X = blobs[:, 0]
-        Y = blobs[:, 1]
-        F = len(X) * [t]
-        df = pd.DataFrame({'x':X, 'y':Y, 'frame':F})
-        list_df.append(df)
-        
-        sigma1 = 0.35 * SIZE_PIX
-        sigma2 = 1.6 * sigma1
-        g1 = cv2.GaussianBlur(image_pt[t], (0,0), sigma1)
-        g2 = cv2.GaussianBlur(image_pt[t], (0,0), sigma2)
-        dog = g2.astype(np.float32) - g1.astype(np.float32)
-    
-    df_all = pd.concat(list_df)
-    
-    print(f'Blob_log {time.time() - top:.1f} s') 
-    
-    ax = axes[4]
-    draw_circles(image_pt[t], blobs, fig = fig, ax = ax)
-    
-    ax = axes[5]
-    ax.imshow(dog)
-    
-    
-    #### LINK
-    top = time.time()
-    df_all = tp.link(df_all, 4, pos_columns=['y', 'x'], t_column='frame', memory=0, 
-                 predictor=None, adaptive_stop=None, adaptive_step=0.95, 
-                 neighbor_strategy=None, link_strategy=None, dist_func=None, to_eucl=None)
-    print(f'Link {time.time() - top:.1f} s') 
-    
-    
-    
-    plt.show()
-    out = (blobs, df_all,)
-    
-    return(out)
-    
-    # image_raw = skm.io.imread(tifPath)
-    # image = skm.util.img_as_float32(image_raw)
-    # if EQUALIZE:
-    #     for t in range(image.shape[0]):
-    #         p1, p99 = np.percentile(image[t].flatten()[mask.flatten()], (1, 99))
-    #         image[t] = skm.exposure.rescale_intensity(image[t], in_range=(p1, p99))
-    
-
-
-# tifPath = "F:\\WorkingData\\26-06-19_FastAcq\\FilmBF_fastAcq_4000f_10Hz_C1.tif"
-# tifPath = "C:\\Users\\josep\\Desktop\\Seafile\\AnalysisPulls\\" + \
-#           "26-06-19_FastAcq\\FilmBF_fastAcq_4000f_10Hz_C1.tif"
-tifPath = "C:\\Users\\josep\\Desktop\\Seafile\\AnalysisPulls\\" + \
-          "26-06-10_Test-NileBlueYolk\\M1_40x-WI\\26-06-10_TestNileBlueYolk_C2_10fps_1min_L50p.tif"
-dstDir = ""
-
-# out, keypoints = TrackSpotsInCell(tifPath, dstDir)
 
 # %%% Pipeline main functions
 

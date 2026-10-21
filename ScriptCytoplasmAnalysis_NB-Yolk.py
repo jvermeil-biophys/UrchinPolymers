@@ -40,6 +40,7 @@ import matplotlib.pyplot as plt
 
 from shapely.geometry import MultiPoint
 from scipy.spatial import Delaunay # ConvexHull
+from scipy.signal import savgol_filter
 
 import Libs.PlotMaker as pm
 import Libs.UrchinPaths as up
@@ -48,9 +49,143 @@ import Libs.UtilityFunctions as ufun
 import Libs.ToolboxCytoplasmAnalysis as tbca
 # import Libs.ToolboxStructureAnalysis as tbsa
 
-
+Dict_Files_Suffix = {
+    'suffix_contour' : '_cellContour',
+    'suffix_mask' : '_cellMask',
+    'suffix_rawTracks' : '_TmTracks',
+    'suffix_cleanTracks' : '_PyTracks',
+    'suffix_cleanTracks_DriftCorr' : '_PyTracks2',
+    'suffix_drift' : '_XYdrift',
+    'suffix_globalMsd' : '_GlobalMsd',
+    'suffix_globalMsdFits' : '_GlobalMsdFits',
+    'suffix_globalPairMsd' : '_GlobalPairMsd',
+    'suffix_globalPairMsdFits' : '_GlobalPairMsdFits',
+    }
 
 # %% Helper functions
+
+
+def correct_drift_in_Tracks(df, fN, tP, dstDir, PixPerUm, FPS, 
+                            PLOT = False, SHOWPLOT = False, SAVEPLOT = False, 
+                            export_image = False):
+    if PLOT:
+        i_eg = df['particle'].unique()[50]
+        df_eg = df[df['particle']==i_eg]
+        x_eg1 = df_eg['x'].to_numpy()
+        y_eg1 = df_eg['y'].to_numpy()
+        f_eg = df_eg['frame'].to_numpy()
+    
+    grouped = df.groupby('frame')
+    list_df_f = [(f, df_f) for f, df_f in grouped]
+    nF = len(list_df_f)
+    Dxy = np.zeros((nF, 2))
+    for (f1, df_f1), (f2, df_f2) in zip(list_df_f[:-1], list_df_f[1:]):
+        df_f_m = pd.merge(df_f1, df_f2, on='particle', how='inner', suffixes=('_1', '_2'))
+        df_f_m['dx'] = df_f_m['x_2'] - df_f_m['x_1']
+        df_f_m['dy'] = df_f_m['y_2'] - df_f_m['y_1']
+        Dxy[f1, 0] = np.mean(df_f_m['dx'].to_numpy()) #/ PixPerUm
+        Dxy[f1, 1] = np.mean(df_f_m['dy'].to_numpy()) #/ PixPerUm
+    
+    sum_Dxy = np.array([[0, 0]] + [np.sum(Dxy[:k, :], axis=0) for k in range(1, nF)])
+    
+    sDxy = np.zeros_like(Dxy)
+    sDxy = savgol_filter(Dxy, 5, 3, axis=0)
+    sum_sDxy = np.array([[0, 0]] + [np.sum(sDxy[:k, :], axis=0) for k in range(1, nF)])
+    
+    Dxy_corr = np.copy(sum_sDxy)
+    
+    list_df_f = [(f, df_f) for f, df_f in grouped]
+    list_results = []
+    # list_results = [list_df_f[0][1]]
+    for f, df_f in list_df_f: #[1:]:
+        df_f['x'] = df_f['x'] - Dxy_corr[f-1, 0]
+        df_f['y'] = df_f['y'] - Dxy_corr[f-1, 1]
+        list_results.append(df_f)
+    df2 = pd.concat(list_results, axis=0)
+    df2.sort_values(by=["particle", "frame"], inplace=True)
+    # print(df.head())
+    # print(df2.head())
+    
+    if PLOT:
+        if not SHOWPLOT:
+            plt.ioff()
+            
+        # fig, axes = plt.subplots(2, 1, figsize=(7, 7), layout='compressed')
+        pm.setGraphicOptions(mode='print')
+        fig = plt.figure(layout="compressed", figsize=(8, 8))
+
+        gs = mpl.gridspec.GridSpec(3, 3, figure=fig)
+        ax1 = fig.add_subplot(gs[0, :])
+        ax2 = fig.add_subplot(gs[1, :])
+        ax3 = fig.add_subplot(gs[2:, 0])
+        ax4 = fig.add_subplot(gs[2:, 1], sharex=ax3, sharey=ax3)
+        ax5 = fig.add_subplot(gs[2:, 2], sharex=ax3, sharey=ax3)
+        axes = [ax1, ax2, ax3, ax4, ax5]
+
+        axes[0].set_ylabel('dx, dy')
+        axes[1].set_ylabel('Smoothed dx, dy')
+        ax = axes[0]
+        ax.plot(np.arange(0, nF)*FPS, Dxy[:, 0]/PixPerUm, 'b-')
+        ax.plot(np.arange(0, nF)*FPS, sum_Dxy[:, 0]/PixPerUm, ls='-', color='cyan')
+        ax.plot(np.arange(0, nF)*FPS, Dxy[:, 1]/PixPerUm, 'r-')
+        ax.plot(np.arange(0, nF)*FPS, sum_Dxy[:, 1]/PixPerUm, ls='-', color='orange')
+        ax.grid()
+        ax = axes[1]
+        ax.plot(np.arange(0, nF)*FPS, sDxy[:, 0]/PixPerUm, 'b-')
+        ax.plot(np.arange(0, nF)*FPS, sum_sDxy[:, 0]/PixPerUm, ls='-', color='cyan')
+        ax.plot(np.arange(0, nF)*FPS, sDxy[:, 1]/PixPerUm, 'r-')
+        ax.plot(np.arange(0, nF)*FPS, sum_sDxy[:, 1]/PixPerUm, ls='-', color='orange')
+        ax.grid()
+        ax.set_xlabel('Frame No.')
+        
+        
+        # fig, axes = plt.subplots(1, 3, figsize=(10, 3.5), layout='compressed',
+        #                          sharex=True, sharey=True)
+        df2_eg = df2[df2['particle']==i_eg]
+        dx_eg, dy_eg = Dxy_corr[f_eg-1, 0], Dxy_corr[f_eg-1, 1]
+        x_eg2 = df2_eg['x'].to_numpy()
+        y_eg2 = df2_eg['y'].to_numpy()
+        ax = axes[2]
+        ax.set_aspect('equal', adjustable='box')
+        ax.plot(x_eg1-x_eg1[0], y_eg1-y_eg1[0], 'b-')
+        ax.grid()
+        ax = axes[3]
+        ax.set_aspect('equal', adjustable='box')
+        ax.plot(dx_eg, dy_eg, 'k-')
+        ax.grid()
+        ax = axes[4]
+        ax.set_aspect('equal', adjustable='box')
+        ax.plot(x_eg2-x_eg2[0], y_eg2-y_eg2[0], 'r-')
+        ax.grid()
+
+        if SAVEPLOT:
+            figName = fN + '_DriftCorr.png'
+            figPath = os.path.join(dstDir, figName)
+            fig.savefig(figPath)
+        if SHOWPLOT:
+            plt.show()
+        if not SHOWPLOT:
+            plt.ion()
+
+    if export_image:
+        nT = nF
+        img = ufun.load_stack_region(tP, time_indices=[i for i in range(nT)])
+        tf_img = np.zeros_like(img)
+        tf_img[0, :, :] = img[0, :, :]
+        # tf_img = []
+        # tf_img.append(img[0, :, :])
+        for t in range(nT-1): # nF-1
+            img_t = img[t+1, :, :]
+            tform = skm.transform.EuclideanTransform(translation=(-sum_sDxy[t, 0], -sum_sDxy[t, 1]))
+            tf_img[t+1] = skm.transform.warp(img_t, tform.inverse, preserve_range=True)
+            # tf_img.append(skm.transform.warp(img_t, tform.inverse, preserve_range=True))
+        tf_img = np.array(tf_img)
+        fpath = os.path.join(dstDir, fN + '_DriftCorr.tif')
+        skm.io.imsave(fpath, tf_img)
+        
+        
+    return(df2, Dxy_corr)
+
 
 #### Analysis functions
 
@@ -59,9 +194,10 @@ def NByolk_analysis_sequence(mainDir, srcDir, dstDir, tifNames, Dict_Files_Suffi
                              Dict_TrackMate_Settings, 
                              Dict_Analysis_Settings,
                              Do_Contours = True, 
-                             Do_Tracking = True, 
-                             Do_TrackCleaning = True, 
-                             Do_MSD = True):
+                             Do_Tracking = True, Ignore_ROIs = False,
+                             Do_TrackCleaning = True, Do_DriftCorrection = False,
+                             Use_DriftCorrected = False,
+                             Do_MSD = True, Do_PairMSD = True):
     
     tifPaths = [os.path.join(srcDir, tifName) for tifName in tifNames]
     fileNames = [fN.split('.')[0] for fN in tifNames]
@@ -70,10 +206,14 @@ def NByolk_analysis_sequence(mainDir, srcDir, dstDir, tifNames, Dict_Files_Suffi
     suffix_mask = Dict_Files_Suffix['suffix_mask']
     suffix_rawTracks = Dict_Files_Suffix['suffix_rawTracks']
     suffix_cleanTracks = Dict_Files_Suffix['suffix_cleanTracks']
+    suffix_driftCorrTracks = Dict_Files_Suffix['suffix_cleanTracks_DriftCorr']
+    suffix_drift = Dict_Files_Suffix['suffix_drift'] 
     suffix_globalMsd = Dict_Files_Suffix['suffix_globalMsd']
     suffix_globalMsdFits = Dict_Files_Suffix['suffix_globalMsdFits']
+    suffix_globalPairMsd = Dict_Files_Suffix['suffix_globalPairMsd']
+    suffix_globalPairMsdFits = Dict_Files_Suffix['suffix_globalPairMsdFits']
     
-    UmPerPix = Dict_Image_Settings['UmPerPix']
+    # UmPerPix = Dict_Image_Settings['UmPerPix']
     PixPerUm = Dict_Image_Settings['PixPerUm']
     FPS = Dict_Image_Settings['FPS']
     
@@ -82,6 +222,8 @@ def NByolk_analysis_sequence(mainDir, srcDir, dstDir, tifNames, Dict_Files_Suffi
     max_Dt_s = Dict_Analysis_Settings['max_Dt_s']
     lowDt_upper = Dict_Analysis_Settings['lowDt_upper']
     highDt_lower = Dict_Analysis_Settings['highDt_lower']
+    pairMSD_Dt_s = Dict_Analysis_Settings['pairMSD_Dt_s']
+    pairMSD_dist_th_um = Dict_Analysis_Settings['pairMSD_dist_th_um']
     
     #### Make and save cell contours and masks
     if Do_Contours:
@@ -98,7 +240,9 @@ def NByolk_analysis_sequence(mainDir, srcDir, dstDir, tifNames, Dict_Files_Suffi
             Contour_cell, Mask_cell = tbca.make_NbYolkCell_contour_and_mask(img, PixPerUm,
                                                                             buffer_um = 0.0,
                                                                             mode = 'dark_background', 
-                                                                            PLOT = False)
+                                                                            keep_only_largest = True,
+                                                                            exclude_on_edges = True,
+                                                                            PLOT = True)
             
             contourFile = fN + suffix_contour + '.npy'
             maskFile = fN + suffix_mask + '.npy'
@@ -114,7 +258,10 @@ def NByolk_analysis_sequence(mainDir, srcDir, dstDir, tifNames, Dict_Files_Suffi
             
             rawTrackName = fN + suffix_rawTracks + '.xml'
             maskFile = fN + suffix_mask + '.npy'
-            Mask_cell = np.load(os.path.join(srcDir, maskFile))
+            if not Ignore_ROIs:
+                Mask_cell = np.load(os.path.join(srcDir, maskFile))
+            else:
+                Mask_cell = None
             
             tbca.pretreat_and_track_NbYolk(tifPath, rawTrackName, dstDir, PixPerUm,
                                            Dict_TrackMate_Settings = Dict_TrackMate_Settings,
@@ -134,30 +281,59 @@ def NByolk_analysis_sequence(mainDir, srcDir, dstDir, tifNames, Dict_Files_Suffi
             contourPath = os.path.join(srcDir, fN + suffix_contour + '.npy')
             
             rawTracks = tbca.import_TrackMate_tracks(os.path.join(dstDir, rawTrackName))
-            Contour_cell = np.load(contourPath)
+            
+            if not Ignore_ROIs:
+                Contour_cell = np.load(contourPath)
+                shape = None
+            else:
+                Contour_cell = None
+                shape, dtype = ufun.tiff_inspect(tP)
+                shape = shape[1:]
 
-            tbca.rawTracks_2_cleanTracks(rawTracks, dstDir, cleanTrackName,
-                                         Contour_cell, PixPerUm,
+            tbca.rawTracks_2_cleanTracks(rawTracks, dstDir, cleanTrackName, PixPerUm,
+                                         Contour_cell = Contour_cell, shape = shape, 
                                          edge_buffer_cutoff_um = edge_buffer_cutoff_um, nPoints_cuttoff = 30,
                                          RefImg = img_0, PLOT = True, SHOWPLOT = False, SAVEPLOT = True,
                                         )
+            plt.close('all')
+    
+    #### Correct global drift in trajectory
+    if Do_DriftCorrection:
+        print(pm.BRIGHTORANGE + '\n\n3.5. Drift correction\n' + pm.NORMAL)
+        for i in range(len(fileNames)): #len(fileNames)
+            tP, fN = tifPaths[i], fileNames[i]
+            cleanTrackName = fN + suffix_cleanTracks + '.csv'
+            df = pd.read_csv(os.path.join(dstDir, cleanTrackName), sep='\t')
+        
+            df2, Dxy_corr = correct_drift_in_Tracks(df, fN, tP, dstDir, PixPerUm, FPS, 
+                                          PLOT = True, SHOWPLOT = True, SAVEPLOT = False, 
+                                          export_image = False)
+            driftArrayName = fN + suffix_drift + '.txt'
+            np.savetxt(os.path.join(dstDir, driftArrayName), Dxy_corr)
+            
+            dcTrackName = fN + suffix_driftCorrTracks + '.csv'
+            df2.to_csv(os.path.join(dstDir, dcTrackName), sep='\t')
 
     #### Import tracks, run trackpy.emsd, fit MSD
     if Do_MSD:
         print(pm.BRIGHTORANGE + '\n\n4. MSD compute & fit step\n' + pm.NORMAL)
         for i in range(len(fileNames)): #len(fileNames)
-            tifPath, fN = tifPaths[i], fileNames[i]
+            tP, fN = tifPaths[i], fileNames[i]
             print(pm.CYAN + f'File {i+1:.0f}/{len(fileNames):.0f} - {fN}' + pm.NORMAL)
             
             rawTrackName = fN + suffix_rawTracks + '.xml'
-            cleanTrackName = fN + suffix_cleanTracks + '.csv'
+            if Use_DriftCorrected:
+                trackName = fN + suffix_driftCorrTracks + '.csv'
+            else:
+                trackName = fN + suffix_cleanTracks + '.csv'
+                
             msdName = fN + suffix_globalMsd + '.csv'
             msdFitsName = fN + suffix_globalMsdFits
             
-            df = pd.read_csv(os.path.join(dstDir, cleanTrackName), sep='\t')
+            df = pd.read_csv(os.path.join(dstDir, trackName), sep='\t')
             
             max_lagtime = int(max_Dt_s * FPS)
-            res_emsd = tp.motion.emsd(df, UmPerPix, FPS, max_lagtime=max_lagtime).reset_index()
+            res_emsd = tp.motion.emsd(df, 1/PixPerUm, FPS, max_lagtime=max_lagtime).reset_index()
             res_emsd.to_csv(os.path.join(dstDir, msdName), index=False, sep='\t')
             
             T, MSD = res_emsd['lagt'].values, res_emsd['msd'].values
@@ -199,36 +375,78 @@ def NByolk_analysis_sequence(mainDir, srcDir, dstDir, tifNames, Dict_Files_Suffi
             
             ufun.dict2json(dict_MSDfits, dstDir, msdFitsName)
 
-
-def compute_pairwise_MSD(df, PixPerUm, FPS, Nframes,
-                         len_TRanges = 100, delta_TRanges = -1, 
-                         dist_th_um = 4, max_Dt_s = 2.5):
-    
-    list_TRanges, list_Pairs = tbca.get_pairs_for_TRanges_Delaunay(
-        df, PixPerUm, FPS, Nframes,
-        len_TRanges = 100, 
-        delta_TRanges = -1,
-        dist_th_um = 4
-        )
-    
-    pairMSD = []
-    max_lagtime = int(max_Dt_s * FPS)
-    
-    for k, TRange in enumerate(list_TRanges):
-        pairs = list_Pairs[k]
-        df_pairs = tbca.get_relative_displacement_by_TRange(df, pairs, TRange)
-        res_pair_emsd = tp.motion.emsd(df_pairs.rename(columns={'pair_id':'particle'}), 
-                                       UmPerPix, FPS, max_lagtime=max_lagtime).reset_index()
-        pairMSD.append(res_pair_emsd)
-
-    df_allTRange_pair_MSD = pd.concat([pairMSD[0]['lagt']] + [df['msd'] for df in pairMSD], axis=1)
-    df_allTRange_pair_MSD.columns = ['lagt'] + [f'msd_{tr}' for tr in list_TRanges]
-    median_msd = np.median(df_allTRange_pair_MSD.loc[:, [f'msd_{tr}' for tr in list_TRanges]].to_numpy(), 
-                           axis = 1)
-
-    df_allTRange_pair_MSD['msd_median'] = median_msd
-    
-    return(df_allTRange_pair_MSD)
+    #### Import tracks, compute pairs, fit pair-MSD
+    if Do_PairMSD:
+        print(pm.BRIGHTORANGE + '\n\n5. pair-MSD compute & fit step\n' + pm.NORMAL)
+        for i in range(len(fileNames)):
+            tP, fN = tifPaths[i], fileNames[i]
+            print(pm.CYAN + f'File {i+1:.0f}/{len(fileNames):.0f} - {fN}' + pm.NORMAL)
+            
+            if Use_DriftCorrected:
+                trackName = fN + suffix_driftCorrTracks + '.csv'
+            else:
+                trackName = fN + suffix_cleanTracks + '.csv'
+            
+            df = pd.read_csv(os.path.join(dstDir, trackName), sep='\t')
+            
+            # Compute Pair MSD
+            Nframes = np.max(df['frame'].to_numpy()) 
+            len_TRanges = int(FPS * pairMSD_Dt_s)
+            dist_th_um = pairMSD_dist_th_um
+            df_allTRange_pair_MSD = tbca.compute_pairwise_MSD(df, PixPerUm, FPS, Nframes,
+                                                              len_TRanges = len_TRanges, 
+                                                              delta_TRanges = -1, 
+                                                              dist_th_um = dist_th_um, 
+                                                              max_Dt_s = max_Dt_s)
+            
+            pairMsdName = fN + suffix_globalPairMsd + '.csv'
+            df_allTRange_pair_MSD.to_csv(os.path.join(dstDir, pairMsdName), index=False, sep='\t')
+            
+            # Fit Pair MSD
+            T = df_allTRange_pair_MSD['lagt'].to_numpy()
+            MSD = df_allTRange_pair_MSD['msd_median'].to_numpy()
+        
+            lowDt_upper = Dict_Analysis_Settings['lowDt_upper']
+            highDt_lower = Dict_Analysis_Settings['highDt_lower']
+            
+            iLow = ufun.findFirst(lowDt_upper, T) + 1
+            iHigh = ufun.findFirst(highDt_lower, T)
+            
+            parms, results = ufun.fitLineHuber(T, MSD, with_intercept = False)
+            D_linear = parms[0]/8
+            
+            parms, results = ufun.fitLineHuber(np.log(T), np.log(MSD), with_intercept = True)
+            b, a = parms
+            k_full = a
+            D_full = np.exp(b)/8
+            
+            if len(T[:iLow]) >= 3:
+                parms, results = ufun.fitLineHuber(np.log(T[:iLow]), np.log(MSD[:iLow]), with_intercept = True)
+                b, a = parms
+                k_lowDt = a
+                D_lowDt = np.exp(b)/8
+            else:
+                k_lowDt, D_lowDt = np.nan, np.nan
+            
+            if len(T[iHigh:]) >= 6:
+                parms, results = ufun.fitLineHuber(np.log(T[iHigh:]), np.log(MSD[iHigh:]), with_intercept = True)
+                b, a = parms
+                k_highDt = a
+                D_highDt = np.exp(b)/8
+            else:
+                k_highDt, D_highDt = np.nan, np.nan
+            
+            dict_pairMSDfits = {
+                'max_Dt_s': max_Dt_s,
+                'lowDt_upper': lowDt_upper, 'highDt_lower': highDt_lower,
+                'D_linear': D_linear,
+                'k_full': k_full, 'D_full': D_full,
+                'k_lowDt': k_lowDt, 'D_lowDt': D_lowDt,
+                'k_highDt': k_highDt, 'D_highDt': D_highDt,
+                }
+            
+            pairMsdFitsName = fN + suffix_globalPairMsdFits + '.json'
+            ufun.dict2json(dict_pairMSDfits, dstDir, pairMsdFitsName)
 
 
 
@@ -319,44 +537,30 @@ def MSD_HeatMap(df_grid, M_boxes, xy_col, parm_col,
     return(fig, ax)
 
 
+
+
 # %% 1. Tracking and MSD
 
-# %%% 26-10-07_D1-L - Noco
+# %%% Charlotte Fixed Cells
 
 # %%%% Settings
 
 #### Paths
-mainDir = os.path.join(up.Path_IntraCellTracking, '26-10-07_FastAcq-Channel_Fec_NB-Yolk')
-srcDir = os.path.join(mainDir, 'D1-L')
+mainDir = os.path.join(up.Path_IntraCellTracking, '2026_2601_Fixed_NileBlue_CharlotteMallart')
+srcDir = os.path.join(mainDir, 'CropedFilms')
 dstDir = os.path.join(mainDir, 'SPT_results')
-# os.listdir(srcDir)
+os.listdir(srcDir)
 
 tifNames = [
-    '26-10-07_D1-L_PreF_0min_C1_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
-    '26-10-07_D1-L_PreF_0min_C2_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
-    '26-10-07_D1-L_PreF_0min_C3_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
-    '26-10-07_D1-L_PostF_3min_C4_20fps_Texp50ms_L20p1_CSU642.ome.tif',
-    '26-10-07_D1-L_PostF_7min_C4_20fps_Texp50ms_L30p1_CSU642.ome.tf2',
-    '26-10-07_D1-L_PostF_12min_C4_20fps_Texp50ms_L30p1_CSU642.ome.tf2',
-    '26-10-07_D1-L_PostF_17min_C4_20fps_Texp50ms_L30p1_CSU642.ome.tf2',
-    '26-10-07_D1-L_PostF_20min_C4_20fps_Texp50ms_L30p1_CSU642.ome.tf2',
-    '26-10-07_D1-L_PostF_25min_C4_20fps_Texp50ms_L30p1_CSU642.ome.tf2',
-    '26-10-07_D1-L_PostF_29min_C4_20fps_Texp50ms_L30p1_CSU642.ome.tf2',
-    '26-10-07_D1-L_PostF_35min_noco_C4_20fps_Texp50ms_L30p1_CSU642.ome.tf2',
-    '26-10-07_D1-L_PostF_38min_noco_C4_20fps_Texp50ms_L30p1_CSU642.ome.tf2',
-    '26-10-07_D1-L_PostF_45min_nocoWashed_C4_20fps_Texp50ms_L30p1_CSU642.ome.tf2',
-    '26-10-07_D1-L_PostF_51min_nocoWashed2_C4_20fps_Texp50ms_L30p1_CSU642.ome.tf2',
-    '26-10-07_D1-L_PostF_55min_nocoWashed2_C4_20fps_Texp50ms_L30p1_CSU642.ome.tf2',
-    '26-10-07_D1-L_PostF_60min_nocoWashed2_C4_20fps_Texp50ms_L30p1_CSU642.ome.tf2',
-    '26-10-07_D1-L_PostF_65min_nocoWashed2_C4_20fps_Texp50ms_L30p1_CSU642.ome.tf2',
-    '26-10-07_D1-L_PostF_70min_nocoWashed2_C4_20fps_Texp50ms_L30p1_CSU642.ome.tf2',
-    '26-10-07_D1-L_PostF_75min_nocoWashed2_C4_20fps_Texp50ms_L30p1_CSU642.ome.tf2',
-    '26-10-07_D1-L_PostF_80min_nocoWashed2_C4_20fps_Texp50ms_L30p1_CSU642.ome.tf2',
-    '26-10-07_D1-L_PostF_85min_nocoWashed2_C4_20fps_Texp50ms_L30p1_CSU642.ome.tf2',
-    '26-10-07_D1-L_PostF_90min_nocoWashed3_C4_20fps_Texp50ms_L30p1_CSU642.ome.tf2',
-    '26-10-07_D1-L_PostF_95min_nocoWashed3_C4_20fps_Texp50ms_L30p1_CSU642.ome.tf2',
-    '26-10-07_D1-L_PostF_100min_nocoWashed3_C4_20fps_Texp50ms_L30p1_CSU642.ome.tf2',
-    '26-10-07_D1-L_PostF_124min_nocoWashed3_C4_20fps_Texp50ms_L30p1_CSU642.ome.tf2',
+    '2026_2601_NileBlue_Fix_1-2.tif',
+    '2026_2601_NileBlue_Fix_2-2.tif',
+    '2026_2601_NileBlue_Fix_3-2.tif',
+    '2026_2601_NileBlue_Fix_4-1.tif',
+    '2026_2601_NileBlue_Fix_5-1.tif',
+    '2026_2601_NileBlue_Fix_5-2.tif',
+    '2026_2601_NileBlue_Fix_6-1.tif',
+    '2026_2601_NileBlue_Fix_6-2.tif',
+    '2026_2601_NileBlue_Fix_6-3.tif',
     ]
 
 tifPaths = [os.path.join(srcDir, tifName) for tifName in tifNames]
@@ -367,6 +571,8 @@ Dict_Files_Suffix = {
     'suffix_mask' : '_cellMask',
     'suffix_rawTracks' : '_TmTracks',
     'suffix_cleanTracks' : '_PyTracks',
+    'suffix_cleanTracks_DriftCorr' : '_PyTracks2',
+    'suffix_drift' : '_XYdrift',
     'suffix_globalMsd' : '_GlobalMsd',
     'suffix_globalMsdFits' : '_GlobalMsdFits',
     'suffix_globalPairMsd' : '_GlobalPairMsd',
@@ -375,11 +581,11 @@ Dict_Files_Suffix = {
 
 
 #### Settings
-UmPerPix = cd.UmPerPix_60X_W1
+UmPerPix = cd.UmPerPix_40X_X1
 Dict_Image_Settings = {
     'UmPerPix' : UmPerPix,
     'PixPerUm' : 1/UmPerPix,
-    'FPS' : 20,
+    'FPS' : 1/0.45,
     }
 
 Dict_TrackMate_Settings = {
@@ -392,17 +598,27 @@ Dict_TrackMate_Settings = {
 Dict_Analysis_Settings = {
     'mask_buffer_um' : 2.0,
     'edge_buffer_cutoff_um' : 3.0,
-    'max_Dt_s' : 5,
+    'max_Dt_s' : 40,
     'lowDt_upper' : 0.5,
     'highDt_lower' : 1.0,
+    'pairMSD_Dt_s' : 50,
+    'pairMSD_dist_th_um' : 5,
     }
+
+
 
 
 # %%%% Run analysis
 
 NByolk_analysis_sequence(mainDir, srcDir, dstDir, tifNames, Dict_Files_Suffix, 
                          Dict_Image_Settings, Dict_TrackMate_Settings, Dict_Analysis_Settings,
-                         Do_Contours = True, Do_Tracking = True, Do_TrackCleaning = True, Do_MSD = True)
+                         Do_Contours = False, 
+                         Do_Tracking = False, Ignore_ROIs = True,
+                         Do_TrackCleaning = False, Do_DriftCorrection = False, 
+                         Use_DriftCorrected = True,
+                         Do_MSD = True, 
+                         Do_PairMSD = True)
+
 
 
 
@@ -437,31 +653,32 @@ for i in range(len(fileNames)):
     df = pd.read_csv(os.path.join(dstDir, cleanTrackName), sep='\t')
     res_emsd = pd.read_csv(os.path.join(dstDir, msdName), sep='\t')
     T, MSD = res_emsd['lagt'], res_emsd['msd']
-    
-    dict_MSDfits = ufun.json2dict(dstDir, msdFitsName)
-    D_linear = dict_MSDfits['D_linear']
-    k_full = dict_MSDfits['k_full']
-    D_full = dict_MSDfits['D_full']
-    k_lowDt = dict_MSDfits['k_lowDt']
-    D_lowDt = dict_MSDfits['D_lowDt']
-    k_highDt = dict_MSDfits['k_highDt']
-    D_highDt = dict_MSDfits['D_highDt']
-    
-    Tc = (D_lowDt/D_highDt)**(1/(k_highDt-k_lowDt))
 
-    long_label = '_'.join(fN.split('_')[2:4])
+    long_label = '_'.join(fN.split('_')[2:5])
     short_label = fN.split('_')[3]
 
     ax.plot(T, MSD, label=long_label, color=ColorList[i], 
             marker='o', markersize=3, alpha=0.85)
     
-    dict_res['label'].append(short_label)
-    dict_res['D_full'].append(D_full)
-    dict_res['k_full'].append(k_full)
-    dict_res['D_lowDt'].append(D_lowDt)
-    dict_res['k_lowDt'].append(k_lowDt)
-    dict_res['D_highDt'].append(D_highDt)
-    dict_res['k_highDt'].append(k_highDt)
+        
+    # dict_MSDfits = ufun.json2dict(dstDir, msdFitsName)
+    # D_linear = dict_MSDfits['D_linear']
+    # k_full = dict_MSDfits['k_full']
+    # D_full = dict_MSDfits['D_full']
+    # k_lowDt = dict_MSDfits['k_lowDt']
+    # D_lowDt = dict_MSDfits['D_lowDt']
+    # k_highDt = dict_MSDfits['k_highDt']
+    # D_highDt = dict_MSDfits['D_highDt']
+    
+    # Tc = (D_lowDt/D_highDt)**(1/(k_highDt-k_lowDt))
+    
+    # dict_res['label'].append(short_label)
+    # dict_res['D_full'].append(D_full)
+    # dict_res['k_full'].append(k_full)
+    # dict_res['D_lowDt'].append(D_lowDt)
+    # dict_res['k_lowDt'].append(k_lowDt)
+    # dict_res['D_highDt'].append(D_highDt)
+    # dict_res['k_highDt'].append(k_highDt)
     
 
 Xp1 = np.array([1e-1, 5e-1])
@@ -478,243 +695,7 @@ ax.set_xlabel(r'$\Delta t$ (s)')
 plt.show()
 
 
-df_Diffusion = pd.DataFrame(dict_res)
-df_Diffusion['Tpf_s'] = df_Diffusion['label'].apply(lambda x : Tpf_str2num(x))
-df_Diffusion['Tpf_min'] = df_Diffusion['Tpf_s']/60
-
-fig, axes = plt.subplots(2, 1, figsize=(7, 6), sharex = True, layout='compressed')
-ax = axes[0]
-ax.plot(df_Diffusion.Tpf_min, df_Diffusion.D_full, ls='-', marker='o', label=r'All $\Delta t$')
-ax.plot(df_Diffusion.Tpf_min, df_Diffusion.D_lowDt, ls='-', marker='o', label=r'$\Delta t \leq 0.5s$')
-ax.plot(df_Diffusion.Tpf_min, df_Diffusion.D_highDt, ls='-', marker='o', label=r'$\Delta t \geq 1s$')
-ax.set_ylabel(r'$D_{eff}\ (\mu m^2/s^\alpha)$')
-ax.legend(loc='center left', bbox_to_anchor=(1, 0.5))
-ax.grid()
-
-ax = axes[1]
-ax.plot(df_Diffusion.Tpf_min, df_Diffusion.k_full, ls='-', marker='o', label=r'All $\Delta t$')
-ax.plot(df_Diffusion.Tpf_min, df_Diffusion.k_lowDt, ls='-', marker='o', label=r'$\Delta t \leq 0.5s$')
-ax.plot(df_Diffusion.Tpf_min, df_Diffusion.k_highDt, ls='-', marker='o', label=r'$\Delta t \geq 1s$')
-ax.set_ylabel(r'$\alpha$')
-ax.set_xticks(df_Diffusion['Tpf_min'].values)
-ax.set_xticklabels(df_Diffusion['Tpf_min'].values.astype(int), rotation = 30)
-ax.set_xlabel('Tpf (min)')
-ax.legend(loc='center left', bbox_to_anchor=(1, 0.5))
-ax.grid()
-
-plt.show()
-
-
-# -----------------------------------------------------------------------------
-# %%% 26-10-07_D1-s - ctrl
-
-# %%%% Settings
-
-#### Paths
-mainDir = os.path.join(up.Path_IntraCellTracking, '26-10-07_FastAcq-Channel_Fec_NB-Yolk')
-srcDir = os.path.join(mainDir, 'D1-s')
-dstDir = os.path.join(mainDir, 'SPT_results')
-os.listdir(srcDir)
-
-tifNames = [
-    '26-10-07_D1-s_PreF_0min_C1_20fps_Texp50ms_L30p1_CSU642.ome.tf2',
-    '26-10-07_D1-s_PreF_0min_C2_20fps_Texp50ms_L30p1_CSU642.ome.tf2',
-    '26-10-07_D1-s_PreF_0min_C3_20fps_Texp50ms_L30p1_CSU642.ome.tf2',
-    # '26-10-07_D1-s_PreF_0min_C3_5fps_Texp200ms_L30p1_CSU642.ome.tf2',
-    '26-10-07_D1-s_PostF_3min_C4_20fps_Texp50ms_L30p1_CSU642.ome.tf2',
-    '26-10-07_D1-s_PostF_6min_C4_20fps_Texp50ms_L30p1_CSU642.ome.tf2',
-    '26-10-07_D1-s_PostF_9min_C4_20fps_Texp50ms_L30p1_CSU642.ome.tf2',
-    '26-10-07_D1-s_PostF_12min_C4_20fps_Texp50ms_L30p1_CSU642.ome.tf2',
-    '26-10-07_D1-s_PostF_15min_C4_20fps_Texp50ms_L30p1_CSU642.ome.tf2',
-    '26-10-07_D1-s_PostF_20min_C4_20fps_Texp50ms_L30p1_CSU642.ome.tf2',
-    '26-10-07_D1-s_PostF_25min_C4_20fps_Texp50ms_L30p1_CSU642.ome.tf2',
-    '26-10-07_D1-s_PostF_30min_C4_20fps_Texp50ms_L30p1_CSU642.ome.tf2',
-    '26-10-07_D1-s_PostF_35min_C4_20fps_Texp50ms_L30p1_CSU642.ome.tf2',
-    '26-10-07_D1-s_PostF_40min_C4_20fps_Texp50ms_L30p1_CSU642.ome.tf2',
-    '26-10-07_D1-s_PostF_45min_C4_20fps_Texp50ms_L30p1_CSU642.ome.tf2',
-    '26-10-07_D1-s_PostF_50min_C4_20fps_Texp50ms_L30p1_CSU642.ome.tf2',
-    '26-10-07_D1-s_PostF_55min_C4_20fps_Texp50ms_L30p1_CSU642.ome.tf2',
-    '26-10-07_D1-s_PostF_60min_C4_20fps_Texp50ms_L30p1_CSU642.ome.tf2',
-    '26-10-07_D1-s_PostF_66min_C4_20fps_Texp50ms_L30p1_CSU642.ome.tf2',
-    '26-10-07_D1-s_PostF_71min_C4_20fps_Texp50ms_L30p1_CSU642.ome.tf2',
-    '26-10-07_D1-s_PostF_83min_C4_20fps_Texp50ms_L30p1_CSU642.ome.tf2',
-    ]
-
-tifPaths = [os.path.join(srcDir, tifName) for tifName in tifNames]
-fileNames = [fN.split('.')[0] for fN in tifNames]
-
-Dict_Files_Suffix = {
-    'suffix_contour' : '_cellContour',
-    'suffix_mask' : '_cellMask',
-    'suffix_rawTracks' : '_TmTracks',
-    'suffix_cleanTracks' : '_PyTracks',
-    'suffix_globalMsd' : '_GlobalMsd',
-    'suffix_globalMsdFits' : '_GlobalMsdFits',
-    'suffix_globalPairMsd' : '_GlobalPairMsd',
-    'suffix_globalPairMsdFits' : '_GlobalPairMsdFits',
-    }
-
-
-#### Settings
-UmPerPix = cd.UmPerPix_60X_W1
-Dict_Image_Settings = {
-    'UmPerPix' : UmPerPix,
-    'PixPerUm' : 1/UmPerPix,
-    'FPS' : 20,
-    }
-
-Dict_TrackMate_Settings = {
-    'RADIUS_UM' : 0.8, 
-    'THRESH_SPOT_QLT' : 0.25,
-    'THRESH_LINK_UM' : 0.25, 
-    'THRESH_MIN_DURATION' : 30,
-    }
-
-Dict_Analysis_Settings = {
-    'mask_buffer_um' : 2.0,
-    'edge_buffer_cutoff_um' : 3.0,
-    'max_Dt_s' : 5,
-    'lowDt_upper' : 0.5,
-    'highDt_lower' : 1.0,
-    }
-
-
-#### Run analysis
-
-NByolk_analysis_sequence(mainDir, srcDir, dstDir, tifNames, Dict_Files_Suffix, 
-                         Dict_Image_Settings, Dict_TrackMate_Settings, Dict_Analysis_Settings,
-                         Do_Contours = False, Do_Tracking = True, Do_TrackCleaning = True, Do_MSD = True)
-
-# %%%% Settings - Long & Slow
-
-#### Paths
-mainDir = os.path.join(up.Path_IntraCellTracking, '26-10-07_FastAcq-Channel_Fec_NB-Yolk')
-srcDir = os.path.join(mainDir, 'D1-s')
-dstDir = os.path.join(mainDir, 'SPT_results')
-os.listdir(srcDir)
-
-tifNames = [
-    '26-10-07_D1-s_PreF_0min_C3_5fps_Texp200ms_L30p1_CSU642.ome.tf2',
-    ]
-
-tifPaths = [os.path.join(srcDir, tifName) for tifName in tifNames]
-fileNames = [fN.split('.')[0] for fN in tifNames]
-
-Dict_Files_Suffix = {
-    'suffix_contour' : '_cellContour',
-    'suffix_mask' : '_cellMask',
-    'suffix_rawTracks' : '_TmTracks',
-    'suffix_cleanTracks' : '_PyTracks',
-    'suffix_globalMsd' : '_GlobalMsd',
-    'suffix_globalMsdFits' : '_GlobalMsdFits',
-    'suffix_globalPairMsd' : '_GlobalPairMsd',
-    'suffix_globalPairMsdFits' : '_GlobalPairMsdFits',
-    }
-
-
-#### Settings
-UmPerPix = cd.UmPerPix_60X_W1
-Dict_Image_Settings = {
-    'UmPerPix' : UmPerPix,
-    'PixPerUm' : 1/UmPerPix,
-    'FPS' : 5,
-    }
-
-Dict_TrackMate_Settings = {
-    'RADIUS_UM' : 0.8, 
-    'THRESH_SPOT_QLT' : 0.25,
-    'THRESH_LINK_UM' : 0.5, 
-    'THRESH_MIN_DURATION' : 30,
-    }
-
-Dict_Analysis_Settings = {
-    'mask_buffer_um' : 2.0,
-    'edge_buffer_cutoff_um' : 3.0,
-    'max_Dt_s' : 20,
-    'lowDt_upper' : 0.5,
-    'highDt_lower' : 1.0,
-    }
-
-# %%%% Run analysis
-
-NByolk_analysis_sequence(mainDir, srcDir, dstDir, tifNames, Dict_Files_Suffix, 
-                         Dict_Image_Settings, Dict_TrackMate_Settings, Dict_Analysis_Settings,
-                         Do_Contours = False, Do_Tracking = False, Do_TrackCleaning = False, Do_MSD = True)
-
-
-# %%%% Import MSD & plot
-    
-max_Dt_s = Dict_Analysis_Settings['max_Dt_s']
-lowDt_upper = Dict_Analysis_Settings['lowDt_upper']
-highDt_lower = Dict_Analysis_Settings['highDt_lower']
-
-fig, ax = plt.subplots(1, 1, figsize=(7, 5))
-ax.set_xscale('log')
-ax.set_yscale('log')
-
-dict_res = {
-    'label'  : [],
-    'D_full' : [],
-    'k_full' : [],
-    'D_lowDt': [],
-    'k_lowDt': [],
-    'D_highDt':[],
-    'k_highDt':[],
-    }
-
-ColorList = list(sns.color_palette("husl", len(fileNames)))
-
-for i in range(len(fileNames)):
-    tP, fN = tifPaths[i], fileNames[i]
-    cleanTrackName = fN + Dict_Files_Suffix['suffix_cleanTracks'] + '.csv'
-    msdName = fN + Dict_Files_Suffix['suffix_globalMsd'] + '.csv'
-    msdFitsName = fN + Dict_Files_Suffix['suffix_globalMsdFits']
-    
-    df = pd.read_csv(os.path.join(dstDir, cleanTrackName), sep='\t')
-    res_emsd = pd.read_csv(os.path.join(dstDir, msdName), sep='\t')
-    T, MSD = res_emsd['lagt'], res_emsd['msd']
-    
-    dict_MSDfits = ufun.json2dict(dstDir, msdFitsName)
-    D_linear = dict_MSDfits['D_linear']
-    k_full = dict_MSDfits['k_full']
-    D_full = dict_MSDfits['D_full']
-    k_lowDt = dict_MSDfits['k_lowDt']
-    D_lowDt = dict_MSDfits['D_lowDt']
-    k_highDt = dict_MSDfits['k_highDt']
-    D_highDt = dict_MSDfits['D_highDt']
-    
-    Tc = (D_lowDt/D_highDt)**(1/(k_highDt-k_lowDt))
-
-    long_label = '_'.join(fN.split('_')[2:4])
-    short_label = fN.split('_')[3]
-
-    ax.plot(T, MSD, label=long_label, color=ColorList[i], 
-            marker='o', markersize=3, alpha=0.85)
-    
-    dict_res['label'].append(short_label)
-    dict_res['D_full'].append(D_full)
-    dict_res['k_full'].append(k_full)
-    dict_res['D_lowDt'].append(D_lowDt)
-    dict_res['k_lowDt'].append(k_lowDt)
-    dict_res['D_highDt'].append(D_highDt)
-    dict_res['k_highDt'].append(k_highDt)
-    
-
-Xp1 = np.array([1e-1, 5e-1])
-Xp2 = np.array([1, 2])
-ax.plot(Xp1, 12e-3*Xp1**0.5, color = 'gray', ls=':', label=r'$y \propto x^{1/2}$')
-ax.plot(Xp2, 0.15e-1*Xp2**1, color = 'gray', ls='--', label=r'$y \propto x^{1}$')
-ax.legend(loc='center left', bbox_to_anchor=(1, 0.5), fontsize=8)
-ax.grid()
-# ax.set_xlim([0.4e-1, 0.6e1])
-# ax.set_ylim([2e-3, 0.5e0])
-ax.set_ylabel('MSD (µm²)')
-ax.set_xlabel(r'$\Delta t$ (s)')
-
-plt.show()
-
-
-df_Diffusion = pd.DataFrame(dict_res)
+# df_Diffusion = pd.DataFrame(dict_res)
 # df_Diffusion['Tpf_s'] = df_Diffusion['label'].apply(lambda x : Tpf_str2num(x))
 # df_Diffusion['Tpf_min'] = df_Diffusion['Tpf_s']/60
 
@@ -739,427 +720,6 @@ df_Diffusion = pd.DataFrame(dict_res)
 # ax.grid()
 
 # plt.show()
-
-
-
-
-
-# %%% 26-09-30_D1
-
-# %%%% Settings
-
-#### Paths    
-
-
-mainDir = os.path.join(up.Path_IntraCellTracking, '26-09-30_FastAcq-Channel_Fec_NB-Yolk')
-srcDir = os.path.join(mainDir, 'D1')
-dstDir = os.path.join(mainDir, 'SPT_results')
-
-tifNames = [
-    '26-09-30_D1_PreF_C1_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
-    '26-09-30_D1_PreF_C2_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
-    '26-09-30_D1_PreF_C3_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
-    '26-09-30_D1_PostF_4min_C4_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
-    '26-09-30_D1_PostF_6min_C4_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
-    '26-09-30_D1_PostF_10min_C4_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
-    '26-09-30_D1_PostF_13min_C4_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
-    '26-09-30_D1_PostF_18min_C4_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
-    '26-09-30_D1_PostF_25min_C4_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
-    '26-09-30_D1_PostF_30min_C4_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
-    '26-09-30_D1_PostF_35min_C4_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
-    '26-09-30_D1_PostF_40min_C4_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
-    '26-09-30_D1_PostF_45min_C4_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
-    '26-09-30_D1_PostF_52min_C4_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
-    '26-09-30_D1_PostF_60min_C4_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
-    '26-09-30_D1_PostF_65min_C4_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
-    '26-09-30_D1_PostF_70min_C4_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
-    ]
-
-tifPaths = [os.path.join(srcDir, tifName) for tifName in tifNames]
-fileNames = [fN.split('.')[0] for fN in tifNames]
-
-Dict_Files_Suffix = {
-    'suffix_contour' : '_cellContour',
-    'suffix_mask' : '_cellMask',
-    'suffix_rawTracks' : '_TmTracks',
-    'suffix_cleanTracks' : '_PyTracks',
-    'suffix_globalMsd' : '_GlobalMsd',
-    'suffix_globalMsdFits' : '_GlobalMsdFits',
-    }
-
-#### Settings
-
-UmPerPix = cd.UmPerPix_60X_W1
-Dict_Image_Settings = {
-    'UmPerPix' : UmPerPix,
-    'PixPerUm' : 1/UmPerPix,
-    'FPS' : 20,
-    }
-
-Dict_TrackMate_Settings = {
-    'RADIUS_UM' : 0.8, 
-    'THRESH_SPOT_QLT' : 0.25,
-    'THRESH_LINK_UM' : 0.25, 
-    'THRESH_MIN_DURATION' : 30,
-    }
-
-Dict_Analysis_Settings = {
-    'mask_buffer_um' : 2.0,
-    'edge_buffer_cutoff_um' : 3.0,
-    'max_Dt_s' : 5,
-    'lowDt_upper' : 0.5,
-    'highDt_lower' : 1.0,
-    }
-
-
-# %%%% Run analysis
-
-NByolk_analysis_sequence(mainDir, srcDir, dstDir, tifNames, Dict_Files_Suffix, 
-                         Dict_Image_Settings, Dict_TrackMate_Settings, Dict_Analysis_Settings,
-                         Do_Contours = False, Do_Tracking = False, Do_TrackCleaning = False, Do_MSD = True)
-  
-
-# %%%% Import MSD & plot
-    
-max_Dt_s = Dict_Analysis_Settings['max_Dt_s']
-lowDt_upper = Dict_Analysis_Settings['lowDt_upper']
-highDt_lower = Dict_Analysis_Settings['highDt_lower']
-
-fig, ax = plt.subplots(1, 1, figsize=(7, 5))
-ax.set_xscale('log')
-ax.set_yscale('log')
-
-dict_res = {
-    'label'  : [],
-    'D_full' : [],
-    'k_full' : [],
-    'D_lowDt': [],
-    'k_lowDt': [],
-    'D_highDt':[],
-    'k_highDt':[],
-    }
-
-ColorList = list(sns.color_palette("husl", len(fileNames)))
-
-for i in range(len(fileNames)):
-    tP, fN = tifPaths[i], fileNames[i]
-    cleanTrackName = fN + Dict_Files_Suffix['suffix_cleanTracks'] + '.csv'
-    msdName = fN + Dict_Files_Suffix['suffix_globalMsd'] + '.csv'
-    msdFitsName = fN + Dict_Files_Suffix['suffix_globalMsdFits']
-    
-    df = pd.read_csv(os.path.join(dstDir, cleanTrackName), sep='\t')
-    res_emsd = pd.read_csv(os.path.join(dstDir, msdName), sep='\t')
-    T, MSD = res_emsd['lagt'], res_emsd['msd']
-    
-    dict_MSDfits = ufun.json2dict(dstDir, msdFitsName)
-    D_linear = dict_MSDfits['D_linear']
-    k_full = dict_MSDfits['k_full']
-    D_full = dict_MSDfits['D_full']
-    k_lowDt = dict_MSDfits['k_lowDt']
-    D_lowDt = dict_MSDfits['D_lowDt']
-    k_highDt = dict_MSDfits['k_highDt']
-    D_highDt = dict_MSDfits['D_highDt']
-    
-    Tc = (D_lowDt/D_highDt)**(1/(k_highDt-k_lowDt))
-
-    long_label = '_'.join(fN.split('_')[2:4])
-    short_label = fN.split('_')[3]
-
-    ax.plot(T, MSD, label=long_label, color=ColorList[i], 
-            marker='o', markersize=3, alpha=0.85)
-    
-    dict_res['label'].append(short_label)
-    dict_res['D_full'].append(D_full)
-    dict_res['k_full'].append(k_full)
-    dict_res['D_lowDt'].append(D_lowDt)
-    dict_res['k_lowDt'].append(k_lowDt)
-    dict_res['D_highDt'].append(D_highDt)
-    dict_res['k_highDt'].append(k_highDt)
-    
-
-Xp1 = np.array([1e-1, 5e-1])
-Xp2 = np.array([1, 2])
-ax.plot(Xp1, 12e-3*Xp1**0.5, color = 'gray', ls=':', label=r'$y \propto x^{1/2}$')
-ax.plot(Xp2, 0.15e-1*Xp2**1, color = 'gray', ls='--', label=r'$y \propto x^{1}$')
-ax.legend(loc='center left', bbox_to_anchor=(1, 0.5), fontsize=8)
-ax.grid()
-# ax.set_xlim([0.4e-1, 0.6e1])
-# ax.set_ylim([2e-3, 0.5e0])
-ax.set_ylabel('MSD (µm²)')
-ax.set_xlabel(r'$\Delta t$ (s)')
-
-plt.show()
-
-
-df_Diffusion = pd.DataFrame(dict_res)
-df_Diffusion['Tpf_s'] = df_Diffusion['label'].apply(lambda x : Tpf_str2num(x))
-df_Diffusion['Tpf_min'] = df_Diffusion['Tpf_s']/60
-
-fig, axes = plt.subplots(2, 1, figsize=(7, 6), sharex = True, layout='compressed')
-ax = axes[0]
-ax.plot(df_Diffusion.Tpf_min, df_Diffusion.D_full, ls='-', marker='o', label=r'All $\Delta t$')
-ax.plot(df_Diffusion.Tpf_min, df_Diffusion.D_lowDt, ls='-', marker='o', label=r'$\Delta t \leq 0.5s$')
-ax.plot(df_Diffusion.Tpf_min, df_Diffusion.D_highDt, ls='-', marker='o', label=r'$\Delta t \geq 1s$')
-ax.set_ylabel(r'$D_{eff}\ (\mu m^2/s^\alpha)$')
-ax.legend(loc='center left', bbox_to_anchor=(1, 0.5))
-ax.grid()
-
-ax = axes[1]
-ax.plot(df_Diffusion.Tpf_min, df_Diffusion.k_full, ls='-', marker='o', label=r'All $\Delta t$')
-ax.plot(df_Diffusion.Tpf_min, df_Diffusion.k_lowDt, ls='-', marker='o', label=r'$\Delta t \leq 0.5s$')
-ax.plot(df_Diffusion.Tpf_min, df_Diffusion.k_highDt, ls='-', marker='o', label=r'$\Delta t \geq 1s$')
-ax.set_ylabel(r'$\alpha$')
-ax.set_xticks(df_Diffusion['Tpf_min'].values)
-ax.set_xticklabels(df_Diffusion['Tpf_min'].values.astype(int), rotation = 30)
-ax.set_xlabel('Tpf (min)')
-ax.legend(loc='center left', bbox_to_anchor=(1, 0.5))
-ax.grid()
-
-plt.show()
-
-
-
-# %%% 26-09-30_D2
-
-# %%%% Settings
-
-#### Paths
-mainDir = os.path.join(up.Path_IntraCellTracking, '26-09-30_FastAcq-Channel_Fec_NB-Yolk')
-srcDir = os.path.join(mainDir, 'D2')
-dstDir = os.path.join(mainDir, 'SPT_results')
-tifNames = [
-    '26-09-30_D2-R_PreF_C3_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
-    '26-09-30_D2-R_PreF_C4_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
-    '26-09-30_D2-R_PostF_4min_C5_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
-    '26-09-30_D2-R_PostF_6min_C5_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
-    '26-09-30_D2-R_PostF_8min_C5_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
-    '26-09-30_D2-R_PostF_12min_C5_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
-    '26-09-30_D2-R_PostF_15min_C5_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
-    '26-09-30_D2-R_PostF_20min_C5_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
-    '26-09-30_D2-R_PostF_25min_C5_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
-    '26-09-30_D2-R_PostF_30min_C5_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
-    '26-09-30_D2-R_PostF_36min_C5_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
-    '26-09-30_D2-R_PostF_40min_C5_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
-    '26-09-30_D2-R_PostF_45min_C5_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
-    '26-09-30_D2-R_PostF_50min_C5_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
-    '26-09-30_D2-R_PostF_53min_C5_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
-    '26-09-30_D2-R_PostF_55min_C5_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
-    '26-09-30_D2-R_PostF_60min_C5_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
-    '26-09-30_D2-R_PostF_65min_C5_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
-    ]
-
-tifPaths = [os.path.join(srcDir, tifName) for tifName in tifNames]
-fileNames = [fN.split('.')[0] for fN in tifNames]
-
-Dict_Files_Suffix = {
-    'suffix_contour' : '_cellContour',
-    'suffix_mask' : '_cellMask',
-    'suffix_rawTracks' : '_TmTracks',
-    'suffix_cleanTracks' : '_PyTracks',
-    'suffix_globalMsd' : '_GlobalMsd',
-    'suffix_globalMsdFits' : '_GlobalMsdFits',
-    'suffix_globalPairMsd' : '_GlobalPairMsd',
-    'suffix_globalPairMsdFits' : '_GlobalPairMsdFits',
-    }
-
-
-#### Settings
-UmPerPix = cd.UmPerPix_60X_W1
-Dict_Image_Settings = {
-    'UmPerPix' : UmPerPix,
-    'PixPerUm' : 1/UmPerPix,
-    'FPS' : 20,
-    }
-
-Dict_TrackMate_Settings = {
-    'RADIUS_UM' : 0.8, 
-    'THRESH_SPOT_QLT' : 0.25,
-    'THRESH_LINK_UM' : 0.25, 
-    'THRESH_MIN_DURATION' : 30,
-    }
-
-Dict_Analysis_Settings = {
-    'mask_buffer_um' : 2.0,
-    'edge_buffer_cutoff_um' : 3.0,
-    'max_Dt_s' : 5,
-    'lowDt_upper' : 0.5,
-    'highDt_lower' : 1.0,
-    }
-
-
-# %%%% Run analysis
-
-NByolk_analysis_sequence(mainDir, srcDir, dstDir, tifNames, Dict_Files_Suffix, 
-                         Dict_Image_Settings, Dict_TrackMate_Settings, Dict_Analysis_Settings,
-                         Do_Contours = False, Do_Tracking = False, Do_TrackCleaning = False, Do_MSD = True)
-
-
-# %%%% Import MSD & plot
-    
-max_Dt_s = Dict_Analysis_Settings['max_Dt_s']
-lowDt_upper = Dict_Analysis_Settings['lowDt_upper']
-highDt_lower = Dict_Analysis_Settings['highDt_lower']
-
-fig, ax = plt.subplots(1, 1, figsize=(7, 5))
-ax.set_xscale('log')
-ax.set_yscale('log')
-
-dict_res = {
-    'label'  : [],
-    'D_full' : [],
-    'k_full' : [],
-    'D_lowDt': [],
-    'k_lowDt': [],
-    'D_highDt':[],
-    'k_highDt':[],
-    }
-
-ColorList = list(sns.color_palette("husl", len(fileNames)))
-
-for i in range(len(fileNames)):
-    tP, fN = tifPaths[i], fileNames[i]
-    cleanTrackName = fN + Dict_Files_Suffix['suffix_cleanTracks'] + '.csv'
-    msdName = fN + Dict_Files_Suffix['suffix_globalMsd'] + '.csv'
-    msdFitsName = fN + Dict_Files_Suffix['suffix_globalMsdFits']
-    
-    df = pd.read_csv(os.path.join(dstDir, cleanTrackName), sep='\t')
-    res_emsd = pd.read_csv(os.path.join(dstDir, msdName), sep='\t')
-    T, MSD = res_emsd['lagt'], res_emsd['msd']
-    
-    dict_MSDfits = ufun.json2dict(dstDir, msdFitsName)
-    D_linear = dict_MSDfits['D_linear']
-    k_full = dict_MSDfits['k_full']
-    D_full = dict_MSDfits['D_full']
-    k_lowDt = dict_MSDfits['k_lowDt']
-    D_lowDt = dict_MSDfits['D_lowDt']
-    k_highDt = dict_MSDfits['k_highDt']
-    D_highDt = dict_MSDfits['D_highDt']
-    
-    Tc = (D_lowDt/D_highDt)**(1/(k_highDt-k_lowDt))
-
-    long_label = '_'.join(fN.split('_')[2:4])
-    short_label = fN.split('_')[3]
-
-    ax.plot(T, MSD, label=long_label, color=ColorList[i], 
-            marker='o', markersize=3, alpha=0.85)
-    
-    dict_res['label'].append(short_label)
-    dict_res['D_full'].append(D_full)
-    dict_res['k_full'].append(k_full)
-    dict_res['D_lowDt'].append(D_lowDt)
-    dict_res['k_lowDt'].append(k_lowDt)
-    dict_res['D_highDt'].append(D_highDt)
-    dict_res['k_highDt'].append(k_highDt)
-    
-
-Xp1 = np.array([1e-1, 5e-1])
-Xp2 = np.array([1, 2])
-ax.plot(Xp1, 12e-3*Xp1**0.5, color = 'gray', ls=':', label=r'$y \propto x^{1/2}$')
-ax.plot(Xp2, 0.15e-1*Xp2**1, color = 'gray', ls='--', label=r'$y \propto x^{1}$')
-ax.legend(loc='center left', bbox_to_anchor=(1, 0.5), fontsize=8)
-ax.grid()
-# ax.set_xlim([0.4e-1, 0.6e1])
-# ax.set_ylim([2e-3, 0.5e0])
-ax.set_ylabel('MSD (µm²)')
-ax.set_xlabel(r'$\Delta t$ (s)')
-
-plt.show()
-
-
-df_Diffusion = pd.DataFrame(dict_res)
-df_Diffusion['Tpf_s'] = df_Diffusion['label'].apply(lambda x : Tpf_str2num(x))
-df_Diffusion['Tpf_min'] = df_Diffusion['Tpf_s']/60
-
-fig, axes = plt.subplots(2, 1, figsize=(7, 6), sharex = True, layout='compressed')
-ax = axes[0]
-ax.plot(df_Diffusion.Tpf_min, df_Diffusion.D_full, ls='-', marker='o', label=r'All $\Delta t$')
-ax.plot(df_Diffusion.Tpf_min, df_Diffusion.D_lowDt, ls='-', marker='o', label=r'$\Delta t \leq 0.5s$')
-ax.plot(df_Diffusion.Tpf_min, df_Diffusion.D_highDt, ls='-', marker='o', label=r'$\Delta t \geq 1s$')
-ax.set_ylabel(r'$D_{eff}\ (\mu m^2/s^\alpha)$')
-ax.legend(loc='center left', bbox_to_anchor=(1, 0.5))
-ax.grid()
-
-ax = axes[1]
-ax.plot(df_Diffusion.Tpf_min, df_Diffusion.k_full, ls='-', marker='o', label=r'All $\Delta t$')
-ax.plot(df_Diffusion.Tpf_min, df_Diffusion.k_lowDt, ls='-', marker='o', label=r'$\Delta t \leq 0.5s$')
-ax.plot(df_Diffusion.Tpf_min, df_Diffusion.k_highDt, ls='-', marker='o', label=r'$\Delta t \geq 1s$')
-ax.set_ylabel(r'$\alpha$')
-ax.set_xticks(df_Diffusion['Tpf_min'].values)
-ax.set_xticklabels(df_Diffusion['Tpf_min'].values.astype(int), rotation = 30)
-ax.set_xlabel('Tpf (min)')
-ax.legend(loc='center left', bbox_to_anchor=(1, 0.5))
-ax.grid()
-
-plt.show()
-
-
-
-# %%%% Compute pair-MSD
-
-pm.setGraphicOptions(mode='screen')
-
-for i in range(len(fileNames)):
-    print(i)
-    tP, fN = tifPaths[i], fileNames[i]
-    cleanTrackName = fN + Dict_Files_Suffix['suffix_cleanTracks'] + '.csv'
-    df = pd.read_csv(os.path.join(dstDir, cleanTrackName), sep='\t')
-    
-    PixPerUm = Dict_Image_Settings['PixPerUm']
-    FPS = Dict_Image_Settings['FPS']
-    max_Dt_s = 4
-    
-    shape, dtype = ufun.tiff_inspect(tP)
-    Nframes = shape[0]   
-    
-    #### Compute Pair MSD
-    df_allTRange_pair_MSD = compute_pairwise_MSD(df, PixPerUm, FPS, Nframes,
-                                                 len_TRanges = 100, delta_TRanges = -1, 
-                                                 dist_th_um = 4, max_Dt_s = 4)
-    print(i)
-    
-    pairMsdName = fN + Dict_Files_Suffix['suffix_globalPairMsd'] + '.csv'
-    df_allTRange_pair_MSD.to_csv(os.path.join(dstDir, pairMsdName), index=False, sep='\t')
-    
-    
-    #### Fit Pair MSD
-    T = df_allTRange_pair_MSD['lagt'].to_numpy()
-    MSD = df_allTRange_pair_MSD['msd_median'].to_numpy()
-
-    lowDt_upper = Dict_Analysis_Settings['lowDt_upper']
-    highDt_lower = Dict_Analysis_Settings['highDt_lower']
-    
-    iLow = ufun.findFirst(lowDt_upper, T) + 1
-    iHigh = ufun.findFirst(highDt_lower, T)
-    
-    parms, results = ufun.fitLineHuber(T, MSD, with_intercept = False)
-    D_linear = parms[0]/8
-    
-    parms, results = ufun.fitLineHuber(np.log(T), np.log(MSD), with_intercept = True)
-    b, a = parms
-    k_full = a
-    D_full = np.exp(b)/8
-
-    parms, results = ufun.fitLineHuber(np.log(T[:iLow]), np.log(MSD[:iLow]), with_intercept = True)
-    b, a = parms
-    k_lowDt = a
-    D_lowDt = np.exp(b)/8
-
-    parms, results = ufun.fitLineHuber(np.log(T[iHigh:]), np.log(MSD[iHigh:]), with_intercept = True)
-    b, a = parms
-    k_highDt = a
-    D_highDt = np.exp(b)/8
-    
-    dict_pairMSDfits = {
-        'max_Dt_s': max_Dt_s,
-        'lowDt_upper': lowDt_upper, 'highDt_lower': highDt_lower,
-        'D_linear': D_linear,
-        'k_full': k_full, 'D_full': D_full,
-        'k_lowDt': k_lowDt, 'D_lowDt': D_lowDt,
-        'k_highDt': k_highDt, 'D_highDt': D_highDt,
-        }
-    
-    pairMsdFitsName = fN + Dict_Files_Suffix['suffix_globalPairMsdFits']
-    ufun.dict2json(dict_pairMSDfits, dstDir, pairMsdFitsName)
 
 
 # %%%% Import pair-MSD & plot
@@ -1345,25 +905,1556 @@ ax.grid()
 plt.show()
 
 
-# %%%% Make movie of triangulation
 
-i = 0
-print(i)
-tP, fN = tifPaths[i], fileNames[i]
-dirPlots = os.path.join(up.Path_Desktop, "Plots_film_triangles")
-cleanTrackName = fN + Dict_Files_Suffix['suffix_cleanTracks'] + '.csv'
-df = pd.read_csv(os.path.join(dstDir, cleanTrackName), sep='\t')
-shape, _ = ufun.tiff_inspect(tP)
-PixPerUm = cd.PixPerUm_60X_W1
-FPS = 20
-plot_frames = np.arange(1001, 1101, 2)
-dist_th_um = 5
-# tbca.make_film_of_pairs_V1(df, PixPerUm, FPS, shape, dirPlots,
-#                           plot_frames, dist_th_um = 4)
-tbca.make_film_of_pairs_V2(df, PixPerUm, FPS, shape, dirPlots, 
-                          plot_frames, dist_th_um = 4)
+# %%% 26-10-07_D1-L - Noco
+
+# %%%% Settings
+
+#### Paths
+mainDir = os.path.join(up.Path_IntraCellTracking, '26-10-07_FastAcq-Channel_Fec_NB-Yolk')
+srcDir = os.path.join(mainDir, 'D1-L')
+dstDir = os.path.join(mainDir, 'SPT_results')
+# os.listdir(srcDir)
+
+tifNames = [
+    '26-10-07_D1-L_PreF_0min_C1_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
+    '26-10-07_D1-L_PreF_0min_C2_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
+    '26-10-07_D1-L_PreF_0min_C3_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
+    '26-10-07_D1-L_PostF_3min_C4_20fps_Texp50ms_L20p1_CSU642.ome.tif',
+    '26-10-07_D1-L_PostF_7min_C4_20fps_Texp50ms_L30p1_CSU642.ome.tf2',
+    '26-10-07_D1-L_PostF_12min_C4_20fps_Texp50ms_L30p1_CSU642.ome.tf2',
+    '26-10-07_D1-L_PostF_17min_C4_20fps_Texp50ms_L30p1_CSU642.ome.tf2',
+    '26-10-07_D1-L_PostF_20min_C4_20fps_Texp50ms_L30p1_CSU642.ome.tf2',
+    '26-10-07_D1-L_PostF_25min_C4_20fps_Texp50ms_L30p1_CSU642.ome.tf2',
+    '26-10-07_D1-L_PostF_29min_C4_20fps_Texp50ms_L30p1_CSU642.ome.tf2',
+    '26-10-07_D1-L_PostF_35min_noco_C4_20fps_Texp50ms_L30p1_CSU642.ome.tf2',
+    '26-10-07_D1-L_PostF_38min_noco_C4_20fps_Texp50ms_L30p1_CSU642.ome.tf2',
+    '26-10-07_D1-L_PostF_45min_nocoWashed_C4_20fps_Texp50ms_L30p1_CSU642.ome.tf2',
+    '26-10-07_D1-L_PostF_51min_nocoWashed2_C4_20fps_Texp50ms_L30p1_CSU642.ome.tf2',
+    '26-10-07_D1-L_PostF_55min_nocoWashed2_C4_20fps_Texp50ms_L30p1_CSU642.ome.tf2',
+    '26-10-07_D1-L_PostF_60min_nocoWashed2_C4_20fps_Texp50ms_L30p1_CSU642.ome.tf2',
+    '26-10-07_D1-L_PostF_65min_nocoWashed2_C4_20fps_Texp50ms_L30p1_CSU642.ome.tf2',
+    '26-10-07_D1-L_PostF_70min_nocoWashed2_C4_20fps_Texp50ms_L30p1_CSU642.ome.tf2',
+    '26-10-07_D1-L_PostF_75min_nocoWashed2_C4_20fps_Texp50ms_L30p1_CSU642.ome.tf2',
+    '26-10-07_D1-L_PostF_80min_nocoWashed2_C4_20fps_Texp50ms_L30p1_CSU642.ome.tf2',
+    '26-10-07_D1-L_PostF_85min_nocoWashed2_C4_20fps_Texp50ms_L30p1_CSU642.ome.tf2',
+    '26-10-07_D1-L_PostF_90min_nocoWashed3_C4_20fps_Texp50ms_L30p1_CSU642.ome.tf2',
+    '26-10-07_D1-L_PostF_95min_nocoWashed3_C4_20fps_Texp50ms_L30p1_CSU642.ome.tf2',
+    '26-10-07_D1-L_PostF_100min_nocoWashed3_C4_20fps_Texp50ms_L30p1_CSU642.ome.tf2',
+    '26-10-07_D1-L_PostF_124min_nocoWashed3_C4_20fps_Texp50ms_L30p1_CSU642.ome.tf2',
+    ]
+
+tifPaths = [os.path.join(srcDir, tifName) for tifName in tifNames]
+fileNames = [fN.split('.')[0] for fN in tifNames]
+
+Dict_Files_Suffix = {
+    'suffix_contour' : '_cellContour',
+    'suffix_mask' : '_cellMask',
+    'suffix_rawTracks' : '_TmTracks',
+    'suffix_cleanTracks' : '_PyTracks',
+    'suffix_cleanTracks_DriftCorr' : '_PyTracks2',
+    'suffix_drift' : '_XYdrift',
+    'suffix_globalMsd' : '_GlobalMsd',
+    'suffix_globalMsdFits' : '_GlobalMsdFits',
+    'suffix_globalPairMsd' : '_GlobalPairMsd',
+    'suffix_globalPairMsdFits' : '_GlobalPairMsdFits',
+    }
 
 
+#### Settings
+UmPerPix = cd.UmPerPix_60X_W1
+Dict_Image_Settings = {
+    'UmPerPix' : UmPerPix,
+    'PixPerUm' : 1/UmPerPix,
+    'FPS' : 20,
+    }
+
+Dict_TrackMate_Settings = {
+    'RADIUS_UM' : 0.8, 
+    'THRESH_SPOT_QLT' : 0.25,
+    'THRESH_LINK_UM' : 0.25, 
+    'THRESH_MIN_DURATION' : 30,
+    }
+
+Dict_Analysis_Settings = {
+    'mask_buffer_um' : 2.0,
+    'edge_buffer_cutoff_um' : 3.0,
+    'max_Dt_s' : 4,
+    'lowDt_upper' : 0.5,
+    'highDt_lower' : 1.0,
+    'pairMSD_Dt_s' : 5,
+    'pairMSD_dist_th_um' : 5,
+    }
+
+
+# %%%% Run analysis
+
+NByolk_analysis_sequence(mainDir, srcDir, dstDir, tifNames, Dict_Files_Suffix, 
+                         Dict_Image_Settings, Dict_TrackMate_Settings, Dict_Analysis_Settings,
+                         Do_Contours = False, 
+                         Do_Tracking = False, Ignore_ROIs = False,
+                         Do_TrackCleaning = False, 
+                         Do_DriftCorrection = False, Use_DriftCorrected = False,
+                         Do_MSD = False, 
+                         Do_PairMSD = True)
+
+
+# %%%% Import MSD & plot
+    
+max_Dt_s = Dict_Analysis_Settings['max_Dt_s']
+lowDt_upper = Dict_Analysis_Settings['lowDt_upper']
+highDt_lower = Dict_Analysis_Settings['highDt_lower']
+
+fig, ax = plt.subplots(1, 1, figsize=(7, 5))
+ax.set_xscale('log')
+ax.set_yscale('log')
+
+dict_res = {
+    'label'  : [],
+    'D_full' : [],
+    'k_full' : [],
+    'D_lowDt': [],
+    'k_lowDt': [],
+    'D_highDt':[],
+    'k_highDt':[],
+    }
+
+ColorList = list(sns.color_palette("husl", len(fileNames)))
+
+for i in range(len(fileNames)):
+    tP, fN = tifPaths[i], fileNames[i]
+    cleanTrackName = fN + Dict_Files_Suffix['suffix_cleanTracks'] + '.csv'
+    msdName = fN + Dict_Files_Suffix['suffix_globalMsd'] + '.csv'
+    msdFitsName = fN + Dict_Files_Suffix['suffix_globalMsdFits']
+    
+    df = pd.read_csv(os.path.join(dstDir, cleanTrackName), sep='\t')
+    res_emsd = pd.read_csv(os.path.join(dstDir, msdName), sep='\t')
+    T, MSD = res_emsd['lagt'], res_emsd['msd']
+    
+    dict_MSDfits = ufun.json2dict(dstDir, msdFitsName)
+    D_linear = dict_MSDfits['D_linear']
+    k_full = dict_MSDfits['k_full']
+    D_full = dict_MSDfits['D_full']
+    k_lowDt = dict_MSDfits['k_lowDt']
+    D_lowDt = dict_MSDfits['D_lowDt']
+    k_highDt = dict_MSDfits['k_highDt']
+    D_highDt = dict_MSDfits['D_highDt']
+    
+    Tc = (D_lowDt/D_highDt)**(1/(k_highDt-k_lowDt))
+
+    long_label = '_'.join(fN.split('_')[2:4])
+    short_label = fN.split('_')[3]
+
+    ax.plot(T, MSD, label=long_label, color=ColorList[i], 
+            marker='o', markersize=3, alpha=0.85)
+    
+    dict_res['label'].append(short_label)
+    dict_res['D_full'].append(D_full)
+    dict_res['k_full'].append(k_full)
+    dict_res['D_lowDt'].append(D_lowDt)
+    dict_res['k_lowDt'].append(k_lowDt)
+    dict_res['D_highDt'].append(D_highDt)
+    dict_res['k_highDt'].append(k_highDt)
+    
+
+Xp1 = np.array([1e-1, 5e-1])
+Xp2 = np.array([1, 2])
+ax.plot(Xp1, 12e-3*Xp1**0.5, color = 'gray', ls=':', label=r'$y \propto x^{1/2}$')
+ax.plot(Xp2, 0.15e-1*Xp2**1, color = 'gray', ls='--', label=r'$y \propto x^{1}$')
+ax.legend(loc='center left', bbox_to_anchor=(1, 0.5), fontsize=8)
+ax.grid()
+# ax.set_xlim([0.4e-1, 0.6e1])
+# ax.set_ylim([2e-3, 0.5e0])
+ax.set_ylabel('MSD (µm²)')
+ax.set_xlabel(r'$\Delta t$ (s)')
+
+plt.show()
+
+
+df_Diffusion = pd.DataFrame(dict_res)
+df_Diffusion['Tpf_s'] = df_Diffusion['label'].apply(lambda x : Tpf_str2num(x))
+df_Diffusion['Tpf_min'] = df_Diffusion['Tpf_s']/60
+
+fig, axes = plt.subplots(2, 1, figsize=(7, 6), sharex = True, layout='compressed')
+ax = axes[0]
+ax.plot(df_Diffusion.Tpf_min, df_Diffusion.D_full, ls='-', marker='o', label=r'All $\Delta t$')
+ax.plot(df_Diffusion.Tpf_min, df_Diffusion.D_lowDt, ls='-', marker='o', label=r'$\Delta t \leq 0.5s$')
+ax.plot(df_Diffusion.Tpf_min, df_Diffusion.D_highDt, ls='-', marker='o', label=r'$\Delta t \geq 1s$')
+ax.set_ylabel(r'$D_{eff}\ (\mu m^2/s^\alpha)$')
+ax.legend(loc='center left', bbox_to_anchor=(1, 0.5))
+ax.grid()
+
+ax = axes[1]
+ax.plot(df_Diffusion.Tpf_min, df_Diffusion.k_full, ls='-', marker='o', label=r'All $\Delta t$')
+ax.plot(df_Diffusion.Tpf_min, df_Diffusion.k_lowDt, ls='-', marker='o', label=r'$\Delta t \leq 0.5s$')
+ax.plot(df_Diffusion.Tpf_min, df_Diffusion.k_highDt, ls='-', marker='o', label=r'$\Delta t \geq 1s$')
+ax.set_ylabel(r'$\alpha$')
+ax.set_xticks(df_Diffusion['Tpf_min'].values)
+ax.set_xticklabels(df_Diffusion['Tpf_min'].values.astype(int), rotation = 30)
+ax.set_xlabel('Tpf (min)')
+ax.legend(loc='center left', bbox_to_anchor=(1, 0.5))
+ax.grid()
+
+plt.show()
+
+
+
+# %%%% Import pair-MSD & plot
+    
+max_Dt_s = Dict_Analysis_Settings['max_Dt_s']
+lowDt_upper = Dict_Analysis_Settings['lowDt_upper']
+highDt_lower = Dict_Analysis_Settings['highDt_lower']
+
+fig, axes = plt.subplots(1, 2, figsize=(11, 5), sharey=True)
+for ax in axes:
+    ax.set_xscale('log')
+    ax.set_yscale('log')
+
+dict_res_MSD = {
+    'label'  : [],
+    'D_linear' : [],
+    'D_full' : [], 'k_full' : [],
+    'D_lowDt': [], 'k_lowDt': [],
+    'D_highDt':[], 'k_highDt':[],
+    }
+
+dict_res_pMSD = {
+    'label'  : [],
+    'D_linear' : [],
+    'D_full' : [], 'k_full' : [],
+    'D_lowDt': [], 'k_lowDt': [],
+    'D_highDt':[], 'k_highDt':[],
+    }
+
+ColorList = list(sns.color_palette("husl", len(fileNames)))
+
+for i in range(len(fileNames)):
+    tP, fN = tifPaths[i], fileNames[i]
+    cleanTrackName = fN + Dict_Files_Suffix['suffix_cleanTracks'] + '.csv'
+    msdName = fN + Dict_Files_Suffix['suffix_globalMsd'] + '.csv'
+    msdFitsName = fN + Dict_Files_Suffix['suffix_globalMsdFits']
+    pairMsdName = fN + Dict_Files_Suffix['suffix_globalPairMsd'] + '.csv'
+    pairMsdFitsName = fN + Dict_Files_Suffix['suffix_globalPairMsdFits']
+    
+    df = pd.read_csv(os.path.join(dstDir, cleanTrackName), sep='\t')
+    
+    # "Normal" MSD
+    res_emsd = pd.read_csv(os.path.join(dstDir, msdName), sep='\t')
+    T, MSD = res_emsd['lagt'], res_emsd['msd']
+    dict_MSDfits = ufun.json2dict(dstDir, msdFitsName)
+    
+    D_linear = dict_MSDfits['D_linear']
+    k_full = dict_MSDfits['k_full']
+    D_full = dict_MSDfits['D_full']
+    k_lowDt = dict_MSDfits['k_lowDt']
+    D_lowDt = dict_MSDfits['D_lowDt']
+    k_highDt = dict_MSDfits['k_highDt']
+    D_highDt = dict_MSDfits['D_highDt']
+    
+    # Tc = (D_lowDt/D_highDt)**(1/(k_highDt-k_lowDt))
+
+    long_label = '_'.join(fN.split('_')[2:4])
+    short_label = fN.split('_')[3]
+    
+    ax = axes[0]
+    ax.plot(T, MSD, label=long_label, color=ColorList[i], 
+            marker='o', markersize=3, alpha=0.85)
+    
+    dict_res_MSD['label'].append(short_label)
+    dict_res_MSD['D_linear'].append(D_linear)
+    dict_res_MSD['D_full'].append(D_full)
+    dict_res_MSD['k_full'].append(k_full)
+    dict_res_MSD['D_lowDt'].append(D_lowDt)
+    dict_res_MSD['k_lowDt'].append(k_lowDt)
+    dict_res_MSD['D_highDt'].append(D_highDt)
+    dict_res_MSD['k_highDt'].append(k_highDt)
+    
+    # Pair-MSD
+    res_pair_emsd = pd.read_csv(os.path.join(dstDir, pairMsdName), sep='\t')
+    pT, pMSD = res_pair_emsd['lagt'], res_pair_emsd['msd_median']
+    dict_pairMSDfits = ufun.json2dict(dstDir, pairMsdFitsName)
+    
+    D_linear = dict_pairMSDfits['D_linear']
+    k_full = dict_pairMSDfits['k_full']
+    D_full = dict_pairMSDfits['D_full']
+    k_lowDt = dict_pairMSDfits['k_lowDt']
+    D_lowDt = dict_pairMSDfits['D_lowDt']
+    k_highDt = dict_pairMSDfits['k_highDt']
+    D_highDt = dict_pairMSDfits['D_highDt']
+    
+    # Tc = (D_lowDt/D_highDt)**(1/(k_highDt-k_lowDt))
+
+    long_label = '_'.join(fN.split('_')[2:4])
+    short_label = fN.split('_')[3]
+    
+    ax = axes[1]
+    ax.plot(pT, pMSD, label=long_label, color=ColorList[i], 
+            marker='o', markersize=3, alpha=0.85)
+    
+    dict_res_pMSD['label'].append(short_label)
+    dict_res_pMSD['D_linear'].append(D_linear)
+    dict_res_pMSD['D_full'].append(D_full)
+    dict_res_pMSD['k_full'].append(k_full)
+    dict_res_pMSD['D_lowDt'].append(D_lowDt)
+    dict_res_pMSD['k_lowDt'].append(k_lowDt)
+    dict_res_pMSD['D_highDt'].append(D_highDt)
+    dict_res_pMSD['k_highDt'].append(k_highDt)
+    
+for ax in axes:
+    Xp1 = np.array([1e-1, 5e-1])
+    Xp2 = np.array([1, 2])
+    ax.plot(Xp1, 12e-3*Xp1**0.5, color = 'gray', ls=':', label=r'$y \propto x^{1/2}$')
+    ax.plot(Xp2, 0.15e-1*Xp2**1, color = 'gray', ls='--', label=r'$y \propto x^{1}$')
+    ax.grid()
+    # ax.set_xlim([0.4e-1, 0.6e1])
+    # ax.set_ylim([2e-3, 0.5e0])
+    ax.set_ylabel('MSD (µm²)')
+    ax.set_xlabel(r'$\Delta t$ (s)')
+
+ax = axes[0]
+ax.set_ylabel('MSD (µm²)')
+
+ax = axes[1]
+ax.set_ylabel('pair-MSD (µm²)')
+ax.legend(loc='center left', bbox_to_anchor=(1, 0.5), fontsize=8)
+
+plt.show()
+
+
+# Time - D - alpha
+df_Diffusion = pd.DataFrame(dict_res_MSD)
+df_Diffusion['Tpf_s'] = df_Diffusion['label'].apply(lambda x : Tpf_str2num(x))
+df_Diffusion['Tpf_min'] = df_Diffusion['Tpf_s']/60
+
+df_pairDiffusion = pd.DataFrame(dict_res_pMSD)
+df_pairDiffusion['Tpf_s'] = df_Diffusion['label'].apply(lambda x : Tpf_str2num(x))
+df_pairDiffusion['Tpf_min'] = df_Diffusion['Tpf_s']/60
+
+fig, axes = plt.subplots(2, 2, figsize=(12, 7), 
+                         sharey='row', sharex = True, layout='compressed')
+
+# "Normal" MSD
+df = df_Diffusion
+ax = axes[0, 0]
+ax.set_title('Individual MSD')
+ax.plot(df.Tpf_min, df.D_full, ls='-', marker='o', label=r'All $\Delta t$')
+ax.plot(df.Tpf_min, df.D_lowDt, ls='-', marker='o', label=r'$\Delta t \leq 0.5s$')
+ax.plot(df.Tpf_min, df.D_highDt, ls='-', marker='o', label=r'$\Delta t \geq 1s$')
+ax.plot(df.Tpf_min, df.D_linear, ls='-', marker='o', label=r'Linear fit')
+ax.set_ylabel(r'$D_{eff}\ (\mu m^2/s^\alpha)$')
+# ax.legend(loc='center left', bbox_to_anchor=(1, 0.5))
+ax.grid()
+
+ax = axes[1, 0]
+ax.plot(df.Tpf_min, df.k_full, ls='-', marker='o', label=r'All $\Delta t$')
+ax.plot(df.Tpf_min, df.k_lowDt, ls='-', marker='o', label=r'$\Delta t \leq 0.5s$')
+ax.plot(df.Tpf_min, df.k_highDt, ls='-', marker='o', label=r'$\Delta t \geq 1s$')
+ax.set_ylabel(r'$\alpha$')
+ax.set_xticks(df_Diffusion['Tpf_min'].values)
+ax.set_xticklabels(df_Diffusion['Tpf_min'].values.astype(int), rotation = 30)
+ax.set_xlabel('Tpf (min)')
+# ax.legend(loc='center left', bbox_to_anchor=(1, 0.5))
+ax.grid()
+
+# Pair MSD
+df = df_pairDiffusion
+ax = axes[0, 1]
+ax.set_title('Pair-MSD')
+ax.plot(df.Tpf_min, df.D_full, ls='-', marker='o', label=r'All $\Delta t$')
+ax.plot(df.Tpf_min, df.D_lowDt, ls='-', marker='o', label=r'$\Delta t \leq 0.5s$')
+ax.plot(df.Tpf_min, df.D_highDt, ls='-', marker='o', label=r'$\Delta t \geq 1s$')
+ax.plot(df.Tpf_min, df.D_linear, ls='-', marker='o', label=r'Linear fit')
+ax.set_ylabel(r'$D_{eff}\ (\mu m^2/s^\alpha)$')
+ax.legend(loc='center left', bbox_to_anchor=(1, 0.5))
+ax.grid()
+
+ax = axes[1, 1]
+ax.plot(df.Tpf_min, df.k_full, ls='-', marker='o', label=r'All $\Delta t$')
+ax.plot(df.Tpf_min, df.k_lowDt, ls='-', marker='o', label=r'$\Delta t \leq 0.5s$')
+ax.plot(df.Tpf_min, df.k_highDt, ls='-', marker='o', label=r'$\Delta t \geq 1s$')
+ax.set_ylabel(r'$\alpha$')
+ax.set_xticks(df_Diffusion['Tpf_min'].values)
+ax.set_xticklabels(df_Diffusion['Tpf_min'].values.astype(int), rotation = 30)
+ax.set_xlabel('Tpf (min)')
+ax.legend(loc='center left', bbox_to_anchor=(1, 0.5))
+ax.grid()
+
+plt.show()
+
+# -----------------------------------------------------------------------------
+# %%% 26-10-07_D1-s - ctrl
+
+# %%%% Settings
+
+#### Paths
+mainDir = os.path.join(up.Path_IntraCellTracking, '26-10-07_FastAcq-Channel_Fec_NB-Yolk')
+srcDir = os.path.join(mainDir, 'D1-s')
+dstDir = os.path.join(mainDir, 'SPT_results')
+# os.listdir(srcDir)
+
+tifNames = [
+    '26-10-07_D1-s_PreF_0min_C1_20fps_Texp50ms_L30p1_CSU642.ome.tf2',
+    '26-10-07_D1-s_PreF_0min_C2_20fps_Texp50ms_L30p1_CSU642.ome.tf2',
+    '26-10-07_D1-s_PreF_0min_C3_20fps_Texp50ms_L30p1_CSU642.ome.tf2',
+    # '26-10-07_D1-s_PreF_0min_C3_5fps_Texp200ms_L30p1_CSU642.ome.tf2',
+    '26-10-07_D1-s_PostF_3min_C4_20fps_Texp50ms_L30p1_CSU642.ome.tf2',
+    '26-10-07_D1-s_PostF_6min_C4_20fps_Texp50ms_L30p1_CSU642.ome.tf2',
+    '26-10-07_D1-s_PostF_9min_C4_20fps_Texp50ms_L30p1_CSU642.ome.tf2',
+    '26-10-07_D1-s_PostF_12min_C4_20fps_Texp50ms_L30p1_CSU642.ome.tf2',
+    '26-10-07_D1-s_PostF_15min_C4_20fps_Texp50ms_L30p1_CSU642.ome.tf2',
+    '26-10-07_D1-s_PostF_20min_C4_20fps_Texp50ms_L30p1_CSU642.ome.tf2',
+    '26-10-07_D1-s_PostF_25min_C4_20fps_Texp50ms_L30p1_CSU642.ome.tf2',
+    '26-10-07_D1-s_PostF_30min_C4_20fps_Texp50ms_L30p1_CSU642.ome.tf2',
+    '26-10-07_D1-s_PostF_35min_C4_20fps_Texp50ms_L30p1_CSU642.ome.tf2',
+    '26-10-07_D1-s_PostF_40min_C4_20fps_Texp50ms_L30p1_CSU642.ome.tf2',
+    '26-10-07_D1-s_PostF_45min_C4_20fps_Texp50ms_L30p1_CSU642.ome.tf2',
+    '26-10-07_D1-s_PostF_50min_C4_20fps_Texp50ms_L30p1_CSU642.ome.tf2',
+    '26-10-07_D1-s_PostF_55min_C4_20fps_Texp50ms_L30p1_CSU642.ome.tf2',
+    '26-10-07_D1-s_PostF_60min_C4_20fps_Texp50ms_L30p1_CSU642.ome.tf2',
+    '26-10-07_D1-s_PostF_66min_C4_20fps_Texp50ms_L30p1_CSU642.ome.tf2',
+    '26-10-07_D1-s_PostF_71min_C4_20fps_Texp50ms_L30p1_CSU642.ome.tf2',
+    '26-10-07_D1-s_PostF_83min_C4_20fps_Texp50ms_L30p1_CSU642.ome.tf2',
+    ]
+
+tifPaths = [os.path.join(srcDir, tifName) for tifName in tifNames]
+fileNames = [fN.split('.')[0] for fN in tifNames]
+
+Dict_Files_Suffix = {
+    'suffix_contour' : '_cellContour',
+    'suffix_mask' : '_cellMask',
+    'suffix_rawTracks' : '_TmTracks',
+    'suffix_cleanTracks' : '_PyTracks',
+    'suffix_cleanTracks_DriftCorr' : '_PyTracks2',
+    'suffix_drift' : '_XYdrift',
+    'suffix_globalMsd' : '_GlobalMsd',
+    'suffix_globalMsdFits' : '_GlobalMsdFits',
+    'suffix_globalPairMsd' : '_GlobalPairMsd',
+    'suffix_globalPairMsdFits' : '_GlobalPairMsdFits',
+    }
+
+
+#### Settings
+UmPerPix = cd.UmPerPix_60X_W1
+Dict_Image_Settings = {
+    'UmPerPix' : UmPerPix,
+    'PixPerUm' : 1/UmPerPix,
+    'FPS' : 20,
+    }
+
+Dict_TrackMate_Settings = {
+    'RADIUS_UM' : 0.8, 
+    'THRESH_SPOT_QLT' : 0.25,
+    'THRESH_LINK_UM' : 0.25, 
+    'THRESH_MIN_DURATION' : 30,
+    }
+
+Dict_Analysis_Settings = {
+    'mask_buffer_um' : 2.0,
+    'edge_buffer_cutoff_um' : 3.0,
+    'max_Dt_s' : 4,
+    'lowDt_upper' : 0.5,
+    'highDt_lower' : 1.0,
+    'pairMSD_Dt_s' : 5,
+    'pairMSD_dist_th_um' : 5,
+    }
+
+
+# %%%% Run analysis
+
+NByolk_analysis_sequence(mainDir, srcDir, dstDir, tifNames, Dict_Files_Suffix, 
+                         Dict_Image_Settings, Dict_TrackMate_Settings, Dict_Analysis_Settings,
+                         Do_Contours = False, 
+                         Do_Tracking = False, Ignore_ROIs = False,
+                         Do_TrackCleaning = False, 
+                         Do_DriftCorrection = False, Use_DriftCorrected = False,
+                         Do_MSD = True, 
+                         Do_PairMSD = True)
+
+# %%%% Import MSD & plot
+    
+max_Dt_s = Dict_Analysis_Settings['max_Dt_s']
+lowDt_upper = Dict_Analysis_Settings['lowDt_upper']
+highDt_lower = Dict_Analysis_Settings['highDt_lower']
+
+fig, ax = plt.subplots(1, 1, figsize=(7, 5))
+ax.set_xscale('log')
+ax.set_yscale('log')
+
+dict_res = {
+    'label'  : [],
+    'D_full' : [],
+    'k_full' : [],
+    'D_lowDt': [],
+    'k_lowDt': [],
+    'D_highDt':[],
+    'k_highDt':[],
+    }
+
+ColorList = list(sns.color_palette("husl", len(fileNames)))
+
+for i in range(len(fileNames)):
+    tP, fN = tifPaths[i], fileNames[i]
+    cleanTrackName = fN + Dict_Files_Suffix['suffix_cleanTracks'] + '.csv'
+    msdName = fN + Dict_Files_Suffix['suffix_globalMsd'] + '.csv'
+    msdFitsName = fN + Dict_Files_Suffix['suffix_globalMsdFits']
+    
+    df = pd.read_csv(os.path.join(dstDir, cleanTrackName), sep='\t')
+    res_emsd = pd.read_csv(os.path.join(dstDir, msdName), sep='\t')
+    T, MSD = res_emsd['lagt'], res_emsd['msd']
+    
+    dict_MSDfits = ufun.json2dict(dstDir, msdFitsName)
+    D_linear = dict_MSDfits['D_linear']
+    k_full = dict_MSDfits['k_full']
+    D_full = dict_MSDfits['D_full']
+    k_lowDt = dict_MSDfits['k_lowDt']
+    D_lowDt = dict_MSDfits['D_lowDt']
+    k_highDt = dict_MSDfits['k_highDt']
+    D_highDt = dict_MSDfits['D_highDt']
+    
+    Tc = (D_lowDt/D_highDt)**(1/(k_highDt-k_lowDt))
+
+    long_label = '_'.join(fN.split('_')[2:4])
+    short_label = fN.split('_')[3]
+
+    ax.plot(T, MSD, label=long_label, color=ColorList[i], 
+            marker='o', markersize=3, alpha=0.85)
+    
+    dict_res['label'].append(short_label)
+    dict_res['D_full'].append(D_full)
+    dict_res['k_full'].append(k_full)
+    dict_res['D_lowDt'].append(D_lowDt)
+    dict_res['k_lowDt'].append(k_lowDt)
+    dict_res['D_highDt'].append(D_highDt)
+    dict_res['k_highDt'].append(k_highDt)
+    
+
+Xp1 = np.array([1e-1, 5e-1])
+Xp2 = np.array([1, 2])
+ax.plot(Xp1, 12e-3*Xp1**0.5, color = 'gray', ls=':', label=r'$y \propto x^{1/2}$')
+ax.plot(Xp2, 0.15e-1*Xp2**1, color = 'gray', ls='--', label=r'$y \propto x^{1}$')
+ax.legend(loc='center left', bbox_to_anchor=(1, 0.5), fontsize=8)
+ax.grid()
+# ax.set_xlim([0.4e-1, 0.6e1])
+# ax.set_ylim([2e-3, 0.5e0])
+ax.set_ylabel('MSD (µm²)')
+ax.set_xlabel(r'$\Delta t$ (s)')
+
+plt.show()
+
+
+df_Diffusion = pd.DataFrame(dict_res)
+df_Diffusion['Tpf_s'] = df_Diffusion['label'].apply(lambda x : Tpf_str2num(x))
+df_Diffusion['Tpf_min'] = df_Diffusion['Tpf_s']/60
+
+fig, axes = plt.subplots(2, 1, figsize=(7, 6), sharex = True, layout='compressed')
+ax = axes[0]
+ax.plot(df_Diffusion.Tpf_min, df_Diffusion.D_full, ls='-', marker='o', label=r'All $\Delta t$')
+ax.plot(df_Diffusion.Tpf_min, df_Diffusion.D_lowDt, ls='-', marker='o', label=r'$\Delta t \leq 0.5s$')
+ax.plot(df_Diffusion.Tpf_min, df_Diffusion.D_highDt, ls='-', marker='o', label=r'$\Delta t \geq 1s$')
+ax.set_ylabel(r'$D_{eff}\ (\mu m^2/s^\alpha)$')
+ax.legend(loc='center left', bbox_to_anchor=(1, 0.5))
+ax.grid()
+
+ax = axes[1]
+ax.plot(df_Diffusion.Tpf_min, df_Diffusion.k_full, ls='-', marker='o', label=r'All $\Delta t$')
+ax.plot(df_Diffusion.Tpf_min, df_Diffusion.k_lowDt, ls='-', marker='o', label=r'$\Delta t \leq 0.5s$')
+ax.plot(df_Diffusion.Tpf_min, df_Diffusion.k_highDt, ls='-', marker='o', label=r'$\Delta t \geq 1s$')
+ax.set_ylabel(r'$\alpha$')
+ax.set_xticks(df_Diffusion['Tpf_min'].values)
+ax.set_xticklabels(df_Diffusion['Tpf_min'].values.astype(int), rotation = 30)
+ax.set_xlabel('Tpf (min)')
+ax.legend(loc='center left', bbox_to_anchor=(1, 0.5))
+ax.grid()
+
+plt.show()
+
+# %%%% Import pair-MSD & plot
+    
+max_Dt_s = Dict_Analysis_Settings['max_Dt_s']
+lowDt_upper = Dict_Analysis_Settings['lowDt_upper']
+highDt_lower = Dict_Analysis_Settings['highDt_lower']
+
+fig, axes = plt.subplots(1, 2, figsize=(11, 5), sharey=True)
+for ax in axes:
+    ax.set_xscale('log')
+    ax.set_yscale('log')
+
+dict_res_MSD = {
+    'label'  : [],
+    'D_linear' : [],
+    'D_full' : [], 'k_full' : [],
+    'D_lowDt': [], 'k_lowDt': [],
+    'D_highDt':[], 'k_highDt':[],
+    }
+
+dict_res_pMSD = {
+    'label'  : [],
+    'D_linear' : [],
+    'D_full' : [], 'k_full' : [],
+    'D_lowDt': [], 'k_lowDt': [],
+    'D_highDt':[], 'k_highDt':[],
+    }
+
+ColorList = list(sns.color_palette("husl", len(fileNames)))
+
+for i in range(len(fileNames)):
+    tP, fN = tifPaths[i], fileNames[i]
+    cleanTrackName = fN + Dict_Files_Suffix['suffix_cleanTracks'] + '.csv'
+    msdName = fN + Dict_Files_Suffix['suffix_globalMsd'] + '.csv'
+    msdFitsName = fN + Dict_Files_Suffix['suffix_globalMsdFits']
+    pairMsdName = fN + Dict_Files_Suffix['suffix_globalPairMsd'] + '.csv'
+    pairMsdFitsName = fN + Dict_Files_Suffix['suffix_globalPairMsdFits']
+    
+    df = pd.read_csv(os.path.join(dstDir, cleanTrackName), sep='\t')
+    
+    # "Normal" MSD
+    res_emsd = pd.read_csv(os.path.join(dstDir, msdName), sep='\t')
+    T, MSD = res_emsd['lagt'], res_emsd['msd']
+    dict_MSDfits = ufun.json2dict(dstDir, msdFitsName)
+    
+    D_linear = dict_MSDfits['D_linear']
+    k_full = dict_MSDfits['k_full']
+    D_full = dict_MSDfits['D_full']
+    k_lowDt = dict_MSDfits['k_lowDt']
+    D_lowDt = dict_MSDfits['D_lowDt']
+    k_highDt = dict_MSDfits['k_highDt']
+    D_highDt = dict_MSDfits['D_highDt']
+    
+    # Tc = (D_lowDt/D_highDt)**(1/(k_highDt-k_lowDt))
+
+    long_label = '_'.join(fN.split('_')[2:4])
+    short_label = fN.split('_')[3]
+    
+    ax = axes[0]
+    ax.plot(T, MSD, label=long_label, color=ColorList[i], 
+            marker='o', markersize=3, alpha=0.85)
+    
+    dict_res_MSD['label'].append(short_label)
+    dict_res_MSD['D_linear'].append(D_linear)
+    dict_res_MSD['D_full'].append(D_full)
+    dict_res_MSD['k_full'].append(k_full)
+    dict_res_MSD['D_lowDt'].append(D_lowDt)
+    dict_res_MSD['k_lowDt'].append(k_lowDt)
+    dict_res_MSD['D_highDt'].append(D_highDt)
+    dict_res_MSD['k_highDt'].append(k_highDt)
+    
+    # Pair-MSD
+    res_pair_emsd = pd.read_csv(os.path.join(dstDir, pairMsdName), sep='\t')
+    pT, pMSD = res_pair_emsd['lagt'], res_pair_emsd['msd_median']
+    dict_pairMSDfits = ufun.json2dict(dstDir, pairMsdFitsName)
+    
+    D_linear = dict_pairMSDfits['D_linear']
+    k_full = dict_pairMSDfits['k_full']
+    D_full = dict_pairMSDfits['D_full']
+    k_lowDt = dict_pairMSDfits['k_lowDt']
+    D_lowDt = dict_pairMSDfits['D_lowDt']
+    k_highDt = dict_pairMSDfits['k_highDt']
+    D_highDt = dict_pairMSDfits['D_highDt']
+    
+    # Tc = (D_lowDt/D_highDt)**(1/(k_highDt-k_lowDt))
+
+    long_label = '_'.join(fN.split('_')[2:4])
+    short_label = fN.split('_')[3]
+    
+    ax = axes[1]
+    ax.plot(pT, pMSD, label=long_label, color=ColorList[i], 
+            marker='o', markersize=3, alpha=0.85)
+    
+    dict_res_pMSD['label'].append(short_label)
+    dict_res_pMSD['D_linear'].append(D_linear)
+    dict_res_pMSD['D_full'].append(D_full)
+    dict_res_pMSD['k_full'].append(k_full)
+    dict_res_pMSD['D_lowDt'].append(D_lowDt)
+    dict_res_pMSD['k_lowDt'].append(k_lowDt)
+    dict_res_pMSD['D_highDt'].append(D_highDt)
+    dict_res_pMSD['k_highDt'].append(k_highDt)
+    
+for ax in axes:
+    Xp1 = np.array([1e-1, 5e-1])
+    Xp2 = np.array([1, 2])
+    ax.plot(Xp1, 12e-3*Xp1**0.5, color = 'gray', ls=':', label=r'$y \propto x^{1/2}$')
+    ax.plot(Xp2, 0.15e-1*Xp2**1, color = 'gray', ls='--', label=r'$y \propto x^{1}$')
+    ax.grid()
+    # ax.set_xlim([0.4e-1, 0.6e1])
+    # ax.set_ylim([2e-3, 0.5e0])
+    ax.set_ylabel('MSD (µm²)')
+    ax.set_xlabel(r'$\Delta t$ (s)')
+
+ax = axes[0]
+ax.set_ylabel('MSD (µm²)')
+
+ax = axes[1]
+ax.set_ylabel('pair-MSD (µm²)')
+ax.legend(loc='center left', bbox_to_anchor=(1, 0.5), fontsize=8)
+
+plt.show()
+
+
+# Time - D - alpha
+df_Diffusion = pd.DataFrame(dict_res_MSD)
+df_Diffusion['Tpf_s'] = df_Diffusion['label'].apply(lambda x : Tpf_str2num(x))
+df_Diffusion['Tpf_min'] = df_Diffusion['Tpf_s']/60
+
+df_pairDiffusion = pd.DataFrame(dict_res_pMSD)
+df_pairDiffusion['Tpf_s'] = df_Diffusion['label'].apply(lambda x : Tpf_str2num(x))
+df_pairDiffusion['Tpf_min'] = df_Diffusion['Tpf_s']/60
+
+fig, axes = plt.subplots(2, 2, figsize=(12, 7), 
+                         sharey='row', sharex = True, layout='compressed')
+
+# "Normal" MSD
+df = df_Diffusion
+ax = axes[0, 0]
+ax.set_title('Individual MSD')
+ax.plot(df.Tpf_min, df.D_full, ls='-', marker='o', label=r'All $\Delta t$')
+ax.plot(df.Tpf_min, df.D_lowDt, ls='-', marker='o', label=r'$\Delta t \leq 0.5s$')
+ax.plot(df.Tpf_min, df.D_highDt, ls='-', marker='o', label=r'$\Delta t \geq 1s$')
+ax.plot(df.Tpf_min, df.D_linear, ls='-', marker='o', label=r'Linear fit')
+ax.set_ylabel(r'$D_{eff}\ (\mu m^2/s^\alpha)$')
+# ax.legend(loc='center left', bbox_to_anchor=(1, 0.5))
+ax.grid()
+
+ax = axes[1, 0]
+ax.plot(df.Tpf_min, df.k_full, ls='-', marker='o', label=r'All $\Delta t$')
+ax.plot(df.Tpf_min, df.k_lowDt, ls='-', marker='o', label=r'$\Delta t \leq 0.5s$')
+ax.plot(df.Tpf_min, df.k_highDt, ls='-', marker='o', label=r'$\Delta t \geq 1s$')
+ax.set_ylabel(r'$\alpha$')
+ax.set_xticks(df_Diffusion['Tpf_min'].values)
+ax.set_xticklabels(df_Diffusion['Tpf_min'].values.astype(int), rotation = 30)
+ax.set_xlabel('Tpf (min)')
+# ax.legend(loc='center left', bbox_to_anchor=(1, 0.5))
+ax.grid()
+
+# Pair MSD
+df = df_pairDiffusion
+ax = axes[0, 1]
+ax.set_title('Pair-MSD')
+ax.plot(df.Tpf_min, df.D_full, ls='-', marker='o', label=r'All $\Delta t$')
+ax.plot(df.Tpf_min, df.D_lowDt, ls='-', marker='o', label=r'$\Delta t \leq 0.5s$')
+ax.plot(df.Tpf_min, df.D_highDt, ls='-', marker='o', label=r'$\Delta t \geq 1s$')
+ax.plot(df.Tpf_min, df.D_linear, ls='-', marker='o', label=r'Linear fit')
+ax.set_ylabel(r'$D_{eff}\ (\mu m^2/s^\alpha)$')
+ax.legend(loc='center left', bbox_to_anchor=(1, 0.5))
+ax.grid()
+
+ax = axes[1, 1]
+ax.plot(df.Tpf_min, df.k_full, ls='-', marker='o', label=r'All $\Delta t$')
+ax.plot(df.Tpf_min, df.k_lowDt, ls='-', marker='o', label=r'$\Delta t \leq 0.5s$')
+ax.plot(df.Tpf_min, df.k_highDt, ls='-', marker='o', label=r'$\Delta t \geq 1s$')
+ax.set_ylabel(r'$\alpha$')
+ax.set_xticks(df_Diffusion['Tpf_min'].values)
+ax.set_xticklabels(df_Diffusion['Tpf_min'].values.astype(int), rotation = 30)
+ax.set_xlabel('Tpf (min)')
+ax.legend(loc='center left', bbox_to_anchor=(1, 0.5))
+ax.grid()
+
+plt.show()
+
+
+
+# -----------------------------------------------------------------------------
+# %%%% Settings - Long & Slow
+
+#### Paths
+mainDir = os.path.join(up.Path_IntraCellTracking, '26-10-07_FastAcq-Channel_Fec_NB-Yolk')
+srcDir = os.path.join(mainDir, 'D1-s')
+dstDir = os.path.join(mainDir, 'SPT_results')
+os.listdir(srcDir)
+
+tifNames = [
+    '26-10-07_D1-s_PreF_0min_C3_5fps_Texp200ms_L30p1_CSU642.ome.tf2',
+    ]
+
+tifPaths = [os.path.join(srcDir, tifName) for tifName in tifNames]
+fileNames = [fN.split('.')[0] for fN in tifNames]
+
+Dict_Files_Suffix = {
+    'suffix_contour' : '_cellContour',
+    'suffix_mask' : '_cellMask',
+    'suffix_rawTracks' : '_TmTracks',
+    'suffix_cleanTracks' : '_PyTracks',
+    'suffix_cleanTracks_DriftCorr' : '_PyTracks2',
+    'suffix_drift' : '_XYdrift',
+    'suffix_globalMsd' : '_GlobalMsd',
+    'suffix_globalMsdFits' : '_GlobalMsdFits',
+    'suffix_globalPairMsd' : '_GlobalPairMsd',
+    'suffix_globalPairMsdFits' : '_GlobalPairMsdFits',
+    }
+
+
+#### Settings
+UmPerPix = cd.UmPerPix_60X_W1
+Dict_Image_Settings = {
+    'UmPerPix' : UmPerPix,
+    'PixPerUm' : 1/UmPerPix,
+    'FPS' : 5,
+    }
+
+Dict_TrackMate_Settings = {
+    'RADIUS_UM' : 0.8, 
+    'THRESH_SPOT_QLT' : 0.25,
+    'THRESH_LINK_UM' : 0.5, 
+    'THRESH_MIN_DURATION' : 30,
+    }
+
+Dict_Analysis_Settings = {
+    'mask_buffer_um' : 2.0,
+    'edge_buffer_cutoff_um' : 3.0,
+    'max_Dt_s' : 4,
+    'lowDt_upper' : 0.5,
+    'highDt_lower' : 1.0,
+    'pairMSD_Dt_s' : 5,
+    'pairMSD_dist_th_um' : 5,
+    }
+
+# %%%% Run analysis
+
+NByolk_analysis_sequence(mainDir, srcDir, dstDir, tifNames, Dict_Files_Suffix, 
+                         Dict_Image_Settings, Dict_TrackMate_Settings, Dict_Analysis_Settings,
+                         Do_Contours = False, Do_Tracking = False, Do_TrackCleaning = False, Do_MSD = True)
+
+
+
+
+# -----------------------------------------------------------------------------
+# %%% 26-09-30_D1
+
+# %%%% Settings
+
+#### Paths    
+
+
+mainDir = os.path.join(up.Path_IntraCellTracking, '26-09-30_FastAcq-Channel_Fec_NB-Yolk')
+srcDir = os.path.join(mainDir, 'D1')
+dstDir = os.path.join(mainDir, 'SPT_results')
+
+tifNames = [
+    '26-09-30_D1_PreF_C1_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
+    '26-09-30_D1_PreF_C2_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
+    '26-09-30_D1_PreF_C3_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
+    '26-09-30_D1_PostF_4min_C4_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
+    '26-09-30_D1_PostF_6min_C4_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
+    '26-09-30_D1_PostF_10min_C4_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
+    '26-09-30_D1_PostF_13min_C4_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
+    '26-09-30_D1_PostF_18min_C4_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
+    '26-09-30_D1_PostF_25min_C4_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
+    '26-09-30_D1_PostF_30min_C4_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
+    '26-09-30_D1_PostF_35min_C4_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
+    '26-09-30_D1_PostF_40min_C4_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
+    '26-09-30_D1_PostF_45min_C4_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
+    '26-09-30_D1_PostF_52min_C4_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
+    '26-09-30_D1_PostF_60min_C4_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
+    '26-09-30_D1_PostF_65min_C4_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
+    '26-09-30_D1_PostF_70min_C4_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
+    ]
+
+tifPaths = [os.path.join(srcDir, tifName) for tifName in tifNames]
+fileNames = [fN.split('.')[0] for fN in tifNames]
+
+Dict_Files_Suffix = {
+    'suffix_contour' : '_cellContour',
+    'suffix_mask' : '_cellMask',
+    'suffix_rawTracks' : '_TmTracks',
+    'suffix_cleanTracks' : '_PyTracks',
+    'suffix_cleanTracks_DriftCorr' : '_PyTracks2',
+    'suffix_drift' : '_XYdrift',
+    'suffix_globalMsd' : '_GlobalMsd',
+    'suffix_globalMsdFits' : '_GlobalMsdFits',
+    'suffix_globalPairMsd' : '_GlobalPairMsd',
+    'suffix_globalPairMsdFits' : '_GlobalPairMsdFits',
+    }
+
+#### Settings
+
+UmPerPix = cd.UmPerPix_60X_W1
+Dict_Image_Settings = {
+    'UmPerPix' : UmPerPix,
+    'PixPerUm' : 1/UmPerPix,
+    'FPS' : 20,
+    }
+
+Dict_TrackMate_Settings = {
+    'RADIUS_UM' : 0.8, 
+    'THRESH_SPOT_QLT' : 0.25,
+    'THRESH_LINK_UM' : 0.25, 
+    'THRESH_MIN_DURATION' : 30,
+    }
+
+Dict_Analysis_Settings = {
+    'mask_buffer_um' : 2.0,
+    'edge_buffer_cutoff_um' : 3.0,
+    'max_Dt_s' : 4,
+    'lowDt_upper' : 0.5,
+    'highDt_lower' : 1.0,
+    'pairMSD_Dt_s' : 5,
+    'pairMSD_dist_th_um' : 5,
+    }
+
+
+# %%%% Run analysis
+
+NByolk_analysis_sequence(mainDir, srcDir, dstDir, tifNames, Dict_Files_Suffix, 
+                         Dict_Image_Settings, Dict_TrackMate_Settings, Dict_Analysis_Settings,
+                         Do_Contours = False, 
+                         Do_Tracking = False, Ignore_ROIs = False,
+                         Do_TrackCleaning = False, 
+                         Do_DriftCorrection = False, Use_DriftCorrected = False,
+                         Do_MSD = False, 
+                         Do_PairMSD = True)
+
+# %%%% Import MSD & plot
+    
+max_Dt_s = Dict_Analysis_Settings['max_Dt_s']
+lowDt_upper = Dict_Analysis_Settings['lowDt_upper']
+highDt_lower = Dict_Analysis_Settings['highDt_lower']
+
+fig, ax = plt.subplots(1, 1, figsize=(7, 5))
+ax.set_xscale('log')
+ax.set_yscale('log')
+
+dict_res = {
+    'label'  : [],
+    'D_full' : [],
+    'k_full' : [],
+    'D_lowDt': [],
+    'k_lowDt': [],
+    'D_highDt':[],
+    'k_highDt':[],
+    }
+
+ColorList = list(sns.color_palette("husl", len(fileNames)))
+
+for i in range(len(fileNames)):
+    tP, fN = tifPaths[i], fileNames[i]
+    cleanTrackName = fN + Dict_Files_Suffix['suffix_cleanTracks'] + '.csv'
+    msdName = fN + Dict_Files_Suffix['suffix_globalMsd'] + '.csv'
+    msdFitsName = fN + Dict_Files_Suffix['suffix_globalMsdFits']
+    
+    df = pd.read_csv(os.path.join(dstDir, cleanTrackName), sep='\t')
+    res_emsd = pd.read_csv(os.path.join(dstDir, msdName), sep='\t')
+    T, MSD = res_emsd['lagt'], res_emsd['msd']
+    
+    dict_MSDfits = ufun.json2dict(dstDir, msdFitsName)
+    D_linear = dict_MSDfits['D_linear']
+    k_full = dict_MSDfits['k_full']
+    D_full = dict_MSDfits['D_full']
+    k_lowDt = dict_MSDfits['k_lowDt']
+    D_lowDt = dict_MSDfits['D_lowDt']
+    k_highDt = dict_MSDfits['k_highDt']
+    D_highDt = dict_MSDfits['D_highDt']
+    
+    Tc = (D_lowDt/D_highDt)**(1/(k_highDt-k_lowDt))
+
+    long_label = '_'.join(fN.split('_')[2:4])
+    short_label = fN.split('_')[3]
+
+    ax.plot(T, MSD, label=long_label, color=ColorList[i], 
+            marker='o', markersize=3, alpha=0.85)
+    
+    dict_res['label'].append(short_label)
+    dict_res['D_full'].append(D_full)
+    dict_res['k_full'].append(k_full)
+    dict_res['D_lowDt'].append(D_lowDt)
+    dict_res['k_lowDt'].append(k_lowDt)
+    dict_res['D_highDt'].append(D_highDt)
+    dict_res['k_highDt'].append(k_highDt)
+    
+
+Xp1 = np.array([1e-1, 5e-1])
+Xp2 = np.array([1, 2])
+ax.plot(Xp1, 12e-3*Xp1**0.5, color = 'gray', ls=':', label=r'$y \propto x^{1/2}$')
+ax.plot(Xp2, 0.15e-1*Xp2**1, color = 'gray', ls='--', label=r'$y \propto x^{1}$')
+ax.legend(loc='center left', bbox_to_anchor=(1, 0.5), fontsize=8)
+ax.grid()
+# ax.set_xlim([0.4e-1, 0.6e1])
+# ax.set_ylim([2e-3, 0.5e0])
+ax.set_ylabel('MSD (µm²)')
+ax.set_xlabel(r'$\Delta t$ (s)')
+
+plt.show()
+
+
+df_Diffusion = pd.DataFrame(dict_res)
+df_Diffusion['Tpf_s'] = df_Diffusion['label'].apply(lambda x : Tpf_str2num(x))
+df_Diffusion['Tpf_min'] = df_Diffusion['Tpf_s']/60
+
+fig, axes = plt.subplots(2, 1, figsize=(7, 6), sharex = True, layout='compressed')
+ax = axes[0]
+ax.plot(df_Diffusion.Tpf_min, df_Diffusion.D_full, ls='-', marker='o', label=r'All $\Delta t$')
+ax.plot(df_Diffusion.Tpf_min, df_Diffusion.D_lowDt, ls='-', marker='o', label=r'$\Delta t \leq 0.5s$')
+ax.plot(df_Diffusion.Tpf_min, df_Diffusion.D_highDt, ls='-', marker='o', label=r'$\Delta t \geq 1s$')
+ax.set_ylabel(r'$D_{eff}\ (\mu m^2/s^\alpha)$')
+ax.legend(loc='center left', bbox_to_anchor=(1, 0.5))
+ax.grid()
+
+ax = axes[1]
+ax.plot(df_Diffusion.Tpf_min, df_Diffusion.k_full, ls='-', marker='o', label=r'All $\Delta t$')
+ax.plot(df_Diffusion.Tpf_min, df_Diffusion.k_lowDt, ls='-', marker='o', label=r'$\Delta t \leq 0.5s$')
+ax.plot(df_Diffusion.Tpf_min, df_Diffusion.k_highDt, ls='-', marker='o', label=r'$\Delta t \geq 1s$')
+ax.set_ylabel(r'$\alpha$')
+ax.set_xticks(df_Diffusion['Tpf_min'].values)
+ax.set_xticklabels(df_Diffusion['Tpf_min'].values.astype(int), rotation = 30)
+ax.set_xlabel('Tpf (min)')
+ax.legend(loc='center left', bbox_to_anchor=(1, 0.5))
+ax.grid()
+
+plt.show()
+
+# %%%% Import pair-MSD & plot
+    
+max_Dt_s = Dict_Analysis_Settings['max_Dt_s']
+lowDt_upper = Dict_Analysis_Settings['lowDt_upper']
+highDt_lower = Dict_Analysis_Settings['highDt_lower']
+
+fig, axes = plt.subplots(1, 2, figsize=(11, 5), sharey=True)
+for ax in axes:
+    ax.set_xscale('log')
+    ax.set_yscale('log')
+
+dict_res_MSD = {
+    'label'  : [],
+    'D_linear' : [],
+    'D_full' : [], 'k_full' : [],
+    'D_lowDt': [], 'k_lowDt': [],
+    'D_highDt':[], 'k_highDt':[],
+    }
+
+dict_res_pMSD = {
+    'label'  : [],
+    'D_linear' : [],
+    'D_full' : [], 'k_full' : [],
+    'D_lowDt': [], 'k_lowDt': [],
+    'D_highDt':[], 'k_highDt':[],
+    }
+
+ColorList = list(sns.color_palette("husl", len(fileNames)))
+
+for i in range(len(fileNames)):
+    tP, fN = tifPaths[i], fileNames[i]
+    cleanTrackName = fN + Dict_Files_Suffix['suffix_cleanTracks'] + '.csv'
+    msdName = fN + Dict_Files_Suffix['suffix_globalMsd'] + '.csv'
+    msdFitsName = fN + Dict_Files_Suffix['suffix_globalMsdFits']
+    pairMsdName = fN + Dict_Files_Suffix['suffix_globalPairMsd'] + '.csv'
+    pairMsdFitsName = fN + Dict_Files_Suffix['suffix_globalPairMsdFits']
+    
+    df = pd.read_csv(os.path.join(dstDir, cleanTrackName), sep='\t')
+    
+    # "Normal" MSD
+    res_emsd = pd.read_csv(os.path.join(dstDir, msdName), sep='\t')
+    T, MSD = res_emsd['lagt'], res_emsd['msd']
+    dict_MSDfits = ufun.json2dict(dstDir, msdFitsName)
+    
+    D_linear = dict_MSDfits['D_linear']
+    k_full = dict_MSDfits['k_full']
+    D_full = dict_MSDfits['D_full']
+    k_lowDt = dict_MSDfits['k_lowDt']
+    D_lowDt = dict_MSDfits['D_lowDt']
+    k_highDt = dict_MSDfits['k_highDt']
+    D_highDt = dict_MSDfits['D_highDt']
+    
+    # Tc = (D_lowDt/D_highDt)**(1/(k_highDt-k_lowDt))
+
+    long_label = '_'.join(fN.split('_')[2:4])
+    short_label = fN.split('_')[3]
+    
+    ax = axes[0]
+    ax.plot(T, MSD, label=long_label, color=ColorList[i], 
+            marker='o', markersize=3, alpha=0.85)
+    
+    dict_res_MSD['label'].append(short_label)
+    dict_res_MSD['D_linear'].append(D_linear)
+    dict_res_MSD['D_full'].append(D_full)
+    dict_res_MSD['k_full'].append(k_full)
+    dict_res_MSD['D_lowDt'].append(D_lowDt)
+    dict_res_MSD['k_lowDt'].append(k_lowDt)
+    dict_res_MSD['D_highDt'].append(D_highDt)
+    dict_res_MSD['k_highDt'].append(k_highDt)
+    
+    # Pair-MSD
+    res_pair_emsd = pd.read_csv(os.path.join(dstDir, pairMsdName), sep='\t')
+    pT, pMSD = res_pair_emsd['lagt'], res_pair_emsd['msd_median']
+    dict_pairMSDfits = ufun.json2dict(dstDir, pairMsdFitsName)
+    
+    D_linear = dict_pairMSDfits['D_linear']
+    k_full = dict_pairMSDfits['k_full']
+    D_full = dict_pairMSDfits['D_full']
+    k_lowDt = dict_pairMSDfits['k_lowDt']
+    D_lowDt = dict_pairMSDfits['D_lowDt']
+    k_highDt = dict_pairMSDfits['k_highDt']
+    D_highDt = dict_pairMSDfits['D_highDt']
+    
+    # Tc = (D_lowDt/D_highDt)**(1/(k_highDt-k_lowDt))
+
+    long_label = '_'.join(fN.split('_')[2:4])
+    short_label = fN.split('_')[3]
+    
+    ax = axes[1]
+    ax.plot(pT, pMSD, label=long_label, color=ColorList[i], 
+            marker='o', markersize=3, alpha=0.85)
+    
+    dict_res_pMSD['label'].append(short_label)
+    dict_res_pMSD['D_linear'].append(D_linear)
+    dict_res_pMSD['D_full'].append(D_full)
+    dict_res_pMSD['k_full'].append(k_full)
+    dict_res_pMSD['D_lowDt'].append(D_lowDt)
+    dict_res_pMSD['k_lowDt'].append(k_lowDt)
+    dict_res_pMSD['D_highDt'].append(D_highDt)
+    dict_res_pMSD['k_highDt'].append(k_highDt)
+    
+for ax in axes:
+    Xp1 = np.array([1e-1, 5e-1])
+    Xp2 = np.array([1, 2])
+    ax.plot(Xp1, 12e-3*Xp1**0.5, color = 'gray', ls=':', label=r'$y \propto x^{1/2}$')
+    ax.plot(Xp2, 0.15e-1*Xp2**1, color = 'gray', ls='--', label=r'$y \propto x^{1}$')
+    ax.grid()
+    # ax.set_xlim([0.4e-1, 0.6e1])
+    # ax.set_ylim([2e-3, 0.5e0])
+    ax.set_ylabel('MSD (µm²)')
+    ax.set_xlabel(r'$\Delta t$ (s)')
+
+ax = axes[0]
+ax.set_ylabel('MSD (µm²)')
+
+ax = axes[1]
+ax.set_ylabel('pair-MSD (µm²)')
+ax.legend(loc='center left', bbox_to_anchor=(1, 0.5), fontsize=8)
+
+plt.show()
+
+
+# Time - D - alpha
+df_Diffusion = pd.DataFrame(dict_res_MSD)
+df_Diffusion['Tpf_s'] = df_Diffusion['label'].apply(lambda x : Tpf_str2num(x))
+df_Diffusion['Tpf_min'] = df_Diffusion['Tpf_s']/60
+
+df_pairDiffusion = pd.DataFrame(dict_res_pMSD)
+df_pairDiffusion['Tpf_s'] = df_Diffusion['label'].apply(lambda x : Tpf_str2num(x))
+df_pairDiffusion['Tpf_min'] = df_Diffusion['Tpf_s']/60
+
+fig, axes = plt.subplots(2, 2, figsize=(12, 7), 
+                         sharey='row', sharex = True, layout='compressed')
+
+# "Normal" MSD
+df = df_Diffusion
+ax = axes[0, 0]
+ax.set_title('Individual MSD')
+ax.plot(df.Tpf_min, df.D_full, ls='-', marker='o', label=r'All $\Delta t$')
+ax.plot(df.Tpf_min, df.D_lowDt, ls='-', marker='o', label=r'$\Delta t \leq 0.5s$')
+ax.plot(df.Tpf_min, df.D_highDt, ls='-', marker='o', label=r'$\Delta t \geq 1s$')
+ax.plot(df.Tpf_min, df.D_linear, ls='-', marker='o', label=r'Linear fit')
+ax.set_ylabel(r'$D_{eff}\ (\mu m^2/s^\alpha)$')
+# ax.legend(loc='center left', bbox_to_anchor=(1, 0.5))
+ax.grid()
+
+ax = axes[1, 0]
+ax.plot(df.Tpf_min, df.k_full, ls='-', marker='o', label=r'All $\Delta t$')
+ax.plot(df.Tpf_min, df.k_lowDt, ls='-', marker='o', label=r'$\Delta t \leq 0.5s$')
+ax.plot(df.Tpf_min, df.k_highDt, ls='-', marker='o', label=r'$\Delta t \geq 1s$')
+ax.set_ylabel(r'$\alpha$')
+ax.set_xticks(df_Diffusion['Tpf_min'].values)
+ax.set_xticklabels(df_Diffusion['Tpf_min'].values.astype(int), rotation = 30)
+ax.set_xlabel('Tpf (min)')
+# ax.legend(loc='center left', bbox_to_anchor=(1, 0.5))
+ax.grid()
+
+# Pair MSD
+df = df_pairDiffusion
+ax = axes[0, 1]
+ax.set_title('Pair-MSD')
+ax.plot(df.Tpf_min, df.D_full, ls='-', marker='o', label=r'All $\Delta t$')
+ax.plot(df.Tpf_min, df.D_lowDt, ls='-', marker='o', label=r'$\Delta t \leq 0.5s$')
+ax.plot(df.Tpf_min, df.D_highDt, ls='-', marker='o', label=r'$\Delta t \geq 1s$')
+ax.plot(df.Tpf_min, df.D_linear, ls='-', marker='o', label=r'Linear fit')
+ax.set_ylabel(r'$D_{eff}\ (\mu m^2/s^\alpha)$')
+ax.legend(loc='center left', bbox_to_anchor=(1, 0.5))
+ax.grid()
+
+ax = axes[1, 1]
+ax.plot(df.Tpf_min, df.k_full, ls='-', marker='o', label=r'All $\Delta t$')
+ax.plot(df.Tpf_min, df.k_lowDt, ls='-', marker='o', label=r'$\Delta t \leq 0.5s$')
+ax.plot(df.Tpf_min, df.k_highDt, ls='-', marker='o', label=r'$\Delta t \geq 1s$')
+ax.set_ylabel(r'$\alpha$')
+ax.set_xticks(df_Diffusion['Tpf_min'].values)
+ax.set_xticklabels(df_Diffusion['Tpf_min'].values.astype(int), rotation = 30)
+ax.set_xlabel('Tpf (min)')
+ax.legend(loc='center left', bbox_to_anchor=(1, 0.5))
+ax.grid()
+
+plt.show()
+
+
+
+# -----------------------------------------------------------------------------
+# %%% 26-09-30_D2
+
+# %%%% Settings
+
+#### Paths
+mainDir = os.path.join(up.Path_IntraCellTracking, '26-09-30_FastAcq-Channel_Fec_NB-Yolk')
+srcDir = os.path.join(mainDir, 'D2')
+dstDir = os.path.join(mainDir, 'SPT_results')
+tifNames = [
+    '26-09-30_D2-R_PreF_C3_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
+    '26-09-30_D2-R_PreF_C4_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
+    '26-09-30_D2-R_PostF_4min_C5_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
+    '26-09-30_D2-R_PostF_6min_C5_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
+    '26-09-30_D2-R_PostF_8min_C5_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
+    '26-09-30_D2-R_PostF_12min_C5_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
+    '26-09-30_D2-R_PostF_15min_C5_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
+    '26-09-30_D2-R_PostF_20min_C5_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
+    '26-09-30_D2-R_PostF_25min_C5_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
+    '26-09-30_D2-R_PostF_30min_C5_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
+    '26-09-30_D2-R_PostF_36min_C5_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
+    '26-09-30_D2-R_PostF_40min_C5_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
+    '26-09-30_D2-R_PostF_45min_C5_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
+    '26-09-30_D2-R_PostF_50min_C5_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
+    '26-09-30_D2-R_PostF_53min_C5_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
+    '26-09-30_D2-R_PostF_55min_C5_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
+    '26-09-30_D2-R_PostF_60min_C5_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
+    '26-09-30_D2-R_PostF_65min_C5_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
+    ]
+
+tifPaths = [os.path.join(srcDir, tifName) for tifName in tifNames]
+fileNames = [fN.split('.')[0] for fN in tifNames]
+
+Dict_Files_Suffix = {
+    'suffix_contour' : '_cellContour',
+    'suffix_mask' : '_cellMask',
+    'suffix_rawTracks' : '_TmTracks',
+    'suffix_cleanTracks' : '_PyTracks',
+    'suffix_cleanTracks_DriftCorr' : '_PyTracks2',
+    'suffix_drift' : '_XYdrift',
+    'suffix_globalMsd' : '_GlobalMsd',
+    'suffix_globalMsdFits' : '_GlobalMsdFits',
+    'suffix_globalPairMsd' : '_GlobalPairMsd',
+    'suffix_globalPairMsdFits' : '_GlobalPairMsdFits',
+    }
+
+
+#### Settings
+UmPerPix = cd.UmPerPix_60X_W1
+Dict_Image_Settings = {
+    'UmPerPix' : UmPerPix,
+    'PixPerUm' : 1/UmPerPix,
+    'FPS' : 20,
+    }
+
+Dict_TrackMate_Settings = {
+    'RADIUS_UM' : 0.8, 
+    'THRESH_SPOT_QLT' : 0.25,
+    'THRESH_LINK_UM' : 0.25, 
+    'THRESH_MIN_DURATION' : 30,
+    }
+
+Dict_Analysis_Settings = {
+    'mask_buffer_um' : 2.0,
+    'edge_buffer_cutoff_um' : 3.0,
+    'max_Dt_s' : 4,
+    'lowDt_upper' : 0.5,
+    'highDt_lower' : 1.0,
+    'pairMSD_Dt_s' : 5,
+    'pairMSD_dist_th_um' : 5,
+    }
+
+
+# %%%% Run analysis
+
+NByolk_analysis_sequence(mainDir, srcDir, dstDir, tifNames, Dict_Files_Suffix, 
+                         Dict_Image_Settings, Dict_TrackMate_Settings, Dict_Analysis_Settings,
+                         Do_Contours = False, 
+                         Do_Tracking = False, Ignore_ROIs = False,
+                         Do_TrackCleaning = False, 
+                         Do_DriftCorrection = False, Use_DriftCorrected = False,
+                         Do_MSD = True, 
+                         Do_PairMSD = True)
+
+# %%%% Import MSD & plot
+    
+max_Dt_s = Dict_Analysis_Settings['max_Dt_s']
+lowDt_upper = Dict_Analysis_Settings['lowDt_upper']
+highDt_lower = Dict_Analysis_Settings['highDt_lower']
+
+fig, ax = plt.subplots(1, 1, figsize=(7, 5))
+ax.set_xscale('log')
+ax.set_yscale('log')
+
+dict_res = {
+    'label'  : [],
+    'D_full' : [],
+    'k_full' : [],
+    'D_lowDt': [],
+    'k_lowDt': [],
+    'D_highDt':[],
+    'k_highDt':[],
+    }
+
+ColorList = list(sns.color_palette("husl", len(fileNames)))
+
+for i in range(len(fileNames)):
+    tP, fN = tifPaths[i], fileNames[i]
+    cleanTrackName = fN + Dict_Files_Suffix['suffix_cleanTracks'] + '.csv'
+    msdName = fN + Dict_Files_Suffix['suffix_globalMsd'] + '.csv'
+    msdFitsName = fN + Dict_Files_Suffix['suffix_globalMsdFits']
+    
+    df = pd.read_csv(os.path.join(dstDir, cleanTrackName), sep='\t')
+    res_emsd = pd.read_csv(os.path.join(dstDir, msdName), sep='\t')
+    T, MSD = res_emsd['lagt'], res_emsd['msd']
+    
+    dict_MSDfits = ufun.json2dict(dstDir, msdFitsName)
+    D_linear = dict_MSDfits['D_linear']
+    k_full = dict_MSDfits['k_full']
+    D_full = dict_MSDfits['D_full']
+    k_lowDt = dict_MSDfits['k_lowDt']
+    D_lowDt = dict_MSDfits['D_lowDt']
+    k_highDt = dict_MSDfits['k_highDt']
+    D_highDt = dict_MSDfits['D_highDt']
+    
+    Tc = (D_lowDt/D_highDt)**(1/(k_highDt-k_lowDt))
+
+    long_label = '_'.join(fN.split('_')[2:4])
+    short_label = fN.split('_')[3]
+
+    ax.plot(T, MSD, label=long_label, color=ColorList[i], 
+            marker='o', markersize=3, alpha=0.85)
+    
+    dict_res['label'].append(short_label)
+    dict_res['D_full'].append(D_full)
+    dict_res['k_full'].append(k_full)
+    dict_res['D_lowDt'].append(D_lowDt)
+    dict_res['k_lowDt'].append(k_lowDt)
+    dict_res['D_highDt'].append(D_highDt)
+    dict_res['k_highDt'].append(k_highDt)
+    
+
+Xp1 = np.array([1e-1, 5e-1])
+Xp2 = np.array([1, 2])
+ax.plot(Xp1, 12e-3*Xp1**0.5, color = 'gray', ls=':', label=r'$y \propto x^{1/2}$')
+ax.plot(Xp2, 0.15e-1*Xp2**1, color = 'gray', ls='--', label=r'$y \propto x^{1}$')
+ax.legend(loc='center left', bbox_to_anchor=(1, 0.5), fontsize=8)
+ax.grid()
+# ax.set_xlim([0.4e-1, 0.6e1])
+# ax.set_ylim([2e-3, 0.5e0])
+ax.set_ylabel('MSD (µm²)')
+ax.set_xlabel(r'$\Delta t$ (s)')
+
+plt.show()
+
+
+df_Diffusion = pd.DataFrame(dict_res)
+df_Diffusion['Tpf_s'] = df_Diffusion['label'].apply(lambda x : Tpf_str2num(x))
+df_Diffusion['Tpf_min'] = df_Diffusion['Tpf_s']/60
+
+fig, axes = plt.subplots(2, 1, figsize=(7, 6), sharex = True, layout='compressed')
+ax = axes[0]
+ax.plot(df_Diffusion.Tpf_min, df_Diffusion.D_full, ls='-', marker='o', label=r'All $\Delta t$')
+ax.plot(df_Diffusion.Tpf_min, df_Diffusion.D_lowDt, ls='-', marker='o', label=r'$\Delta t \leq 0.5s$')
+ax.plot(df_Diffusion.Tpf_min, df_Diffusion.D_highDt, ls='-', marker='o', label=r'$\Delta t \geq 1s$')
+ax.set_ylabel(r'$D_{eff}\ (\mu m^2/s^\alpha)$')
+ax.legend(loc='center left', bbox_to_anchor=(1, 0.5))
+ax.grid()
+
+ax = axes[1]
+ax.plot(df_Diffusion.Tpf_min, df_Diffusion.k_full, ls='-', marker='o', label=r'All $\Delta t$')
+ax.plot(df_Diffusion.Tpf_min, df_Diffusion.k_lowDt, ls='-', marker='o', label=r'$\Delta t \leq 0.5s$')
+ax.plot(df_Diffusion.Tpf_min, df_Diffusion.k_highDt, ls='-', marker='o', label=r'$\Delta t \geq 1s$')
+ax.set_ylabel(r'$\alpha$')
+ax.set_xticks(df_Diffusion['Tpf_min'].values)
+ax.set_xticklabels(df_Diffusion['Tpf_min'].values.astype(int), rotation = 30)
+ax.set_xlabel('Tpf (min)')
+ax.legend(loc='center left', bbox_to_anchor=(1, 0.5))
+ax.grid()
+
+plt.show()
+
+
+
+
+
+# %%%% Import pair-MSD & plot
+    
+max_Dt_s = Dict_Analysis_Settings['max_Dt_s']
+lowDt_upper = Dict_Analysis_Settings['lowDt_upper']
+highDt_lower = Dict_Analysis_Settings['highDt_lower']
+
+fig, axes = plt.subplots(1, 2, figsize=(11, 5), sharey=True)
+for ax in axes:
+    ax.set_xscale('log')
+    ax.set_yscale('log')
+
+dict_res_MSD = {
+    'label'  : [],
+    'D_linear' : [],
+    'D_full' : [], 'k_full' : [],
+    'D_lowDt': [], 'k_lowDt': [],
+    'D_highDt':[], 'k_highDt':[],
+    }
+
+dict_res_pMSD = {
+    'label'  : [],
+    'D_linear' : [],
+    'D_full' : [], 'k_full' : [],
+    'D_lowDt': [], 'k_lowDt': [],
+    'D_highDt':[], 'k_highDt':[],
+    }
+
+ColorList = list(sns.color_palette("husl", len(fileNames)))
+
+for i in range(len(fileNames)):
+    tP, fN = tifPaths[i], fileNames[i]
+    cleanTrackName = fN + Dict_Files_Suffix['suffix_cleanTracks'] + '.csv'
+    msdName = fN + Dict_Files_Suffix['suffix_globalMsd'] + '.csv'
+    msdFitsName = fN + Dict_Files_Suffix['suffix_globalMsdFits']
+    pairMsdName = fN + Dict_Files_Suffix['suffix_globalPairMsd'] + '.csv'
+    pairMsdFitsName = fN + Dict_Files_Suffix['suffix_globalPairMsdFits']
+    
+    df = pd.read_csv(os.path.join(dstDir, cleanTrackName), sep='\t')
+    
+    # "Normal" MSD
+    res_emsd = pd.read_csv(os.path.join(dstDir, msdName), sep='\t')
+    T, MSD = res_emsd['lagt'], res_emsd['msd']
+    dict_MSDfits = ufun.json2dict(dstDir, msdFitsName)
+    
+    D_linear = dict_MSDfits['D_linear']
+    k_full = dict_MSDfits['k_full']
+    D_full = dict_MSDfits['D_full']
+    k_lowDt = dict_MSDfits['k_lowDt']
+    D_lowDt = dict_MSDfits['D_lowDt']
+    k_highDt = dict_MSDfits['k_highDt']
+    D_highDt = dict_MSDfits['D_highDt']
+    
+    # Tc = (D_lowDt/D_highDt)**(1/(k_highDt-k_lowDt))
+
+    long_label = '_'.join(fN.split('_')[2:4])
+    short_label = fN.split('_')[3]
+    
+    ax = axes[0]
+    ax.plot(T, MSD, label=long_label, color=ColorList[i], 
+            marker='o', markersize=3, alpha=0.85)
+    
+    dict_res_MSD['label'].append(short_label)
+    dict_res_MSD['D_linear'].append(D_linear)
+    dict_res_MSD['D_full'].append(D_full)
+    dict_res_MSD['k_full'].append(k_full)
+    dict_res_MSD['D_lowDt'].append(D_lowDt)
+    dict_res_MSD['k_lowDt'].append(k_lowDt)
+    dict_res_MSD['D_highDt'].append(D_highDt)
+    dict_res_MSD['k_highDt'].append(k_highDt)
+    
+    # Pair-MSD
+    res_pair_emsd = pd.read_csv(os.path.join(dstDir, pairMsdName), sep='\t')
+    pT, pMSD = res_pair_emsd['lagt'], res_pair_emsd['msd_median']
+    dict_pairMSDfits = ufun.json2dict(dstDir, pairMsdFitsName)
+    
+    D_linear = dict_pairMSDfits['D_linear']
+    k_full = dict_pairMSDfits['k_full']
+    D_full = dict_pairMSDfits['D_full']
+    k_lowDt = dict_pairMSDfits['k_lowDt']
+    D_lowDt = dict_pairMSDfits['D_lowDt']
+    k_highDt = dict_pairMSDfits['k_highDt']
+    D_highDt = dict_pairMSDfits['D_highDt']
+    
+    # Tc = (D_lowDt/D_highDt)**(1/(k_highDt-k_lowDt))
+
+    long_label = '_'.join(fN.split('_')[2:4])
+    short_label = fN.split('_')[3]
+    
+    ax = axes[1]
+    ax.plot(pT, pMSD, label=long_label, color=ColorList[i], 
+            marker='o', markersize=3, alpha=0.85)
+    
+    dict_res_pMSD['label'].append(short_label)
+    dict_res_pMSD['D_linear'].append(D_linear)
+    dict_res_pMSD['D_full'].append(D_full)
+    dict_res_pMSD['k_full'].append(k_full)
+    dict_res_pMSD['D_lowDt'].append(D_lowDt)
+    dict_res_pMSD['k_lowDt'].append(k_lowDt)
+    dict_res_pMSD['D_highDt'].append(D_highDt)
+    dict_res_pMSD['k_highDt'].append(k_highDt)
+    
+for ax in axes:
+    Xp1 = np.array([1e-1, 5e-1])
+    Xp2 = np.array([1, 2])
+    ax.plot(Xp1, 12e-3*Xp1**0.5, color = 'gray', ls=':', label=r'$y \propto x^{1/2}$')
+    ax.plot(Xp2, 0.15e-1*Xp2**1, color = 'gray', ls='--', label=r'$y \propto x^{1}$')
+    ax.grid()
+    # ax.set_xlim([0.4e-1, 0.6e1])
+    # ax.set_ylim([2e-3, 0.5e0])
+    ax.set_ylabel('MSD (µm²)')
+    ax.set_xlabel(r'$\Delta t$ (s)')
+
+ax = axes[0]
+ax.set_ylabel('MSD (µm²)')
+
+ax = axes[1]
+ax.set_ylabel('pair-MSD (µm²)')
+ax.legend(loc='center left', bbox_to_anchor=(1, 0.5), fontsize=8)
+
+plt.show()
+
+
+# Time - D - alpha
+df_Diffusion = pd.DataFrame(dict_res_MSD)
+df_Diffusion['Tpf_s'] = df_Diffusion['label'].apply(lambda x : Tpf_str2num(x))
+df_Diffusion['Tpf_min'] = df_Diffusion['Tpf_s']/60
+
+df_pairDiffusion = pd.DataFrame(dict_res_pMSD)
+df_pairDiffusion['Tpf_s'] = df_Diffusion['label'].apply(lambda x : Tpf_str2num(x))
+df_pairDiffusion['Tpf_min'] = df_Diffusion['Tpf_s']/60
+
+fig, axes = plt.subplots(2, 2, figsize=(12, 7), 
+                         sharey='row', sharex = True, layout='compressed')
+
+# "Normal" MSD
+df = df_Diffusion
+ax = axes[0, 0]
+ax.set_title('Individual MSD')
+ax.plot(df.Tpf_min, df.D_full, ls='-', marker='o', label=r'All $\Delta t$')
+ax.plot(df.Tpf_min, df.D_lowDt, ls='-', marker='o', label=r'$\Delta t \leq 0.5s$')
+ax.plot(df.Tpf_min, df.D_highDt, ls='-', marker='o', label=r'$\Delta t \geq 1s$')
+ax.plot(df.Tpf_min, df.D_linear, ls='-', marker='o', label=r'Linear fit')
+ax.set_ylabel(r'$D_{eff}\ (\mu m^2/s^\alpha)$')
+# ax.legend(loc='center left', bbox_to_anchor=(1, 0.5))
+ax.grid()
+
+ax = axes[1, 0]
+ax.plot(df.Tpf_min, df.k_full, ls='-', marker='o', label=r'All $\Delta t$')
+ax.plot(df.Tpf_min, df.k_lowDt, ls='-', marker='o', label=r'$\Delta t \leq 0.5s$')
+ax.plot(df.Tpf_min, df.k_highDt, ls='-', marker='o', label=r'$\Delta t \geq 1s$')
+ax.set_ylabel(r'$\alpha$')
+ax.set_xticks(df_Diffusion['Tpf_min'].values)
+ax.set_xticklabels(df_Diffusion['Tpf_min'].values.astype(int), rotation = 30)
+ax.set_xlabel('Tpf (min)')
+# ax.legend(loc='center left', bbox_to_anchor=(1, 0.5))
+ax.grid()
+
+# Pair MSD
+df = df_pairDiffusion
+ax = axes[0, 1]
+ax.set_title('Pair-MSD')
+ax.plot(df.Tpf_min, df.D_full, ls='-', marker='o', label=r'All $\Delta t$')
+ax.plot(df.Tpf_min, df.D_lowDt, ls='-', marker='o', label=r'$\Delta t \leq 0.5s$')
+ax.plot(df.Tpf_min, df.D_highDt, ls='-', marker='o', label=r'$\Delta t \geq 1s$')
+ax.plot(df.Tpf_min, df.D_linear, ls='-', marker='o', label=r'Linear fit')
+ax.set_ylabel(r'$D_{eff}\ (\mu m^2/s^\alpha)$')
+ax.legend(loc='center left', bbox_to_anchor=(1, 0.5))
+ax.grid()
+
+ax = axes[1, 1]
+ax.plot(df.Tpf_min, df.k_full, ls='-', marker='o', label=r'All $\Delta t$')
+ax.plot(df.Tpf_min, df.k_lowDt, ls='-', marker='o', label=r'$\Delta t \leq 0.5s$')
+ax.plot(df.Tpf_min, df.k_highDt, ls='-', marker='o', label=r'$\Delta t \geq 1s$')
+ax.set_ylabel(r'$\alpha$')
+ax.set_xticks(df_Diffusion['Tpf_min'].values)
+ax.set_xticklabels(df_Diffusion['Tpf_min'].values.astype(int), rotation = 30)
+ax.set_xlabel('Tpf (min)')
+ax.legend(loc='center left', bbox_to_anchor=(1, 0.5))
+ax.grid()
+
+plt.show()
+
+
+
+# -----------------------------------------------------------------------------
 # %%% 26-07-29
 
 # %%%% Settings
@@ -1417,14 +2508,206 @@ Dict_TrackMate_Settings = {
 Dict_Analysis_Settings = {
     'mask_buffer_um' : 2.0,
     'edge_buffer_cutoff_um' : 3.0,
+    'max_Dt_s' : 4,
+    'lowDt_upper' : 0.5,
+    'highDt_lower' : 1.0,
+    'pairMSD_Dt_s' : 5,
+    'pairMSD_dist_th_um' : 5,
+    }
+
+
+
+# %% Tests
+
+# %%%% Test Compute pair-MSD
+
+pm.setGraphicOptions(mode='screen')
+
+for i in range(len(fileNames)):
+    print(i)
+    tP, fN = tifPaths[i], fileNames[i]
+    cleanTrackName = fN + Dict_Files_Suffix['suffix_cleanTracks'] + '.csv'
+    df = pd.read_csv(os.path.join(dstDir, cleanTrackName), sep='\t')
+    
+    PixPerUm = Dict_Image_Settings['PixPerUm']
+    FPS = Dict_Image_Settings['FPS']
+    max_Dt_s = 4
+    
+    shape, dtype = ufun.tiff_inspect(tP)
+    Nframes = shape[0]   
+    
+    #### Compute Pair MSD
+    df_allTRange_pair_MSD = tbca.compute_pairwise_MSD(df, PixPerUm, FPS, Nframes,
+                                                 len_TRanges = 100, delta_TRanges = -1, 
+                                                 dist_th_um = 4, max_Dt_s = 4)
+    print(i)
+    
+    pairMsdName = fN + Dict_Files_Suffix['suffix_globalPairMsd'] + '.csv'
+    df_allTRange_pair_MSD.to_csv(os.path.join(dstDir, pairMsdName), index=False, sep='\t')
+    
+    
+    #### Fit Pair MSD
+    T = df_allTRange_pair_MSD['lagt'].to_numpy()
+    MSD = df_allTRange_pair_MSD['msd_median'].to_numpy()
+
+    lowDt_upper = Dict_Analysis_Settings['lowDt_upper']
+    highDt_lower = Dict_Analysis_Settings['highDt_lower']
+    
+    iLow = ufun.findFirst(lowDt_upper, T) + 1
+    iHigh = ufun.findFirst(highDt_lower, T)
+    
+    parms, results = ufun.fitLineHuber(T, MSD, with_intercept = False)
+    D_linear = parms[0]/8
+    
+    parms, results = ufun.fitLineHuber(np.log(T), np.log(MSD), with_intercept = True)
+    b, a = parms
+    k_full = a
+    D_full = np.exp(b)/8
+
+    parms, results = ufun.fitLineHuber(np.log(T[:iLow]), np.log(MSD[:iLow]), with_intercept = True)
+    b, a = parms
+    k_lowDt = a
+    D_lowDt = np.exp(b)/8
+
+    parms, results = ufun.fitLineHuber(np.log(T[iHigh:]), np.log(MSD[iHigh:]), with_intercept = True)
+    b, a = parms
+    k_highDt = a
+    D_highDt = np.exp(b)/8
+    
+    dict_pairMSDfits = {
+        'max_Dt_s': max_Dt_s,
+        'lowDt_upper': lowDt_upper, 'highDt_lower': highDt_lower,
+        'D_linear': D_linear,
+        'k_full': k_full, 'D_full': D_full,
+        'k_lowDt': k_lowDt, 'D_lowDt': D_lowDt,
+        'k_highDt': k_highDt, 'D_highDt': D_highDt,
+        }
+    
+    pairMsdFitsName = fN + Dict_Files_Suffix['suffix_globalPairMsdFits']
+    ufun.dict2json(dict_pairMSDfits, dstDir, pairMsdFitsName)
+
+
+
+# %%%% Test movie of triangulation
+
+i = 0
+print(i)
+tP, fN = tifPaths[i], fileNames[i]
+dirPlots = os.path.join(up.Path_Desktop, "Plots_film_triangles")
+cleanTrackName = fN + Dict_Files_Suffix['suffix_cleanTracks'] + '.csv'
+df = pd.read_csv(os.path.join(dstDir, cleanTrackName), sep='\t')
+shape, _ = ufun.tiff_inspect(tP)
+PixPerUm = cd.PixPerUm_60X_W1
+FPS = 20
+plot_frames = np.arange(1001, 1101, 2)
+dist_th_um = 5
+# tbca.make_film_of_pairs_V1(df, PixPerUm, FPS, shape, dirPlots,
+#                           plot_frames, dist_th_um = 4)
+tbca.make_film_of_pairs_V2(df, PixPerUm, FPS, shape, dirPlots, 
+                          plot_frames, dist_th_um = 4)
+
+# %%%% Test drift correction
+
+i = 10
+print(i)
+tP, fN = tifPaths[i], fileNames[i]
+
+cleanTrackName = fN + Dict_Files_Suffix['suffix_cleanTracks'] + '.csv'
+df = pd.read_csv(os.path.join(dstDir, cleanTrackName), sep='\t')
+
+PixPerUm = cd.PixPerUm_60X_W1
+FPS = 20
+
+df2 = correct_drift_in_Tracks(df, fN, tP, dstDir, PixPerUm, FPS, 
+                              PLOT = True, SHOWPLOT = True, SAVEPLOT = False, 
+                              export_image = False)
+
+# %%%% Test drift correction 2
+
+#### Paths
+mainDir = os.path.join(up.Path_IntraCellTracking, 'TestsFilms_W1_60x_5fps_NonFertilized')
+srcDir = os.path.join(mainDir, 'Films')
+dstDir = os.path.join(mainDir, 'SPT_results')
+tifNames = [
+    '26-09-30_D2-R_PreF_C3_5fps_Texp50ms_L20p_CSU642.tif',
+    '26-09-30_D2-R_PreF_C4_5fps_Texp50ms_L20p_CSU642.tif',
+    'AVG_20261005_dish3_39C_image_1_CSU642.ome.tf2 - C=0-1.tif',
+    ]
+
+tifPaths = [os.path.join(srcDir, tifName) for tifName in tifNames]
+fileNames = [fN.split('.')[0] for fN in tifNames]
+
+Dict_Files_Suffix = {
+    'suffix_contour' : '_cellContour',
+    'suffix_mask' : '_cellMask',
+    'suffix_rawTracks' : '_TmTracks',
+    'suffix_cleanTracks' : '_PyTracks',
+    'suffix_cleanTracks_DriftCorr' : '_PyTracks2',
+    'suffix_drift' : '_XYdrift',
+    'suffix_globalMsd' : '_GlobalMsd',
+    'suffix_globalMsdFits' : '_GlobalMsdFits',
+    'suffix_globalPairMsd' : '_GlobalPairMsd',
+    'suffix_globalPairMsdFits' : '_GlobalPairMsdFits',
+    }
+
+
+#### Settings
+UmPerPix = cd.UmPerPix_60X_W1
+Dict_Image_Settings = {
+    'UmPerPix' : UmPerPix,
+    'PixPerUm' : 1/UmPerPix,
+    'FPS' : 20,
+    }
+
+Dict_TrackMate_Settings = {
+    'RADIUS_UM' : 0.8, 
+    'THRESH_SPOT_QLT' : 0.25,
+    'THRESH_LINK_UM' : 0.25, 
+    'THRESH_MIN_DURATION' : 30,
+    }
+
+Dict_Analysis_Settings = {
+    'mask_buffer_um' : 2.0,
+    'edge_buffer_cutoff_um' : 3.0,
     'max_Dt_s' : 5,
     'lowDt_upper' : 0.5,
     'highDt_lower' : 1.0,
     }
 
 
+i = 2
+print(i)
+tP, fN = tifPaths[i], fileNames[i]
 
-# %% Test
+cleanTrackName = fN + Dict_Files_Suffix['suffix_cleanTracks'] + '.csv'
+df = pd.read_csv(os.path.join(dstDir, cleanTrackName), sep='\t')
+
+PixPerUm = cd.PixPerUm_60X_W1
+FPS = 20
+
+df2, Dxy_corr = correct_drift_in_Tracks(df, fN, tP, dstDir, PixPerUm, FPS, 
+                              PLOT = True, SHOWPLOT = True, SAVEPLOT = False, 
+                              export_image = False)
+
+
+
+# %%% Test drift correction
+
+i = 3
+print(i)
+tP, fN = tifPaths[i], fileNames[i]
+
+cleanTrackName = fN + Dict_Files_Suffix['suffix_cleanTracks'] + '.csv'
+df = pd.read_csv(os.path.join(dstDir, cleanTrackName), sep='\t')
+
+PixPerUm = cd.PixPerUm_60X_W1
+FPS = 20
+
+df2, Dxy_corr = correct_drift_in_Tracks(df, fN, tP, dstDir, PixPerUm, FPS, 
+                              PLOT = True, SHOWPLOT = True, SAVEPLOT = False, 
+                              export_image = False)
+
+# %%% Test smoothed 2D-maps
 
 import numpy as np
 import matplotlib.pyplot as plt
@@ -2119,6 +3402,868 @@ for i in [0, 1, 4]:
 plt.show()
 
 
+# %%%% Import tracks & analyse shape of explored zone
+
+idx_films = [0, 2, 3, 5, 7]
+
+pm.setGraphicOptions(mode='screen')
+fig, axes = plt.subplots(2, len(idx_films), figsize=(len(idx_films)*3, 6),
+                         layout='compressed')
+colors = pm.cL_Set21
+
+dict_res = {'label':[],
+            'AngleDiffs':[]}
+
+GEOM_DATA = []
+
+df_centers = pd.read_csv(os.path.join(srcDir, 'OrganizingCenters.csv'), sep=';')
+
+
+for k, ii in enumerate(idx_films):
+    X_MTcenter, Y_MTcenter = df_centers.loc[ii, 'xc'], df_centers.loc[ii, 'yc']
+    print(X_MTcenter, Y_MTcenter)
+
+    dfName = dfNames[ii]
+    title = '_'.join(dfName.split('_')[1:3])
+    df = pd.read_csv(os.path.join(dstDir, dfName), sep='\t')
+    Lp = df['particle'].unique().astype(int)
+    dict_geom = {'particle':[],
+                 'np':[],
+                 'xc':[],
+                 'yc':[],
+                 'theta':[],
+                 'L':[],
+                 'l':[],
+                 'AR':[],
+                 'phi':[],}
+    
+    ax = axes[0, k]
+    ax.set_xlim([0, 511])
+    ax.set_ylim([0, 511])
+    ax.set_aspect('equal', adjustable='box')
+    ax.set_title(title)
+    
+    for j in Lp[:]:
+        c = colors[j%len(colors)]
+        df_j = df[df['particle']==j]
+        # x, y = 
+        points = np.array([[x, y] for (x, y) in zip(df_j.x, df_j.y)])
+        
+        MPoints = MultiPoint(points)
+        Hull = MPoints.convex_hull
+        xy_ch = np.array([xy for xy in Hull.exterior.coords[1:]])
+        xc, yc = Hull.centroid.coords[0]
+        
+        out = ufun.fit_ellipse_fixedCenter(xy_ch[:, 0], xy_ch[:, 1], 
+                                           xc, yc, mode='cartesian')
+        _, _, a, b, phi = out
+        
+        if j%10 == 0:
+            aa = np.linspace(0, 2*np.pi, 360)
+            xp, yp = ufun.get_ellipse_xy(xc, yc, a, b, phi, aa=aa)
+            # ax.plot(xy_ch[:, 0], xy_ch[:, 1],
+            #         c=c, marker='.', ls='', ) #ls='-', lw=1)
+            ax.plot(xp, yp, c=c, ls='-', lw=0.5)
+        
+        
+        
+        theta = np.atan2(yc - Y_MTcenter, xc - X_MTcenter)
+        theta_deg = theta * 180/np.pi
+        
+        dotprod = np.cos(theta)*np.cos(phi) + np.sin(theta)*np.sin(phi)
+        if dotprod < 0:
+            phi = phi - np.sign(phi) * np.pi
+            
+        phi_deg = phi * 180/np.pi
+        # print(phi_deg, theta_deg)
+        
+        L, l = max(a, b), min(a, b)
+        AR = L/l
+        
+        dict_geom['particle'].append(j)
+        dict_geom['np'].append(len(df_j))
+        dict_geom['xc'].append(xc)
+        dict_geom['yc'].append(yc)
+        dict_geom['theta'].append(theta)
+        dict_geom['L'].append(L)
+        dict_geom['l'].append(l)
+        dict_geom['AR'].append(AR)
+        dict_geom['phi'].append(phi)
+        
+        # # create a minimum rotated rectangle containing all the points
+        # points = np.array(hull_xy).T 
+        # multipoints = MultiPoint(points)
+        # polygon = multipoints.minimum_rotated_rectangle
+        # Xr, Yr = polygon.exterior.coords.xy
+        # ax.plot(Xr, Yr, 'k-', lw=0.5)
+        
+        # d1 = ((Xr[0]-Xr[1])**2 + (Yr[0]-Yr[1])**2)**0.5
+        # d2 = ((Xr[2]-Xr[1])**2 + (Yr[2]-Yr[1])**2)**0.5
+        # # print(d1, d2)
+        # L, l = max(d1, d2), min(d1, d2)
+        # AR = L/l
+        
+        # V1 = (Xr[1]-Xr[0], Yr[1]-Yr[0])
+        # theta = np.atan2(V1[1], V1[0])
+        # print(theta*180/np.pi
+    
+    plt.show()
+    
+    
+    df_geom_raw = pd.DataFrame(dict_geom)
+    GEOM_DATA.append(df_geom_raw)
+    
+    
+    df_geom = df_geom_raw[df_geom_raw['AR'] > 1.5]
+    # N = len(df_geom)
+    
+    GEOM_DATA.append(df_geom_raw)
+    
+    df_geom['theta_bin'] = (df_geom['theta'].values * 18/np.pi).astype(int) * 10 + 5
+    
+    C = np.cos(df_geom['theta'].values) * np.cos(df_geom['phi'].values) + \
+        np.sin(df_geom['theta'].values) * np.sin(df_geom['phi'].values)
+    DA = np.acos(C)
+    
+    ax = axes[1, k]
+    ax.hist(DA, bins=20)
+    ax.set_ylabel('N trajectories')
+    ax.set_xlabel(r'$|\theta - \phi|$ (rad)')
+    ax.set_xticks([0, np.pi/8, np.pi/4, 3*np.pi/8, np.pi/2])
+    ax.set_xticklabels(['0', r'$\pi/8$', r'$\pi/4$', r'$3\pi/8$', r'$\pi/2$'])
+    ax.grid()
+    
+    
+    dict_res['label'].append(title)
+    dict_res['AngleDiffs'].append(DA)
+
+plt.show()
+
+# fig, ax = plt.subplots(1, 1, figsize=(6, 6),
+#                          layout='compressed')
+# for i, L in enumerate(dict_res['label']):
+#     ax.hist(dict_res['AngleDiffs'][i], bins=30, 
+#             density=True, alpha=1, label=L, histtype='step')
+# ax.legend()
+# ax.set_ylabel('Frequency')
+# ax.set_xlabel(r'$|\theta - \phi|$ (rad)')
+# plt.show()
+
+
+# %%%% Plot the geometry
+
+df_geom = pd.DataFrame(dict_geom)
+df_geom['theta_bin'] = (df_geom['theta'].values * 18/np.pi).astype(int) * 10 + 5
+
+C = np.cos(df_geom['theta'].values) * np.cos(df_geom['phi'].values) + np.sin(df_geom['theta'].values) * np.sin(df_geom['phi'].values)
+DA = np.acos(C)
+
+fig, ax = plt.subplots(1, 1, layout='compressed')
+ax.hist(DA, bins=40)
+ax.set_ylabel('N trajectories')
+ax.set_xlabel(r'$|\theta - \phi|$ (rad)')
+ax.set_xticks([0, np.pi/8, np.pi/4, 3*np.pi/8, np.pi/2])
+ax.set_xticklabels(['0', r'$\pi/8$', r'$\pi/4$', r'$3\pi/8$', r'$\pi/2$'])
+ax.grid()
+plt.show()
+
+
+
+# %%%% Radial / OrthoRadial
+
+
+max_lagtime = 30
+lagT = np.arange(1, 31) / FPS
+
+iLow = ufun.findFirst(lowDt_upper, lagT) + 1
+iHigh = ufun.findFirst(highDt_lower, lagT)
+
+df_centers = pd.read_csv(os.path.join(srcDir, 'OrganizingCenters.csv'), sep=';')
+
+tableNames = [tifName.split('.')[0] + '_partTrajData_RandOR.csv' for tifName in tifNames]
+
+
+for ii in range(len(dfNames)): # len(dfNames)
+    print(ii)
+    X_MTcenter, Y_MTcenter = df_centers.loc[ii, 'xc'], df_centers.loc[ii, 'yc']
+    
+    dfName = dfNames[ii]
+    df = pd.read_csv(os.path.join(dstDir, dfName), sep='\t')
+    df.particle = df.particle.astype(int)
+    
+    dict_particle_MSD = {
+                        'Pid':[],
+                        'Xc':[],
+                        'Yc':[],
+                        'theta':[],
+                        'fmin':[],
+                        'fmax':[],
+                        'D_r_lin':[],
+                        'D_r_linHighDt':[],
+                        'D_r_full':[],
+                        'k_r_full':[],
+                        'D_r_highDt':[],
+                        'k_r_highDt':[],
+                        'D_r_lowDt':[],
+                        'k_r_lowDt':[],
+                        'D_or_lin':[],
+                        'D_or_linHighDt':[],
+                        'D_or_full':[],
+                        'k_or_full':[],
+                        'D_or_highDt':[],
+                        'k_or_highDt':[],
+                        'D_or_lowDt':[],
+                        'k_or_lowDt':[],
+                        }
+
+    Pid_list = df.particle.unique()
+    for p in Pid_list[:]:
+        dfp = df[df['particle']==p]
+        
+        # msd = res_imsd.loc[:, p]
+        # # ax.plot(dt, msd, 'o', markersize=4, alpha=0.02, 
+        # #         color='navy', mec='None')
+                
+        # parms, results = ufun.fitLineHuber(dt, msd, with_intercept = False)
+        # D_linear = parms.values[0]/4
+        
+        # parms, results = ufun.fitLineHuber(np.log(dt), np.log(msd), 
+        #                                    with_intercept = True)
+        # b, a = parms
+        # k_full = a
+        # D_full = np.exp(b)/4
+        
+        fmin, fmax = np.min(dfp.frame), np.max(dfp.frame)
+        X, Y = dfp.x, dfp.y
+        XY = np.array([X, Y]).T
+        CvxHull = MultiPoint(XY).convex_hull
+        Xc, Yc = CvxHull.centroid.coords[0]
+        theta = np.atan2(Yc - Y_MTcenter, Xc - X_MTcenter)
+        
+        RM = np.array([[np.cos(theta), - np.sin(theta)], 
+                       [np.sin(theta),   np.cos(theta)]])
+        XY_center = np.array([X_MTcenter, Y_MTcenter])
+        XY_r = ((XY - XY_center) @ RM) + XY_center
+        
+        # PLOT A ROTATED TRAJECTORY
+        # fig, axes = plt.subplots(1, 3, figsize=(7.5, 2.5))
+        # ax = axes[0]
+        # ax.set_aspect('equal', adjustable='box')
+        # ax.plot(XY[:,0]-C_pix, XY[:,1]-C_pix, lw=1)
+        # ax.plot(XY_r[:,0]-C_pix, XY_r[:,1]-C_pix, lw=1)
+        # ax.set_xlim([-C_pix, C_pix])
+        # ax.set_ylim([-C_pix, C_pix])
+        # ax.grid()
+        
+        # ax = axes[1]
+        # ax.set_aspect('equal', adjustable='box')
+        # ax.plot(XY[:,0]-C_pix, XY[:,1]-C_pix, lw=1)
+        # ax.grid()
+        
+        # ax = axes[2]
+        # ax.set_aspect('equal', adjustable='box')
+        # ax.plot(XY_r[:,0]-C_pix, XY_r[:,1]-C_pix, lw=1)
+        # ax.grid()
+        
+        # plt.show()
+        
+        # Radial / Orthoradial coordinates
+        Rd, ORd = XY_r[:, 0], XY_r[:, 1]
+        
+        # MSD 1D for each
+        # lagT
+        MSD_r = (msd_fft_1D(Rd, UmPerPix, FPS, max_lagtime=max_lagtime))['msd']
+        MSD_or = (msd_fft_1D(ORd, UmPerPix, FPS, max_lagtime=max_lagtime))['msd']
+        
+        
+        # Fits for D and k
+        
+        # Radial
+        parms, results = ufun.fitLineHuber(lagT, MSD_r, with_intercept = False)
+        D_r_linear = parms.values[0]/2
+        
+        parms, results = ufun.fitLineHuber(lagT[iHigh:], MSD_r[iHigh:], 
+                                           with_intercept = False)
+        D_r_lin_highDt = parms.values[0]/2
+        
+        parms, results = ufun.fitLineHuber(np.log(lagT), np.log(MSD_r), 
+                                           with_intercept = True)
+        b, a = parms
+        k_r_full = a
+        D_r_full = np.exp(b)/2
+        
+        parms, results = ufun.fitLineHuber(np.log(lagT[iHigh:]), np.log(MSD_r[iHigh:]), 
+                                           with_intercept = True)
+        b, a = parms
+        k_r_highDt = a
+        D_r_highDt = np.exp(b)/2
+        
+        parms, results = ufun.fitLineHuber(np.log(lagT[:iLow]), np.log(MSD_r[:iLow]), 
+                                           with_intercept = True)
+        b, a = parms
+        k_r_lowDt = a
+        D_r_lowDt = np.exp(b)/2
+        
+        
+        
+        # OrthoRadial
+        parms, results = ufun.fitLineHuber(lagT, MSD_or, with_intercept = False)
+        D_or_linear = parms.values[0]/2
+        
+        parms, results = ufun.fitLineHuber(lagT[iHigh:], MSD_or[iHigh:], 
+                                           with_intercept = False)
+        D_or_lin_highDt = parms.values[0]/2
+        
+        parms, results = ufun.fitLineHuber(np.log(lagT), np.log(MSD_or), 
+                                           with_intercept = True)
+        b, a = parms
+        k_or_full = a
+        D_or_full = np.exp(b)/2
+        
+        parms, results = ufun.fitLineHuber(np.log(lagT[iHigh:]), np.log(MSD_or[iHigh:]), 
+                                           with_intercept = True)
+        b, a = parms
+        k_or_highDt = a
+        D_or_highDt = np.exp(b)/2
+        
+        parms, results = ufun.fitLineHuber(np.log(lagT[:iLow]), np.log(MSD_or[:iLow]), 
+                                           with_intercept = True)
+        b, a = parms
+        k_or_lowDt = a
+        D_or_lowDt = np.exp(b)/2
+        
+        
+        # Save
+        dict_particle_MSD['Pid'].append(p)
+        dict_particle_MSD['Xc'].append(Xc)
+        dict_particle_MSD['Yc'].append(Yc)
+        dict_particle_MSD['theta'].append(theta) # *180/np.pi
+        dict_particle_MSD['fmin'].append(fmin)
+        dict_particle_MSD['fmax'].append(fmax)
+        dict_particle_MSD['D_r_lin'].append(D_r_linear)
+        dict_particle_MSD['D_r_linHighDt'].append(D_r_lin_highDt)
+        dict_particle_MSD['D_r_full'].append(D_r_full)
+        dict_particle_MSD['k_r_full'].append(k_r_full)
+        dict_particle_MSD['D_r_highDt'].append(D_r_highDt)
+        dict_particle_MSD['k_r_highDt'].append(k_r_highDt)
+        dict_particle_MSD['D_r_lowDt'].append(D_r_lowDt)
+        dict_particle_MSD['k_r_lowDt'].append(k_r_lowDt)
+        dict_particle_MSD['D_or_lin'].append(D_or_linear)
+        dict_particle_MSD['D_or_linHighDt'].append(D_or_lin_highDt)
+        dict_particle_MSD['D_or_full'].append(D_or_full)
+        dict_particle_MSD['k_or_full'].append(k_or_full)
+        dict_particle_MSD['D_or_highDt'].append(D_or_highDt)
+        dict_particle_MSD['k_or_highDt'].append(k_or_highDt)
+        dict_particle_MSD['D_or_lowDt'].append(D_or_lowDt)
+        dict_particle_MSD['k_or_lowDt'].append(k_or_lowDt)
+        
+        
+        
+    df_particle_MSD_CylCoo = pd.DataFrame(dict_particle_MSD)
+    df_particle_MSD_CylCoo.to_csv(os.path.join(dstDir, tableNames[ii]), sep=';', index=False)
+
+    
+    # dict_boxes = distribute_in_boxes(dict_particle_MSD, N_pix, M_boxes, 
+    #                     str_Id = 'Pid', str_X = 'Xc', str_Y = 'Yc')
+    # L = [len(dict_boxes[k]) for k in dict_boxes.keys()]
+
+    
+
+    # plt.show()
+    
+    
+# %%%% Plot the Maps
+
+df_centers = pd.read_csv(os.path.join(srcDir, 'OrganizingCenters.csv'), sep=';')
+tableNames = [tifName.split('.')[0] + '_partTrajData_RandOR.csv' for tifName in tifNames]
+
+# norm=mpl.colors.LogNorm() # norm=mpl.colors.Normalize()
+
+for ii in [0, 2, 3, 5, 7]: #range(len(dfNames)): #
+    t = nbimages//2
+    im = ufun.load_stack_region(tifPaths[ii], time_indices=[t])[0]
+    df_particle_MSD_CylCoo = pd.read_csv(os.path.join(dstDir, tableNames[ii]), sep=';')
+    label = msdNames[ii].split('_')[2]
+    
+    X_MTcenter, Y_MTcenter = df_centers.loc[ii, 'xc'], df_centers.loc[ii, 'yc']
+
+    df = df_particle_MSD_CylCoo
+    
+    M_boxes = 15
+    L_box = N_pix/M_boxes
+    
+    df['Xb'] = (df['Xc'].values//L_box).astype(int)
+    df['Yb'] = (df['Yc'].values//L_box).astype(int)
+    
+    df['Bxy'] = [(x,y) for x, y in zip(df['Xb'], df['Yb'])]
+    
+    grouped = df.groupby('Bxy')
+    df_grid_MSD = grouped.agg({'Pid':'count',
+                               'D_r_lin':'median',
+                               'D_r_highDt':'median',
+                               'k_r_highDt':'median',
+                               'D_or_lin':'median',
+                               'D_or_highDt':'median',
+                               'k_or_highDt':'median',
+                               }).rename(columns={'Pid':'count'}).reset_index()
+    
+    df_grid_MSD = df_grid_MSD[df_grid_MSD['count'] >= 5]
+    
+    lims = np.linspace(0, N_pix-1, (M_boxes+1))
+    fig, axes = plt.subplots(2, 3, figsize = (12, 8), layout='compressed')
+    axes_f = axes.flatten()
+    
+    ax = axes_f[0]
+    vmin, vmax = np.percentile(im, 0.5), np.percentile(im, 99.5)
+    ax.imshow(im, cmap='gray', vmin=vmin, vmax=vmax)
+    ax.hlines(lims, 0, N_pix, linestyle=':', color='w', lw=0.75)
+    ax.vlines(lims, 0, N_pix, linestyle=':', color='w', lw=0.75)
+    ax.plot(X_MTcenter, Y_MTcenter, 'ro', markersize=3)
+    ax.set_xlim([0, 511])
+    ax.set_ylim([0, 511])
+    ax.set_title(f'Tpf {label} - tiled image')
+    
+    # df_2_heatmap(df_grid_MSD, axes_f[1], parmCol='k_r_full', boxCol='Bxy', 
+    #              y_ascending=True, cmap="viridis", annotate=False, colorScale='linear')
+    
+    # df_2_heatmap(df_grid_MSD, axes_f[2], parmCol='k_or_full', boxCol='Bxy', 
+    #              y_ascending=True, cmap="viridis", annotate=False, colorScale='linear')
+    
+    # df_2_heatmap(df_grid_MSD, axes_f[4], parmCol='D_r_full', boxCol='Bxy', 
+    #              y_ascending=True, cmap="viridis", annotate=False, colorScale='log')
+    
+    # df_2_heatmap(df_grid_MSD, axes_f[5], parmCol='D_or_full', boxCol='Bxy', 
+    #              y_ascending=True, cmap="viridis", annotate=False, colorScale='log')
+    
+    ax = axes_f[3]
+    parm = 'count'
+    axtitle = r'Trajectories / tile'
+    cbarlabel = r'$N$'
+    
+    fig, ax = MSD_HeatMap(df_grid_MSD, M_boxes, 'Bxy', parm,
+                            axtitle = axtitle, cbarlabel = cbarlabel,
+                            cmap='GnBu', norm_type = 'lin',
+                            fig=fig, ax=ax)
+    
+    
+    ax = axes_f[1]
+    parm = 'k_r_highDt'
+    axtitle = r'$\alpha$ radial ($\Delta t \geq$ 1s)'
+    cbarlabel = r'$\alpha$'
+    
+    fig, ax = MSD_HeatMap(df_grid_MSD, M_boxes, 'Bxy', parm,
+                            axtitle = axtitle, cbarlabel = cbarlabel,
+                            cmap='PuOr_r', norm_type = 'lin',
+                            c_vmin=0.6, c_vmax=1.15,
+                            fig=fig, ax=ax)
+    
+    ax = axes_f[2]
+    parm = 'k_or_highDt'
+    axtitle = r'$\alpha$ ortho-radial ($\Delta t \geq$ 1s)'
+    cbarlabel = r'$\alpha$'
+    
+    fig, ax = MSD_HeatMap(df_grid_MSD, M_boxes, 'Bxy', parm,
+                            axtitle = axtitle, cbarlabel = cbarlabel,
+                            cmap='PuOr_r', norm_type = 'lin',
+                            c_vmin=0.6, c_vmax=1.15,
+                            fig=fig, ax=ax)
+    
+    ax = axes_f[4]
+    parm = 'D_r_lin'
+    axtitle = r'$D$ radial (linear fit, $\Delta t \geq$ 1s)'
+    cbarlabel = r'$D$ (µm²/s)'
+    
+    fig, ax = MSD_HeatMap(df_grid_MSD, M_boxes, 'Bxy', parm,
+                            axtitle = axtitle, cbarlabel = cbarlabel,
+                            cmap='RdYlBu_r', norm_type = 'lin',
+                            c_vmin = 3e-3, c_vmax = 11.5e-3,
+                            fig=fig, ax=ax)
+    
+    ax = axes_f[5]
+    parm = 'D_or_lin'
+    axtitle = r'$D$ ortho-radial (linear fit, $\Delta t \geq$ 1s)'
+    cbarlabel = r'$D$ (µm²/s)'
+    
+    fig, ax = MSD_HeatMap(df_grid_MSD, M_boxes, 'Bxy', parm,
+                            axtitle = axtitle, cbarlabel = cbarlabel,
+                            cmap='RdYlBu_r', norm_type = 'lin',
+                            c_vmin = 3e-3, c_vmax = 11.5e-3,
+                            fig=fig, ax=ax)
+    
+    plt.show()
+
+
+
+
+
+
+# lims = np.linspace(0, N_pix-1, (M_boxes+1))
+# fig, axes = plt.subplots(2, 3, figsize = (12, 8), layout='compressed')
+# axes_f = axes.flatten()
+
+# ax = axes_f[0]
+# vmin, vmax = np.percentile(im, 0.5), np.percentile(im, 99.5)
+# ax.imshow(im, cmap='gray', vmin=vmin, vmax=vmax)
+# ax.hlines(lims, 0, N_pix, linestyle=':', color='w', lw=0.75)
+# ax.vlines(lims, 0, N_pix, linestyle=':', color='w', lw=0.75)
+# ax.set_xlim([0, 511])
+# ax.set_ylim([0, 511])
+# ax.set_title('Tiled image')
+
+# df_2_heatmap(df_grid_MSD, axes_f[1], parmCol='k_r_full', boxCol='Bxy', 
+#              y_ascending=True, cmap="viridis", annotate=False, colorScale='linear')
+
+# df_2_heatmap(df_grid_MSD, axes_f[2], parmCol='k_or_full', boxCol='Bxy', 
+#              y_ascending=True, cmap="viridis", annotate=False, colorScale='linear')
+
+# df_2_heatmap(df_grid_MSD, axes_f[4], parmCol='D_r_full', boxCol='Bxy', 
+#              y_ascending=True, cmap="viridis", annotate=False, colorScale='log')
+
+# df_2_heatmap(df_grid_MSD, axes_f[5], parmCol='D_or_full', boxCol='Bxy', 
+#              y_ascending=True, cmap="viridis", annotate=False, colorScale='log')
+
+
+# plt.show()
+
+# %%%% Plot the points
+
+pm.setGraphicOptions(mode='print')
+
+df_centers = pd.read_csv(os.path.join(srcDir, 'OrganizingCenters.csv'), sep=';')
+
+tableNames = [tifName.split('.')[0] + '_partTrajData_RandOR.csv' for tifName in tifNames]
+
+M_boxes=15
+
+ii = 7
+
+for ii in [0, 2, 3, 5, 7]: # len(dfNames)
+    print(ii)
+    X_MTcenter, Y_MTcenter = df_centers.loc[ii, 'xc'], df_centers.loc[ii, 'yc']
+
+    df_particle_MSD_CylCoo = pd.read_csv(os.path.join(dstDir, tableNames[ii]), sep=';')
+    # dfName = dfNames[ii]
+    # df = pd.read_csv(os.path.join(dstDir, dfName), sep='\t')
+    # df.particle = df.particle.astype(int)
+    
+    t = nbimages//2
+    im = ufun.load_stack_region(tifPaths[ii], time_indices=[t])[0]
+    df_particle_MSD_CylCoo = pd.read_csv(os.path.join(dstDir, tableNames[ii]), sep=';')
+    label = tableNames[ii].split('_')[2]
+
+
+    df = df_particle_MSD_CylCoo
+    
+    lims = np.linspace(0, N_pix-1, (M_boxes+1))
+    fig, axes = plt.subplots(1, 4, figsize = (12, 4), layout='compressed')
+    axes_f = axes.flatten()
+    
+    ax = axes_f[0]
+    vmin, vmax = np.percentile(im, 0.5), np.percentile(im, 99.5)
+    ax.imshow(im, cmap='gray', vmin=vmin, vmax=vmax)
+    # ax.hlines(lims, 0, N_pix, linestyle=':', color='w', lw=0.75)
+    # ax.vlines(lims, 0, N_pix, linestyle=':', color='w', lw=0.75)
+    ax.plot(X_MTcenter, Y_MTcenter, 'ro', markersize=3)
+    ax.set_xlim([0, 511])
+    ax.set_ylim([0, 511])
+    ax.set_title('Original image')
+    
+    ax = axes_f[1]
+    parm1 = 'D_r_full' # 'D_r_full', 'k_r_full'
+    v_high1 = np.percentile(df[parm1], 98)
+    df_f = df[df[parm1] < v_high1]
+    
+    g = ax.scatter(df_f['Xc'], df_f['Yc'], 
+                   c=df_f[parm1], cmap='viridis',
+                   s = 5, alpha = 1, edgecolor='None',
+                   norm=mpl.colors.Normalize(), # LogNorm
+                   )
+    cbar = fig.colorbar(g)
+    ax.set_xlim([0, 511])
+    ax.set_ylim([0, 511])
+    ax.set_title(parm1)
+    
+    
+    ax = axes_f[2]
+    parm2 = 'D_or_full' # 'D_or_full', 'k_or_full'
+    v_high2 = np.percentile(df[parm2], 98)
+    df_f = df[df[parm2] < v_high2]
+    
+    g = ax.scatter(df_f['Xc'], df_f['Yc'], 
+                   c=df_f[parm2], cmap='PuRd',
+                   s = 5, alpha = 1, edgecolor='None',
+                   norm=mpl.colors.Normalize(),
+                   )
+    cbar = fig.colorbar(g)
+    ax.set_xlim([0, 511])
+    ax.set_ylim([0, 511])
+    ax.set_title(parm2)
+    
+    
+    ax = axes_f[3]
+    df_f = df[(df[parm1] < v_high1) & (df[parm2] < v_high2)]
+    df_f['delta'] = df_f[parm1] - df_f[parm2] 
+    g = ax.scatter(df_f['Xc'], df_f['Yc'], 
+                   c=df_f['delta'], cmap='BuPu',
+                   s = 5, alpha = 1, edgecolor='None',
+                   norm=mpl.colors.Normalize(),
+                   )
+    cbar = fig.colorbar(g)
+    ax.set_xlim([0, 511])
+    ax.set_ylim([0, 511])
+    ax.set_title(f'{parm1} - {parm2}')
+    
+    # Remove the legend and add a colorbar
+    
+    plt.show()
+
+# %%%% Plot the distributions
+
+pm.setGraphicOptions(mode='print')
+ii = 2
+
+df_centers = pd.read_csv(os.path.join(srcDir, 'OrganizingCenters.csv'), sep=';')
+
+tableNames = [tifName.split('.')[0] + '_partTrajData_RandOR.csv' for tifName in tifNames]
+df_particle_MSD_CylCoo = pd.read_csv(os.path.join(dstDir, tableNames[ii]), sep=';')
+df = df_particle_MSD_CylCoo
+
+
+
+fig, axes = plt.subplots(3, 1, figsize = (9, 7), layout='compressed', sharex='col')
+axes_f = axes.flatten()
+
+ax = axes_f[0]
+# vmin, vmax = np.percentile(im, 0.5), np.percentile(im, 99.5)
+# ax.imshow(im, cmap='gray', vmin=vmin, vmax=vmax)
+# ax.hlines(lims, 0, N_pix, linestyle=':', color='w', lw=0.75)
+# ax.vlines(lims, 0, N_pix, linestyle=':', color='w', lw=0.75)
+ax.set_xlim([0, 511])
+ax.set_ylim([0, 511])
+ax.set_title('Original image')
+
+ax = axes_f[1]
+parm1 = 'D_r_lin' # 'D_r_full', 'k_r_full'
+v_high1 = np.percentile(df[parm1], 98)
+df_f = df[df[parm1] < v_high1]
+ax.hist(df_f[parm1].values, bins=60, alpha=0.4, label=parm1)
+
+parm2 = 'D_or_lin' # 'D_or_full', 'k_or_full'
+v_high2 = np.percentile(df[parm2], 98)
+df_f = df[df[parm2] < v_high2]
+ax.hist(df_f[parm2].values, bins=60, alpha=0.4, label=parm2)
+
+ax.legend()
+ax.set_title(f'{parm1} & {parm2}')
+
+ax = axes_f[2]
+df_f = df[(df[parm1] < v_high1) & (df[parm2] < v_high2)]
+df_f['delta'] = df_f[parm1] - df_f[parm2] 
+ax.hist(df_f['delta'].values, bins=60)
+ax.axvline(0, color='gray', ls='-', lw=0.75, alpha=0.8)
+ax.set_title(f'{parm1} - {parm2}')
+
+
+ax = axes_f[3+1]
+parm1 = 'D_r_lowDt' # 'D_r_full', 'k_r_full'
+v_high1 = np.percentile(df[parm1], 98)
+df_f = df[df[parm1] < v_high1]
+ax.hist(df_f[parm1].values, bins=60, alpha=0.4, label=parm1)
+
+parm2 = 'D_or_lowDt' # 'D_or_full', 'k_or_full'
+v_high2 = np.percentile(df[parm2], 98)
+df_f = df[df[parm2] < v_high2]
+ax.hist(df_f[parm2].values, bins=60, alpha=0.4, label=parm2)
+ax.legend()
+ax.set_title(f'{parm1} & {parm2}')
+
+ax = axes_f[3+2]
+df_f = df[(df[parm1] < v_high1) & (df[parm2] < v_high2)]
+df_f['delta'] = df_f[parm1] - df_f[parm2] 
+ax.hist(df_f['delta'].values, bins=60)
+ax.axvline(0, color='gray', ls='-', lw=0.75, alpha=0.8)
+ax.set_title(f'{parm1} - {parm2}')
+
+
+ax = axes_f[6+1]
+parm1 = 'D_r_highDt' # 'D_r_full', 'k_r_full'
+v_high1 = np.percentile(df[parm1], 98)
+df_f = df[df[parm1] < v_high1]
+ax.hist(df_f[parm1].values, bins=60, alpha=0.4, label=parm1)
+
+parm2 = 'D_or_highDt' # 'D_or_full', 'k_or_full'
+v_high2 = np.percentile(df[parm2], 98)
+df_f = df[df[parm2] < v_high2]
+ax.hist(df_f[parm2].values, bins=60, alpha=0.4, label=parm2)
+ax.legend()
+ax.set_title(f'{parm1} & {parm2}')
+
+ax = axes_f[6+2]
+df_f = df[(df[parm1] < v_high1) & (df[parm2] < v_high2)]
+df_f['delta'] = df_f[parm1] - df_f[parm2] 
+ax.hist(df_f['delta'].values, bins=60)
+ax.axvline(0, color='gray', ls='-', lw=0.75, alpha=0.8)
+ax.set_title(f'{parm1} - {parm2}')
+
+plt.show()
+
+
+fig, axes = plt.subplots(3, 3, figsize = (9, 7), layout='compressed', sharex='col')
+axes_f = axes.flatten()
+
+ax = axes_f[0]
+# vmin, vmax = np.percentile(im, 0.5), np.percentile(im, 99.5)
+# ax.imshow(im, cmap='gray', vmin=vmin, vmax=vmax)
+# ax.hlines(lims, 0, N_pix, linestyle=':', color='w', lw=0.75)
+# ax.vlines(lims, 0, N_pix, linestyle=':', color='w', lw=0.75)
+ax.set_xlim([0, 511])
+ax.set_ylim([0, 511])
+ax.set_title('Original image')
+
+ax = axes_f[1]
+parm1 = 'k_r_full' # 'D_r_full', 'k_r_full'
+v_high1 = np.percentile(df[parm1], 98)
+df_f = df[df[parm1] < v_high1]
+ax.hist(df_f[parm1].values, bins=60, alpha=0.4, label=parm1)
+
+parm2 = 'k_or_full' # 'D_or_full', 'k_or_full'
+v_high2 = np.percentile(df[parm2], 98)
+df_f = df[df[parm2] < v_high2]
+ax.hist(df_f[parm2].values, bins=60, alpha=0.4, label=parm2)
+ax.legend()
+ax.set_title(f'{parm1} & {parm2}')
+
+ax = axes_f[2]
+df_f = df[(df[parm1] < v_high1) & (df[parm2] < v_high2)]
+df_f['delta'] = df_f[parm1] - df_f[parm2] 
+ax.hist(df_f['delta'].values, bins=60)
+ax.axvline(0, color='gray', ls='-', lw=0.75, alpha=0.8)
+ax.set_title(f'{parm1} - {parm2}')
+
+
+ax = axes_f[3+1]
+parm1 = 'k_r_lowDt' # 'D_r_full', 'k_r_full'
+v_high1 = np.percentile(df[parm1], 98)
+df_f = df[df[parm1] < v_high1]
+ax.hist(df_f[parm1].values, bins=60, alpha=0.4, label=parm1)
+
+parm2 = 'k_or_lowDt' # 'D_or_full', 'k_or_full'
+v_high2 = np.percentile(df[parm2], 98)
+df_f = df[df[parm2] < v_high2]
+ax.hist(df_f[parm2].values, bins=60, alpha=0.4, label=parm2)
+ax.legend()
+ax.set_title(f'{parm1} & {parm2}')
+
+ax = axes_f[3+2]
+df_f = df[(df[parm1] < v_high1) & (df[parm2] < v_high2)]
+df_f['delta'] = df_f[parm1] - df_f[parm2] 
+ax.hist(df_f['delta'].values, bins=60)
+ax.axvline(0, color='gray', ls='-', lw=0.75, alpha=0.8)
+ax.set_title(f'{parm1} - {parm2}')
+
+
+ax = axes_f[6+1]
+parm1 = 'k_r_highDt' # 'D_r_full', 'k_r_full'
+v_high1 = np.percentile(df[parm1], 98)
+df_f = df[df[parm1] < v_high1]
+ax.hist(df_f[parm1].values, bins=60, alpha=0.4, label=parm1)
+
+parm2 = 'k_or_highDt' # 'D_or_full', 'k_or_full'
+v_high2 = np.percentile(df[parm2], 98)
+df_f = df[df[parm2] < v_high2]
+ax.hist(df_f[parm2].values, bins=60, alpha=0.4, label=parm2)
+ax.legend()
+ax.set_title(f'{parm1} & {parm2}')
+
+ax = axes_f[6+2]
+df_f = df[(df[parm1] < v_high1) & (df[parm2] < v_high2)]
+df_f['delta'] = df_f[parm1] - df_f[parm2] 
+ax.hist(df_f['delta'].values, bins=60)
+ax.axvline(0, color='gray', ls='-', lw=0.75, alpha=0.8)
+ax.set_title(f'{parm1} - {parm2}')
+
+
+plt.show()
+
+# %%%% Plot the distributions - GOOD FOR PRES
+
+pm.setGraphicOptions(mode='print')
+
+idx_to_plot = [0, 2, 4, 5, 7]
+
+fig, axes = plt.subplots(2, len(idx_to_plot), figsize = (10, 4), layout='compressed', sharex='row')
+axes_f = axes.flatten(order='F')
+axes_f[0].set_xlim([0, 0.018])
+
+for k, ii in enumerate(idx_to_plot):
+
+
+    df_centers = pd.read_csv(os.path.join(srcDir, 'OrganizingCenters.csv'), sep=';')
+    
+    tableNames = [tifName.split('.')[0] + '_partTrajData_RandOR.csv' for tifName in tifNames]
+    
+    df_particle_MSD_CylCoo = pd.read_csv(os.path.join(dstDir, tableNames[ii]), sep=';')
+    df = df_particle_MSD_CylCoo
+    title = tableNames[ii].split('_')[2]
+    
+    
+    
+    
+    # ax = axes_f[2*k]
+    # vmin, vmax = np.percentile(im, 0.5), np.percentile(im, 99.5)
+    # ax.imshow(im, cmap='gray', vmin=vmin, vmax=vmax)
+    # ax.hlines(lims, 0, N_pix, linestyle=':', color='w', lw=0.75)
+    # ax.vlines(lims, 0, N_pix, linestyle=':', color='w', lw=0.75)
+    # ax.set_xlim([0, 511])
+    # ax.set_ylim([0, 511])
+    # ax.set_title('Original image')
+    
+    ax = axes_f[2*k]
+    [parm1, parm2] = [f'D_{c}_lin' for c in ['r', 'or']] # D_{c}_lin # D_{c}_linHighDt
+    
+    v_high1 = np.percentile(df[parm1], 98)
+    df_f = df[df[parm1] < v_high1]
+    ax.hist(df_f[parm1].values, bins=30, alpha=0.4, label='Radial')
+    
+    v_high2 = np.percentile(df[parm2], 98)
+    df_f = df[df[parm2] < v_high2]
+    ax.hist(df_f[parm2].values, bins=30, alpha=0.4, label='Orthoradial')
+    
+    ax.set_xlabel(r'$D$ (µm²/s)')
+    
+    if k==0:
+        ax.set_ylabel('N particles')
+    
+    if k==len(idx_to_plot)-1:
+        ax.legend(loc='center left', bbox_to_anchor=(1, 0.5))
+        
+    ax.set_title('Tpf ' + title)
+    
+    
+    ax = axes_f[2*k + 1]
+    [parm1, parm2] = [f'k_{c}_full' for c in ['r', 'or']] # k_{c}_full # k_{c}_highDt
+    
+    v_high1 = np.percentile(df[parm1], 98)
+    df_f = df[df[parm1] < v_high1]
+    ax.hist(df_f[parm1].values, bins=30, alpha=0.4, label='Radial')
+    
+    v_high2 = np.percentile(df[parm2], 98)
+    df_f = df[df[parm2] < v_high2]
+    ax.hist(df_f[parm2].values, bins=30, alpha=0.4, label='Orthoradial')
+    
+    ax.set_xlabel(r'$\alpha$')
+    
+    if k==0:
+        ax.set_ylabel('N particles')
+    
+    if k==len(idx_to_plot)-1:
+        ax.legend(loc='center left', bbox_to_anchor=(1, 0.5))
+        
+    # ax.set_title('\n')
+    
+    
+    
+plt.show()
 
 
 # %% -----------------------

@@ -138,32 +138,37 @@ def softMkdir(path):
     if not os.path.exists(path):
         os.makedirs(path)
         
-        
-        
-        
 def list2json(L, dirPath, fileName):
     L = list(L)
-    with open(os.path.join(dirPath, fileName + '.json'), 'w') as fp:
+    if not fileName.endswith('.json'):
+        fileName = fileName + '.json'
+    with open(os.path.join(dirPath, fileName), 'w') as fp:
         json.dump(L, fp, indent=4)
         
 def json2list(dirPath, fileName):
-    with open(os.path.join(dirPath, fileName + '.json'), 'r') as fp:
+    if not fileName.endswith('.json'):
+        fileName = fileName + '.json'
+    with open(os.path.join(dirPath, fileName), 'r') as fp:
         L = json.load(fp)
     L = list(L)
     return(L)
     
 def dict2json(d, dirPath, fileName):
+    if not fileName.endswith('.json'):
+        fileName = fileName + '.json'
     for k in d.keys():
         obj = d[k]
         if isinstance(obj, np.ndarray):
             d[k] = d[k].tolist()
         else:
             pass
-    with open(os.path.join(dirPath, fileName + '.json'), 'w') as fp:
+    with open(os.path.join(dirPath, fileName), 'w') as fp:
         json.dump(d, fp, indent=4)
         
 def json2dict(dirPath, fileName):
-    with open(os.path.join(dirPath, fileName + '.json'), 'r') as fp:
+    if not fileName.endswith('.json'):
+        fileName = fileName + '.json'
+    with open(os.path.join(dirPath, fileName), 'r') as fp:
         d = json.load(fp)
     for k in d.keys():
         obj = d[k]
