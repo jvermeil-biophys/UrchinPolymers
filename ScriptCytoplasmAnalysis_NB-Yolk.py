@@ -480,13 +480,9 @@ def Tpf_label2num(fileName_str):
 
 def import_and_plot_MSD(fileNames, #tifPaths,
                         Dict_Files_Suffix,
+                        fig_title = '',
                         # Use_DriftCorrected = False,
-                        ):
-    
-    # max_Dt_s = Dict_Analysis_Settings['max_Dt_s']
-    # lowDt_upper = Dict_Analysis_Settings['lowDt_upper']
-    # highDt_lower = Dict_Analysis_Settings['highDt_lower']
-    
+                        ):    
     fig, ax = plt.subplots(1, 1, figsize=(7, 5))
     ax.set_xscale('log')
     ax.set_yscale('log')
@@ -509,10 +505,8 @@ def import_and_plot_MSD(fileNames, #tifPaths,
         fN = fileNames[i]
         # tP = tifPaths[i]
         
-        
         msdName = fN + Dict_Files_Suffix['suffix_globalMsd'] + '.csv'
         msdFitsName = fN + Dict_Files_Suffix['suffix_globalMsdFits'] + '.json'
-        
         # if not Use_DriftCorrected:
         #     trackName = fN + Dict_Files_Suffix['suffix_cleanTracks'] + '.csv'
         # else:
@@ -549,7 +543,6 @@ def import_and_plot_MSD(fileNames, #tifPaths,
         dict_res['k_highDt'].append(k_highDt)
         dict_res['Tc'].append(Tc)
         
-    
     Xp1 = np.array([1e-1, 5e-1])
     Xp2 = np.array([1, 2])
     ax.plot(Xp1, 12e-3*Xp1**0.5, color = 'gray', ls=':', label=r'$y \propto x^{1/2}$')
@@ -558,10 +551,12 @@ def import_and_plot_MSD(fileNames, #tifPaths,
     ax.legend(loc='center left', bbox_to_anchor=(1, 0.5), 
               fontsize=8, ncols=ncols)
     ax.grid()
+    ax.set_ylabel('MSD (µm²)')
+    ax.set_xlabel(r'$\Delta t$ (s)')
     # ax.set_xlim([0.4e-1, 0.6e1])
     # ax.set_ylim([2e-3, 0.5e0])
-    ax.set_ylabel('MSD (µm²)')
-    ax.set_xlabel(r'$\Delta t$ (s)')   
+    if len(fig_title)>0:
+        fig.suptitle(fig_title)
     
     df_Diffusion = pd.DataFrame(dict_res)
     df_Diffusion['Tpf_s'] = df_Diffusion['label'].apply(lambda x : Tpf_label2num(x))
@@ -587,6 +582,8 @@ def import_and_plot_MSD(fileNames, #tifPaths,
     ax.set_xlabel('Tpf (min)')
     ax.legend(loc='center left', bbox_to_anchor=(1, 0.5))
     ax.grid()
+    if len(fig_title)>0:
+        fig.suptitle(fig_title)
     
     plt.show()
     
@@ -594,7 +591,7 @@ def import_and_plot_MSD(fileNames, #tifPaths,
 
 
 
-def import_and_plot_pairMSD(fileNames, Dict_Files_Suffix):
+def import_and_plot_pairMSD(fileNames, Dict_Files_Suffix, fig_title=''):
     fig, axes = plt.subplots(1, 2, figsize=(11, 5), sharey=True)
     for ax in axes:
         ax.set_xscale('log')
@@ -709,8 +706,8 @@ def import_and_plot_pairMSD(fileNames, Dict_Files_Suffix):
     ncols = 1 + (len(fileNames)//18)
     ax.legend(loc='center left', bbox_to_anchor=(1, 0.5), 
               fontsize=8, ncols = ncols)
-    
-    plt.show()
+    if len(fig_title)>0:
+        fig.suptitle(fig_title)
     
     
     # Time - D - alpha
@@ -770,6 +767,8 @@ def import_and_plot_pairMSD(fileNames, Dict_Files_Suffix):
     ax.set_xlabel('Tpf (min)')
     ax.legend(loc='center left', bbox_to_anchor=(1, 0.5))
     ax.grid()
+    if len(fig_title)>0:
+        fig.suptitle(fig_title)
     
     plt.show()
 

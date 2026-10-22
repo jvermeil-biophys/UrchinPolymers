@@ -1,0 +1,16 @@
+name = getInfo("image.title");
+selectImage(name);
+run("Make Substack...", "slices=1-1000-20");
+run("Z Project...", "projection=Median");
+imageCalculator("Subtract create 32-bit stack", name, "MED_Substack (1-1000-20)");
+selectImage(name);
+close;
+selectImage("Substack (1-1000-20)");
+close;
+selectImage("MED_Substack (1-1000-20)");
+close;
+selectImage("Result of " + name);
+run("Invert", "stack");
+rename(name);
+//run("Brightness/Contrast...");
+run("Enhance Contrast", "saturated=0.35");
