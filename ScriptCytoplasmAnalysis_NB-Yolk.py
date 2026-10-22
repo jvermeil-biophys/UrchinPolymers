@@ -39,7 +39,7 @@ import matplotlib as mpl
 import scipy.ndimage as ndi
 import matplotlib.pyplot as plt
 
-from shapely.geometry import MultiPoint
+from shapely.geometry import MultiPoint, Polygon
 from scipy.spatial import Delaunay # ConvexHull
 from scipy.signal import savgol_filter
 
@@ -62,6 +62,9 @@ Dict_Files_Suffix = {
     'suffix_globalPairMsd' : '_GlobalPairMsd',
     'suffix_globalPairMsdFits' : '_GlobalPairMsdFits',
     }
+
+
+plotDir = 'C://Users//Joseph//Desktop//Presentations//2026-10-21_DiscussionsNouvellesManipes//MSDplots'
 
 # %% Helper functions
 
@@ -562,13 +565,16 @@ def import_and_plot_MSD(fileNames, #tifPaths,
     df_Diffusion['Tpf_s'] = df_Diffusion['label'].apply(lambda x : Tpf_label2num(x))
     df_Diffusion['Tpf_min'] = df_Diffusion['Tpf_s']/60
     
-    fig, axes = plt.subplots(2, 1, figsize=(7, 6), sharex = True, layout='compressed')
+    fig, axes = plt.subplots(2, 1, figsize=(7, 6), 
+                             sharex = True, layout='compressed')
     ax = axes[0]
     ax.plot(df_Diffusion.Tpf_min, df_Diffusion.D_full, ls='-', marker='o', label=r'All $\Delta t$')
     ax.plot(df_Diffusion.Tpf_min, df_Diffusion.D_lowDt, ls='-', marker='o', label=r'$\Delta t \leq 0.5s$')
     ax.plot(df_Diffusion.Tpf_min, df_Diffusion.D_highDt, ls='-', marker='o', label=r'$\Delta t \geq 1s$')
     ax.plot(df_Diffusion.Tpf_min, df_Diffusion.D_linear, ls='-', marker='o', label=r'Linear fit')
     ax.set_ylabel(r'$D_{eff}\ (\mu m^2/s^\alpha)$')
+    ym, yM = ax.get_ylim()
+    ax.set_ylim([0, yM])
     ax.legend(loc='center left', bbox_to_anchor=(1, 0.5))
     ax.grid()
     
@@ -580,6 +586,8 @@ def import_and_plot_MSD(fileNames, #tifPaths,
     ax.set_xticks(df_Diffusion['Tpf_min'].values)
     ax.set_xticklabels(df_Diffusion['Tpf_min'].values.astype(int), rotation = 30)
     ax.set_xlabel('Tpf (min)')
+    ym, yM = ax.get_ylim()
+    ax.set_ylim([0, yM])
     ax.legend(loc='center left', bbox_to_anchor=(1, 0.5))
     ax.grid()
     if len(fig_title)>0:
@@ -754,6 +762,8 @@ def import_and_plot_pairMSD(fileNames, Dict_Files_Suffix, fig_title=''):
     ax.plot(df.Tpf_min, df.D_highDt, ls='-', marker='o', label=r'$\Delta t \geq 1s$')
     ax.plot(df.Tpf_min, df.D_linear, ls='-', marker='o', label=r'Linear fit')
     ax.set_ylabel(r'$D_{eff}\ (\mu m^2/s^\alpha)$')
+    ym, yM = ax.get_ylim()
+    ax.set_ylim([0, yM])
     ax.legend(loc='center left', bbox_to_anchor=(1, 0.5))
     ax.grid()
     
@@ -765,6 +775,8 @@ def import_and_plot_pairMSD(fileNames, Dict_Files_Suffix, fig_title=''):
     ax.set_xticks(df_Diffusion['Tpf_min'].values)
     ax.set_xticklabels(df_Diffusion['Tpf_min'].values.astype(int), rotation = 30)
     ax.set_xlabel('Tpf (min)')
+    ym, yM = ax.get_ylim()
+    ax.set_ylim([0, yM])
     ax.legend(loc='center left', bbox_to_anchor=(1, 0.5))
     ax.grid()
     if len(fig_title)>0:
@@ -1083,9 +1095,13 @@ NByolk_analysis_sequence(mainDir, srcDir, dstDir, tifNames, Dict_Files_Suffix,
 
 # %%%% Import MSD & plot / Import pairMSD & plot
 
-df_diff = import_and_plot_MSD(fileNames, Dict_Files_Suffix,)
-df_diff, df_pairDiff = import_and_plot_pairMSD(fileNames, Dict_Files_Suffix,)
+title = '26-10-07_D1-L_Noco'
+df_diff = import_and_plot_MSD(fileNames, Dict_Files_Suffix, fig_title=title)
+df_diff, df_pairDiff = import_and_plot_pairMSD(fileNames, Dict_Files_Suffix, fig_title=title)
 
+for i in plt.get_fignums():
+    plt.figure(i)
+    plt.savefig(os.path.join(plotDir, title + f'_MSDfig_{i:02d}.png'))
 
 
 # -----------------------------------------------------------------------------
@@ -1180,12 +1196,13 @@ NByolk_analysis_sequence(mainDir, srcDir, dstDir, tifNames, Dict_Files_Suffix,
 
 # %%%% Import MSD & plot / Import pairMSD & plot
 
-df_diff = import_and_plot_MSD(fileNames, Dict_Files_Suffix,)
+title = '26-10-07_D1-s'
+df_diff = import_and_plot_MSD(fileNames, Dict_Files_Suffix, fig_title=title)
+df_diff, df_pairDiff = import_and_plot_pairMSD(fileNames, Dict_Files_Suffix, fig_title=title)
 
-df_diff, df_pairDiff = import_and_plot_pairMSD(fileNames, Dict_Files_Suffix,)
-
-
-
+for i in plt.get_fignums():
+    plt.figure(i)
+    plt.savefig(os.path.join(plotDir, title + f'_MSDfig_{i:02d}.png'))
 
 # -----------------------------------------------------------------------------
 # %%%% Settings - Long & Slow
@@ -1439,35 +1456,81 @@ NByolk_analysis_sequence(mainDir, srcDir, dstDir, tifNames, Dict_Files_Suffix,
 
 # %%%% Import MSD & plot / Import pairMSD & plot
 
-df_diff = import_and_plot_MSD(fileNames, Dict_Files_Suffix,)
-df_diff, df_pairDiff = import_and_plot_pairMSD(fileNames, Dict_Files_Suffix,)
+title = '26-09-30_D1'
+df_diff = import_and_plot_MSD(fileNames, Dict_Files_Suffix, fig_title=title)
+df_diff, df_pairDiff = import_and_plot_pairMSD(fileNames, Dict_Files_Suffix, fig_title=title)
 
+for i in plt.get_fignums():
+    plt.figure(i)
+    plt.savefig(os.path.join(plotDir, title + f'_MSDfig_{i:02d}.png'))
 
 # %%%% Import tracks & analyse shape of explored zone
 
-idx_films = [0, 2, 3, 5, 7]
+Use_DriftCorrected = False
 
-pm.setGraphicOptions(mode='screen')
-fig, axes = plt.subplots(2, len(idx_films), figsize=(len(idx_films)*3, 6),
-                         layout='compressed')
-colors = pm.cL_Set21
+mainDir = os.path.join(up.Path_IntraCellTracking, '26-09-30_FastAcq-Channel_Fec_NB-Yolk')
+srcDir = os.path.join(mainDir, 'D1')
+dstDir = os.path.join(mainDir, 'SPT_results')
+
+tifNames = [
+    # '26-09-30_D1_PreF_C1_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
+    # '26-09-30_D1_PreF_C2_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
+    # '26-09-30_D1_PreF_C3_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
+    '26-09-30_D1_PostF_4min_C4_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
+    # '26-09-30_D1_PostF_6min_C4_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
+    '26-09-30_D1_PostF_10min_C4_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
+    # '26-09-30_D1_PostF_13min_C4_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
+    '26-09-30_D1_PostF_18min_C4_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
+    # '26-09-30_D1_PostF_25min_C4_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
+    '26-09-30_D1_PostF_30min_C4_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
+    # '26-09-30_D1_PostF_35min_C4_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
+    # '26-09-30_D1_PostF_40min_C4_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
+    '26-09-30_D1_PostF_45min_C4_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
+    # '26-09-30_D1_PostF_52min_C4_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
+    # '26-09-30_D1_PostF_60min_C4_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
+    # '26-09-30_D1_PostF_65min_C4_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
+    # '26-09-30_D1_PostF_70min_C4_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
+    ]
+
+tifPaths = [os.path.join(srcDir, tifName) for tifName in tifNames]
+fileNames = [fN.split('.')[0] for fN in tifNames]
 
 dict_res = {'label':[],
             'AngleDiffs':[]}
 
 GEOM_DATA = []
 
-df_centers = pd.read_csv(os.path.join(srcDir, 'OrganizingCenters.csv'), sep=';')
+df_g = pd.read_csv(os.path.join(srcDir, 'Cell_geometry.csv'), sep=',')
 
 
-for k, ii in enumerate(idx_films):
-    X_MTcenter, Y_MTcenter = df_centers.loc[ii, 'xc'], df_centers.loc[ii, 'yc']
+for i in range(len(tifNames)):
+    tP, fN = tifPaths[i], fileNames[i]
+    _, tN = os.path.split(tP)
+    shape, dtype = ufun.tiff_inspect(tP)
+    
+    X_MTcenter = df_g.loc[df_g['tN']==tN, 'xc'].to_numpy()[0]
+    Y_MTcenter = df_g.loc[df_g['tN']==tN, 'yc'].to_numpy()[0]
     print(X_MTcenter, Y_MTcenter)
 
-    dfName = dfNames[ii]
-    title = '_'.join(dfName.split('_')[1:3])
-    df = pd.read_csv(os.path.join(dstDir, dfName), sep='\t')
-    Lp = df['particle'].unique().astype(int)
+    title = '_'.join(fN.split('_')[1:3])
+    rawTrackName = fN + Dict_Files_Suffix['suffix_rawTracks'] + '.xml'
+    if Use_DriftCorrected:
+        trackName = fN + Dict_Files_Suffix['suffix_driftCorrTracks'] + '.csv'
+    else:
+        trackName = fN + Dict_Files_Suffix['suffix_cleanTracks'] + '.csv'
+        
+    # msdName = fN + Dict_Files_Suffix['suffix_globalMsd'] + '.csv'
+    # msdFitsName = fN + Dict_Files_Suffix['suffix_globalMsdFits']
+    if np.isnan(X_MTcenter) or np.isnan(Y_MTcenter):
+        contourName = fN + Dict_Files_Suffix['suffix_contour'] + '.npy'
+        contourCell = np.load(os.path.join(srcDir, contourName))
+        poly = Polygon(contourCell)
+        xc, yc = poly.centroid.xy
+        X_MTcenter, Y_MTcenter = int(xc[0]), int(yc[0])
+    
+    df = pd.read_csv(os.path.join(dstDir, trackName), sep='\t')
+    
+    # Lp = df['particle'].unique().astype(int)
     dict_geom = {'particle':[],
                  'np':[],
                  'xc':[],
@@ -1478,17 +1541,10 @@ for k, ii in enumerate(idx_films):
                  'AR':[],
                  'phi':[],}
     
-    ax = axes[0, k]
-    ax.set_xlim([0, 511])
-    ax.set_ylim([0, 511])
-    ax.set_aspect('equal', adjustable='box')
-    ax.set_title(title)
+    grouped = df.groupby('particle')
     
-    for j in Lp[:]:
-        c = colors[j%len(colors)]
-        df_j = df[df['particle']==j]
-        # x, y = 
-        points = np.array([[x, y] for (x, y) in zip(df_j.x, df_j.y)])
+    for p, df_p in grouped:
+        points = np.array([[x, y] for (x, y) in zip(df_p.x, df_p.y)])
         
         MPoints = MultiPoint(points)
         Hull = MPoints.convex_hull
@@ -1498,31 +1554,17 @@ for k, ii in enumerate(idx_films):
         out = ufun.fit_ellipse_fixedCenter(xy_ch[:, 0], xy_ch[:, 1], 
                                            xc, yc, mode='cartesian')
         _, _, a, b, phi = out
-        
-        if j%10 == 0:
-            aa = np.linspace(0, 2*np.pi, 360)
-            xp, yp = ufun.get_ellipse_xy(xc, yc, a, b, phi, aa=aa)
-            # ax.plot(xy_ch[:, 0], xy_ch[:, 1],
-            #         c=c, marker='.', ls='', ) #ls='-', lw=1)
-            ax.plot(xp, yp, c=c, ls='-', lw=0.5)
-        
-        
-        
         theta = np.atan2(yc - Y_MTcenter, xc - X_MTcenter)
         theta_deg = theta * 180/np.pi
-        
         dotprod = np.cos(theta)*np.cos(phi) + np.sin(theta)*np.sin(phi)
         if dotprod < 0:
             phi = phi - np.sign(phi) * np.pi
-            
         phi_deg = phi * 180/np.pi
-        # print(phi_deg, theta_deg)
-        
         L, l = max(a, b), min(a, b)
         AR = L/l
         
-        dict_geom['particle'].append(j)
-        dict_geom['np'].append(len(df_j))
+        dict_geom['particle'].append(p)
+        dict_geom['np'].append(len(df_p))
         dict_geom['xc'].append(xc)
         dict_geom['yc'].append(yc)
         dict_geom['theta'].append(theta)
@@ -1530,37 +1572,74 @@ for k, ii in enumerate(idx_films):
         dict_geom['l'].append(l)
         dict_geom['AR'].append(AR)
         dict_geom['phi'].append(phi)
-        
-        # # create a minimum rotated rectangle containing all the points
-        # points = np.array(hull_xy).T 
-        # multipoints = MultiPoint(points)
-        # polygon = multipoints.minimum_rotated_rectangle
-        # Xr, Yr = polygon.exterior.coords.xy
-        # ax.plot(Xr, Yr, 'k-', lw=0.5)
-        
-        # d1 = ((Xr[0]-Xr[1])**2 + (Yr[0]-Yr[1])**2)**0.5
-        # d2 = ((Xr[2]-Xr[1])**2 + (Yr[2]-Yr[1])**2)**0.5
-        # # print(d1, d2)
-        # L, l = max(d1, d2), min(d1, d2)
-        # AR = L/l
-        
-        # V1 = (Xr[1]-Xr[0], Yr[1]-Yr[0])
-        # theta = np.atan2(V1[1], V1[0])
-        # print(theta*180/np.pi
-    
+
     plt.show()
-    
     
     df_geom_raw = pd.DataFrame(dict_geom)
     GEOM_DATA.append(df_geom_raw)
     
-    
-    df_geom = df_geom_raw[df_geom_raw['AR'] > 1.5]
-    # N = len(df_geom)
-    
-    GEOM_DATA.append(df_geom_raw)
-    
+    df_geom = df_geom_raw[df_geom_raw['AR'] > 1.5]    
     df_geom['theta_bin'] = (df_geom['theta'].values * 18/np.pi).astype(int) * 10 + 5
+    C = np.cos(df_geom['theta'].values) * np.cos(df_geom['phi'].values) + \
+        np.sin(df_geom['theta'].values) * np.sin(df_geom['phi'].values)
+    DA = np.acos(C)   
+    
+    dict_res['label'].append(title)
+    dict_res['AngleDiffs'].append(DA)
+
+
+
+pm.setGraphicOptions(mode='screen')
+fig, axes = plt.subplots(2, len(tifNames), figsize=(len(tifNames)*3, 6),
+                         layout='compressed')
+colors = pm.cL_Set21
+
+for i in range(len(tifNames)):
+    tP, fN = tifPaths[i], fileNames[i]
+    _, tN = os.path.split(tP)
+    shape, dtype = ufun.tiff_inspect(tP)
+    
+    X_MTcenter = df_g.loc[df_g['tN']==tN, 'xc'].to_numpy()[0]
+    Y_MTcenter = df_g.loc[df_g['tN']==tN, 'yc'].to_numpy()[0]
+    print(X_MTcenter, Y_MTcenter)
+
+    title = '_'.join(fN.split('_')[1:3])
+    rawTrackName = fN + Dict_Files_Suffix['suffix_rawTracks'] + '.xml'
+    if Use_DriftCorrected:
+        trackName = fN + Dict_Files_Suffix['suffix_driftCorrTracks'] + '.csv'
+    else:
+        trackName = fN + Dict_Files_Suffix['suffix_cleanTracks'] + '.csv'
+        
+    # msdName = fN + Dict_Files_Suffix['suffix_globalMsd'] + '.csv'
+    # msdFitsName = fN + Dict_Files_Suffix['suffix_globalMsdFits']
+    if np.isnan(X_MTcenter) or np.isnan(Y_MTcenter):
+        contourName = fN + Dict_Files_Suffix['suffix_contour'] + '.npy'
+        contourCell = np.load(os.path.join(srcDir, contourName))
+        poly = Polygon(contourCell)
+        xc, yc = poly.centroid.xy
+        X_MTcenter, Y_MTcenter = int(xc[0]), int(yc[0])
+    
+    df = pd.read_csv(os.path.join(dstDir, trackName), sep='\t')
+    
+    ax = axes[0, k]
+    ax.set_xlim([0, 511])
+    ax.set_ylim([0, 511])
+    ax.set_aspect('equal', adjustable='box')
+    ax.set_title(title)
+    
+    for p, df_p in grouped:      
+        k = dict_geom #### HERE !!!
+        c = colors[p%len(colors)]       
+        if p%10 == 0:
+            aa = np.linspace(0, 2*np.pi, 360)
+            xp, yp = ufun.get_ellipse_xy(xc, yc, a, b, phi, aa=aa)
+            ax.plot(xp, yp, c=c, ls='-', lw=0.5)
+    plt.show()
+    
+    
+
+    df_geom_raw = GEOM_DATA[i]
+    df_geom = df_geom_raw[df_geom_raw['AR'] > 1.5]
     
     C = np.cos(df_geom['theta'].values) * np.cos(df_geom['phi'].values) + \
         np.sin(df_geom['theta'].values) * np.sin(df_geom['phi'].values)
@@ -1573,22 +1652,9 @@ for k, ii in enumerate(idx_films):
     ax.set_xticks([0, np.pi/8, np.pi/4, 3*np.pi/8, np.pi/2])
     ax.set_xticklabels(['0', r'$\pi/8$', r'$\pi/4$', r'$3\pi/8$', r'$\pi/2$'])
     ax.grid()
-    
-    
-    dict_res['label'].append(title)
-    dict_res['AngleDiffs'].append(DA)
 
 plt.show()
 
-# fig, ax = plt.subplots(1, 1, figsize=(6, 6),
-#                          layout='compressed')
-# for i, L in enumerate(dict_res['label']):
-#     ax.hist(dict_res['AngleDiffs'][i], bins=30, 
-#             density=True, alpha=1, label=L, histtype='step')
-# ax.legend()
-# ax.set_ylabel('Frequency')
-# ax.set_xlabel(r'$|\theta - \phi|$ (rad)')
-# plt.show()
 
 
 
@@ -1679,10 +1745,13 @@ NByolk_analysis_sequence(mainDir, srcDir, dstDir, tifNames, Dict_Files_Suffix,
 
 # %%%% Import MSD & plot / Import pairMSD & plot
 
-# df_diff = import_and_plot_MSD(fileNames, Dict_Files_Suffix,)
+title = '26-09-30_D2'
+df_diff = import_and_plot_MSD(fileNames, Dict_Files_Suffix, fig_title=title)
+df_diff, df_pairDiff = import_and_plot_pairMSD(fileNames, Dict_Files_Suffix, fig_title=title)
 
-df_diff, df_pairDiff = import_and_plot_pairMSD(fileNames, Dict_Files_Suffix,)
-
+for i in plt.get_fignums():
+    plt.figure(i)
+    plt.savefig(os.path.join(plotDir, title + f'_MSDfig_{i:02d}.png'))
 
 
 # -----------------------------------------------------------------------------
