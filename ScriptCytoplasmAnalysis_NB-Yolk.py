@@ -2156,6 +2156,203 @@ for i in plt.get_fignums():
     plt.savefig(os.path.join(plotDir, title + f'_MSDfig_{i:02d}.png'))
 
 
+
+# %%%% Import tracks & analyse shape of explored zone
+
+Use_DriftCorrected = False
+
+mainDir = os.path.join(up.Path_IntraCellTracking, '26-09-30_FastAcq-Channel_Fec_NB-Yolk')
+srcDir = os.path.join(mainDir, 'D2')
+dstDir = os.path.join(mainDir, 'SPT_results')
+
+tifNames = [
+    # '26-09-30_D2-R_PreF_C3_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
+    # '26-09-30_D2-R_PreF_C4_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
+    # '26-09-30_D2-R_PostF_4min_C5_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
+    '26-09-30_D2-R_PostF_6min_C5_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
+    # '26-09-30_D2-R_PostF_8min_C5_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
+    # '26-09-30_D2-R_PostF_12min_C5_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
+    '26-09-30_D2-R_PostF_15min_C5_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
+    # '26-09-30_D2-R_PostF_20min_C5_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
+    '26-09-30_D2-R_PostF_25min_C5_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
+    # '26-09-30_D2-R_PostF_30min_C5_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
+    '26-09-30_D2-R_PostF_36min_C5_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
+    # '26-09-30_D2-R_PostF_40min_C5_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
+    # '26-09-30_D2-R_PostF_45min_C5_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
+    '26-09-30_D2-R_PostF_50min_C5_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
+    # '26-09-30_D2-R_PostF_53min_C5_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
+    # '26-09-30_D2-R_PostF_55min_C5_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
+    # '26-09-30_D2-R_PostF_60min_C5_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
+    # '26-09-30_D2-R_PostF_65min_C5_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
+    ]
+
+tifPaths = [os.path.join(srcDir, tifName) for tifName in tifNames]
+fileNames = [fN.split('.')[0] for fN in tifNames]
+
+dict_res = {'label':[],
+            'AngleDiffs':[]}
+
+GEOM_DATA = []
+
+df_g = pd.read_csv(os.path.join(srcDir, 'Cell_geometry.csv'), sep=',')
+
+
+for i in range(len(tifNames)):
+    print(i)
+    tP, fN = tifPaths[i], fileNames[i]
+    _, tN = os.path.split(tP)
+    shape, dtype = ufun.tiff_inspect(tP)
+    
+    X_MTcenter = df_g.loc[df_g['tN']==tN, 'xc'].to_numpy()[0]
+    Y_MTcenter = df_g.loc[df_g['tN']==tN, 'yc'].to_numpy()[0]
+
+    title = '_'.join(fN.split('_')[1:3])
+    rawTrackName = fN + Dict_Files_Suffix['suffix_rawTracks'] + '.xml'
+    if Use_DriftCorrected:
+        trackName = fN + Dict_Files_Suffix['suffix_driftCorrTracks'] + '.csv'
+    else:
+        trackName = fN + Dict_Files_Suffix['suffix_cleanTracks'] + '.csv'
+        
+    # msdName = fN + Dict_Files_Suffix['suffix_globalMsd'] + '.csv'
+    # msdFitsName = fN + Dict_Files_Suffix['suffix_globalMsdFits']
+    if np.isnan(X_MTcenter) or np.isnan(Y_MTcenter):
+        contourName = fN + Dict_Files_Suffix['suffix_contour'] + '.npy'
+        contourCell = np.load(os.path.join(srcDir, contourName))
+        poly = Polygon(contourCell)
+        xc, yc = poly.centroid.xy
+        X_MTcenter, Y_MTcenter = int(xc[0]), int(yc[0])
+    
+    df = pd.read_csv(os.path.join(dstDir, trackName), sep='\t')
+    
+    # Lp = df['particle'].unique().astype(int)
+    dict_geom = {'particle':[],
+                 'np':[],
+                 'xc':[],
+                 'yc':[],
+                 'theta':[],
+                 'a':[],
+                 'b':[],
+                 'L':[],
+                 'l':[],
+                 'AR':[],
+                 'phi':[],}
+    
+    grouped = df.groupby('particle')
+    
+    for p, df_p in grouped:
+        points = np.array([[x, y] for (x, y) in zip(df_p.x, df_p.y)])
+        
+        MPoints = MultiPoint(points)
+        Hull = MPoints.convex_hull
+        xy_ch = np.array([xy for xy in Hull.exterior.coords[1:]])
+        xc, yc = Hull.centroid.coords[0]
+        
+        out = ufun.fit_ellipse_fixedCenter(xy_ch[:, 0], xy_ch[:, 1], 
+                                           xc, yc, mode='cartesian')
+        _, _, a, b, phi = out
+        theta = np.atan2(yc - Y_MTcenter, xc - X_MTcenter)
+        theta_deg = theta * 180/np.pi
+        dotprod = np.cos(theta)*np.cos(phi) + np.sin(theta)*np.sin(phi)
+        if dotprod < 0:
+            phi = phi - np.sign(phi) * np.pi
+        phi_deg = phi * 180/np.pi
+        L, l = max(a, b), min(a, b)
+        AR = L/l
+        
+        dict_geom['particle'].append(p)
+        dict_geom['np'].append(len(df_p))
+        dict_geom['xc'].append(xc)
+        dict_geom['yc'].append(yc)
+        dict_geom['theta'].append(theta)
+        dict_geom['a'].append(a)
+        dict_geom['b'].append(b)
+        dict_geom['L'].append(L)
+        dict_geom['l'].append(l)
+        dict_geom['AR'].append(AR)
+        dict_geom['phi'].append(phi)
+    
+    df_geom_raw = pd.DataFrame(dict_geom)
+    GEOM_DATA.append(df_geom_raw)
+    
+    df_geom = df_geom_raw[df_geom_raw['AR'] > 1.5]    
+    df_geom['theta_bin'] = (df_geom['theta'].values * 18/np.pi).astype(int) * 10 + 5
+    C = np.cos(df_geom['theta'].values) * np.cos(df_geom['phi'].values) + \
+        np.sin(df_geom['theta'].values) * np.sin(df_geom['phi'].values)
+    DA = np.acos(C)   
+    
+    dict_res['label'].append(title)
+    dict_res['AngleDiffs'].append(DA)
+
+
+
+pm.setGraphicOptions(mode='screen')
+fig, axes = plt.subplots(2, len(tifNames), figsize=(len(tifNames)*3, 6),
+                         layout='compressed')
+colors = pm.cL_Set21
+
+for i in range(len(tifNames)):
+    print(i)
+    tP, fN = tifPaths[i], fileNames[i]
+    _, tN = os.path.split(tP)
+    shape, dtype = ufun.tiff_inspect(tP)
+    
+    X_MTcenter = df_g.loc[df_g['tN']==tN, 'xc'].to_numpy()[0]
+    Y_MTcenter = df_g.loc[df_g['tN']==tN, 'yc'].to_numpy()[0]
+    # print(X_MTcenter, Y_MTcenter)
+
+    title = '_'.join(fN.split('_')[1:4])
+    rawTrackName = fN + Dict_Files_Suffix['suffix_rawTracks'] + '.xml'
+    if Use_DriftCorrected:
+        trackName = fN + Dict_Files_Suffix['suffix_driftCorrTracks'] + '.csv'
+    else:
+        trackName = fN + Dict_Files_Suffix['suffix_cleanTracks'] + '.csv'
+        
+    # msdName = fN + Dict_Files_Suffix['suffix_globalMsd'] + '.csv'
+    # msdFitsName = fN + Dict_Files_Suffix['suffix_globalMsdFits']
+    if np.isnan(X_MTcenter) or np.isnan(Y_MTcenter):
+        contourName = fN + Dict_Files_Suffix['suffix_contour'] + '.npy'
+        contourCell = np.load(os.path.join(srcDir, contourName))
+        poly = Polygon(contourCell)
+        xc, yc = poly.centroid.xy
+        X_MTcenter, Y_MTcenter = int(xc[0]), int(yc[0])
+    
+    # df = pd.read_csv(os.path.join(dstDir, trackName), sep='\t')
+    df_geom = GEOM_DATA[i]
+    df_geom = df_geom[df_geom['AR'] > 1.5]
+    grouped = df_geom.groupby('particle')
+    
+    ax = axes[0, i]
+    ax.set_aspect('equal', adjustable='box')
+    ax.set_title(title)
+    
+    for p, df_gp in grouped:      
+        xc, yc = df_gp['xc'].to_numpy()[0], df_gp['yc'].to_numpy()[0]
+        a, b = df_gp['a'].to_numpy()[0], df_gp['b'].to_numpy()[0]
+        phi = df_gp['phi'].to_numpy()[0]
+        c = colors[p%len(colors)]       
+        if p%10 == 0:
+            aa = np.linspace(0, 2*np.pi, 360)
+            xp, yp = ufun.get_ellipse_xy(xc, yc, a, b, phi, aa=aa)
+            ax.plot(xp, yp, c=c, ls='-', lw=0.5)
+    plt.show()
+    
+    C = np.cos(df_geom['theta'].values) * np.cos(df_geom['phi'].values) + \
+        np.sin(df_geom['theta'].values) * np.sin(df_geom['phi'].values)
+    DA = np.acos(C)
+    
+    ax = axes[1, i]
+    ax.hist(DA, bins=20)
+    ax.set_ylabel('N trajectories')
+    ax.set_xlabel(r'$|\theta - \phi|$ (rad)')
+    ax.set_xticks([0, np.pi/8, np.pi/4, 3*np.pi/8, np.pi/2])
+    ax.set_xticklabels(['0', r'$\pi/8$', r'$\pi/4$', r'$3\pi/8$', r'$\pi/2$'])
+    ax.grid()
+
+plt.show()
+
+
+
+
 # -----------------------------------------------------------------------------
 # %%% 26-07-29
 
@@ -2169,13 +2366,13 @@ dstDir = os.path.join(mainDir, 'SPT_results')
 
 tifNames = [
             '26-07-29_PostF_2min_Pos11_10fps_Texp100ms_CSU642_crop.tif',
-            '26-07-29_PostF_6min30_Pos11_10fps_Texp100ms_CSU642_crop.tif',
-            '26-07-29_PostF_12min_Pos11_10fps_Texp100ms_CSU642_crop.tif',
-            '26-07-29_PostF_20min_Pos11_10fps_Texp100ms_CSU642_crop.tif',
-            '26-07-29_PostF_30min_Pos11_10fps_Texp100ms_CSU642_crop.tif',
-            '26-07-29_PostF_45min_Pos11_10fps_Texp100ms_CSU642_crop.tif',
-            '26-07-29_PostF_60min_Pos11_10fps_Texp100ms_CSU642_crop.tif',
-            '26-07-29_PostF_70min_Pos11_10fps_Texp100ms_CSU642_crop.tif',
+            # '26-07-29_PostF_6min30_Pos11_10fps_Texp100ms_CSU642_crop.tif',
+            # '26-07-29_PostF_12min_Pos11_10fps_Texp100ms_CSU642_crop.tif',
+            # '26-07-29_PostF_20min_Pos11_10fps_Texp100ms_CSU642_crop.tif',
+            # '26-07-29_PostF_30min_Pos11_10fps_Texp100ms_CSU642_crop.tif',
+            # '26-07-29_PostF_45min_Pos11_10fps_Texp100ms_CSU642_crop.tif',
+            # '26-07-29_PostF_60min_Pos11_10fps_Texp100ms_CSU642_crop.tif',
+            # '26-07-29_PostF_70min_Pos11_10fps_Texp100ms_CSU642_crop.tif',
             ]
 
 tifPaths = [os.path.join(srcDir, tifName) for tifName in tifNames]
@@ -2186,8 +2383,12 @@ Dict_Files_Suffix = {
     'suffix_mask' : '_cellMask',
     'suffix_rawTracks' : '_TmTracks',
     'suffix_cleanTracks' : '_PyTracks',
+    'suffix_cleanTracks_DriftCorr' : '_PyTracks2',
+    'suffix_drift' : '_XYdrift',
     'suffix_globalMsd' : '_GlobalMsd',
     'suffix_globalMsdFits' : '_GlobalMsdFits',
+    'suffix_globalPairMsd' : '_GlobalPairMsd',
+    'suffix_globalPairMsdFits' : '_GlobalPairMsdFits',
     }
 
 
@@ -2200,7 +2401,6 @@ Dict_Image_Settings = {
     }
 
 Dict_TrackMate_Settings = {
-    'IMG_UNITS' : 'PIX',
     'RADIUS_UM' : 0.8, 
     'THRESH_SPOT_QLT' : 0.25,
     'THRESH_LINK_UM' : 0.4, # increased at 0.4um for 10Hz
@@ -2208,8 +2408,8 @@ Dict_TrackMate_Settings = {
     }
 
 Dict_Analysis_Settings = {
-    'mask_buffer_um' : 2.0,
-    'edge_buffer_cutoff_um' : 3.0,
+    'mask_buffer_um' : 1.5,
+    'edge_buffer_cutoff_um' : 1.5,
     'max_Dt_s' : 4,
     'lowDt_upper' : 0.5,
     'highDt_lower' : 1.0,
@@ -2217,7 +2417,16 @@ Dict_Analysis_Settings = {
     'pairMSD_dist_th_um' : 5,
     }
 
+# %%%% Run analysis
 
+NByolk_analysis_sequence(mainDir, srcDir, dstDir, tifNames, Dict_Files_Suffix, 
+                         Dict_Image_Settings, Dict_TrackMate_Settings, Dict_Analysis_Settings,
+                         Do_Contours = False, 
+                         Do_Tracking = True, Ignore_ROIs = True,
+                         Do_TrackCleaning = True, 
+                         Do_DriftCorrection = False, Use_DriftCorrected = False,
+                         Do_MSD = True, 
+                         Do_PairMSD = True)
 
 # %% Tests
 
