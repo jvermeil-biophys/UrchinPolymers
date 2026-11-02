@@ -1170,15 +1170,24 @@ Dict_Analysis_Settings = {
 
 # %%%% Little script to fill the table
 
+
+df_films_path = os.path.join(resDir, 'SPT_Data_Films.csv')
+DF_FILMS = pd.read_csv(df_films_path)
+
 for fN, tN, tP in zip(fileNames, tifNames, tifPaths):
     if tN in DF_FILMS['tN'].to_numpy():
         idx = DF_FILMS[DF_FILMS['tN'] == tN].index[0]
-        nT, nY, nX = ufun.tiff_inspect(tP)
+        im_shape, im_type = ufun.tiff_inspect(tP)
+        nT, nY, nX = im_shape
         DF_FILMS.loc[idx, 'n_frames'] = int(nT)
         DF_FILMS.loc[idx, 'im_width'] = int(nX)
         DF_FILMS.loc[idx, 'im_height'] = int(nY)
-        
-DF_FILMS.to_csv(df_films_path, index=False)
+
+# int_cols = ['im_width', 'im_height', 'x_center', 'y_center']
+# for col in int_cols:
+#     DF_FILMS[col] = DF_FILMS[col].to_numpy().astype(int)
+
+DF_FILMS.to_csv(df_films_path, index=False, na_rep='NaN')
 
 
 
@@ -1485,6 +1494,28 @@ Dict_Analysis_Settings = {
     'pairMSD_Dt_s' : 5,
     'pairMSD_dist_th_um' : 5,
     }
+
+# %%%% Little script to fill the table
+
+
+df_films_path = os.path.join(resDir, 'SPT_Data_Films.csv')
+DF_FILMS = pd.read_csv(df_films_path)
+
+for fN, tN, tP in zip(fileNames, tifNames, tifPaths):
+    if tN in DF_FILMS['tN'].to_numpy():
+        idx = DF_FILMS[DF_FILMS['tN'] == tN].index[0]
+        im_shape, im_type = ufun.tiff_inspect(tP)
+        nT, nY, nX = im_shape
+        DF_FILMS.loc[idx, 'n_frames'] = int(nT)
+        DF_FILMS.loc[idx, 'im_width'] = int(nX)
+        DF_FILMS.loc[idx, 'im_height'] = int(nY)
+
+# int_cols = ['im_width', 'im_height', 'x_center', 'y_center']
+# for col in int_cols:
+#     DF_FILMS[col] = DF_FILMS[col].to_numpy().astype(int)
+
+DF_FILMS.to_csv(df_films_path, index=False, na_rep='NaN')
+
 
 
 # %%%% Run analysis
@@ -1945,6 +1976,28 @@ Dict_Analysis_Settings = {
     'pairMSD_dist_th_um' : 5,
     }
 
+# %%%% Little script to fill the table
+
+
+df_films_path = os.path.join(resDir, 'SPT_Data_Films.csv')
+DF_FILMS = pd.read_csv(df_films_path)
+
+for fN, tN, tP in zip(fileNames, tifNames, tifPaths):
+    if tN in DF_FILMS['tN'].to_numpy():
+        idx = DF_FILMS[DF_FILMS['tN'] == tN].index[0]
+        im_shape, im_type = ufun.tiff_inspect(tP)
+        nT, nY, nX = im_shape
+        DF_FILMS.loc[idx, 'n_frames'] = int(nT)
+        DF_FILMS.loc[idx, 'im_width'] = int(nX)
+        DF_FILMS.loc[idx, 'im_height'] = int(nY)
+
+# int_cols = ['im_width', 'im_height', 'x_center', 'y_center']
+# for col in int_cols:
+#     DF_FILMS[col] = DF_FILMS[col].to_numpy().astype(int)
+
+DF_FILMS.to_csv(df_films_path, index=False, na_rep='NaN')
+
+
 
 # %%%% Run analysis
 
@@ -2369,6 +2422,28 @@ Dict_Analysis_Settings = {
     'pairMSD_Dt_s' : 5,
     'pairMSD_dist_th_um' : 5,
     }
+
+# %%%% Little script to fill the table
+
+
+df_films_path = os.path.join(resDir, 'SPT_Data_Films.csv')
+DF_FILMS = pd.read_csv(df_films_path)
+
+# for fN, tN, tP in zip(fileNames, tifNames, tifPaths):
+#     if tN in DF_FILMS['tN'].to_numpy():
+#         idx = DF_FILMS[DF_FILMS['tN'] == tN].index[0]
+#         im_shape, im_type = ufun.tiff_inspect(tP)
+#         nT, nY, nX = im_shape
+#         DF_FILMS.loc[idx, 'n_frames'] = int(nT)
+#         DF_FILMS.loc[idx, 'im_width'] = int(nX)
+#         DF_FILMS.loc[idx, 'im_height'] = int(nY)
+
+int_cols = ['im_width', 'im_height'] # , 'x_center', 'y_center'
+for col in int_cols:
+    DF_FILMS[col] = DF_FILMS[col].to_numpy().astype(int)
+
+DF_FILMS.to_csv(df_films_path, index=False, na_rep='NaN')
+
 
 
 # %%%% Run analysis
