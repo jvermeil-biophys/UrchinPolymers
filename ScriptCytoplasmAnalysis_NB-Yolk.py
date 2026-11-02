@@ -27,6 +27,7 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 import os
 import re
 import time
+import pyautogui
 import alphashape
 # import cv2
 
@@ -64,9 +65,76 @@ Dict_Files_Suffix = {
     }
 
 
-plotDir = 'C://Users//Joseph//Desktop//Presentations//2026-10-21_DiscussionsNouvellesManipes//MSDplots'
+figDir = os.path.join(up.Path_IntraCellTracking, 'SPT_figures')
+resDir = os.path.join(up.Path_IntraCellTracking, 'SPT_results')
+
+df_cells_path = os.path.join(resDir, 'SPT_Data_Cells.csv')
+df_films_path = os.path.join(resDir, 'SPT_Data_Films.csv')
+df_res_path = os.path.join(resDir, 'SPT_Results.csv')
+
+DF_CELLS = pd.read_csv(df_cells_path)
+DF_FILMS = pd.read_csv(df_films_path)
+
+
 
 # %% Helper functions
+
+#### TEST !
+
+
+def ui2array(uixy):
+    """
+    Translate the output of the function plt.ginput() 
+    (which are lists of tuples), in an XY array with this shape:
+    XY = [[x0, y0], [x1, y1], [x2, y2], ...]
+    So if you need the [x, y] of 1 specific point, call XY[i]
+    If you need the list of all x coordinates, call XY[:, 0]
+    """
+    n = len(uixy)
+    XY = np.zeros((n, 2))
+    for i in range(n):
+        XY[i,0], XY[i,1] = uixy[i][0], uixy[i][1]
+    return(XY)
+
+def showAndQA(img, strech = True, 
+              QAtitle = 'Question', QAtext = '?', QAbuttons = ['Yes', 'No']
+              ):
+    if strech:
+        pStart, pStop = np.percentile(img, (1, 99))
+    else:
+        pStart, pStop = None, None
+        
+    fig, ax = plt.subplots(1,1)
+    ax.imshow(img, cmap = 'gray', vmin = pStart, vmax = pStop)
+    fig.show()
+    # mngr = plt.get_current_fig_manager()
+    # mngr.window.setGeometry(720, 50, 1175, 1000)
+    QA = pyautogui.confirm(
+        title=QAtitle,
+        text=QAtext,
+        buttons = QAbuttons,
+        )
+    
+    return(QA)
+
+def pointCellCenter(img):
+    QAtitle='Cell Microtubules Center',
+    QAtext='Can the organizing center of the microtubules be pointed?',
+    QAbuttons = ['Point center', 'No center']
+    QA = showAndQA(img, strech = True, 
+                   QAtitle = QAtitle, QAtext = QAtext, QAbuttons = QAbuttons)
+    if QA == 'Point center':
+        ui = plt.ginput(1, timeout=0)
+        uiXY = ui2array(ui)
+    else:
+        uiXY = []
+    fig = plt.gcf()
+    plt.close(fig)
+    return(QA, uiXY)
+
+
+####
+
 
 
 def correct_drift_in_Tracks(df, fN, tP, dstDir, PixPerUm, FPS, 
@@ -1079,6 +1147,20 @@ Dict_Analysis_Settings = {
     'pairMSD_dist_th_um' : 5,
     }
 
+# %%%% Little script to fill the table
+
+for fN, tN, tP in zip(fileNames, tifNames, tifPaths):
+    if tN in DF_FILMS['tN'].to_numpy():
+        idx = DF_FILMS[DF_FILMS['tN'] == tN].index[0]
+        nT, nY, nX = ufun.tiff_inspect(tP)
+        DF_FILMS.loc[idx, 'n_frames'] = int(nT)
+        DF_FILMS.loc[idx, 'im_width'] = int(nX)
+        DF_FILMS.loc[idx, 'im_height'] = int(nY)
+        
+DF_FILMS.to_csv(df_films_path, index=False)
+
+
+
 
 # %%%% Run analysis
 
@@ -1101,7 +1183,7 @@ df_diff, df_pairDiff = import_and_plot_pairMSD(fileNames, Dict_Files_Suffix, fig
 
 for i in plt.get_fignums():
     plt.figure(i)
-    plt.savefig(os.path.join(plotDir, title + f'_MSDfig_{i:02d}.png'))
+    plt.savefig(os.path.join(figDir, title + f'_MSDfig_{i:02d}.png'))
 
 
 # %%%% Import tracks & analyse shape of explored zone
@@ -1404,7 +1486,7 @@ df_diff, df_pairDiff = import_and_plot_pairMSD(fileNames, Dict_Files_Suffix, fig
 
 for i in plt.get_fignums():
     plt.figure(i)
-    plt.savefig(os.path.join(plotDir, title + f'_MSDfig_{i:02d}.png'))
+    plt.savefig(os.path.join(figDir, title + f'_MSDfig_{i:02d}.png'))
     
     
 # %%%% Import tracks & analyse shape of explored zone
@@ -1863,7 +1945,7 @@ df_diff, df_pairDiff = import_and_plot_pairMSD(fileNames, Dict_Files_Suffix, fig
 
 for i in plt.get_fignums():
     plt.figure(i)
-    plt.savefig(os.path.join(plotDir, title + f'_MSDfig_{i:02d}.png'))
+    plt.savefig(os.path.join(figDir, title + f'_MSDfig_{i:02d}.png'))
 
 # %%%% Import tracks & analyse shape of explored zone
 
@@ -2057,7 +2139,142 @@ for i in range(len(tifNames)):
 
 plt.show()
 
+# %%%% Import tracks & analyse shape of explored zone
 
+Use_DriftCorrected = False
+
+mainDir = os.path.join(up.Path_IntraCellTracking, '26-09-30_FastAcq-Channel_Fec_NB-Yolk')
+srcDir = os.path.join(mainDir, 'D1')
+dstDir = os.path.join(mainDir, 'SPT_results')
+
+tifNames = [
+    '26-09-30_D1_PostF_18min_C4_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
+    ]
+
+tifPaths = [os.path.join(srcDir, tifName) for tifName in tifNames]
+fileNames = [fN.split('.')[0] for fN in tifNames]
+
+dict_res = {'label':[],
+            'AngleDiffs':[]}
+
+GEOM_DATA = []
+
+df_cellGeom = pd.read_csv(os.path.join(srcDir, 'Cell_geometry.csv'), sep=',')
+
+i = 0
+print(i)
+
+tifPath, fileName = tifPaths[i], fileNames[i]
+
+def getEllipses(fileName, tifPath, df_cellGeom, 
+                Use_DriftCorrected, Dict_Files_Suffix):
+    fN = fileName
+    tP = tifPath
+    _, tN = os.path.split(tP)
+    # shape, dtype = ufun.tiff_inspect(tP)
+    
+    df_g = df_cellGeom
+    X_MTcenter = df_g.loc[df_g['tN']==tN, 'xc'].to_numpy()[0]
+    Y_MTcenter = df_g.loc[df_g['tN']==tN, 'yc'].to_numpy()[0]
+    
+    title = '_'.join(fN.split('_')[1:3])
+    if Use_DriftCorrected:
+        trackName = fN + Dict_Files_Suffix['suffix_driftCorrTracks'] + '.csv'
+    else:
+        trackName = fN + Dict_Files_Suffix['suffix_cleanTracks'] + '.csv'
+        
+    if np.isnan(X_MTcenter) or np.isnan(Y_MTcenter):
+        contourName = fN + Dict_Files_Suffix['suffix_contour'] + '.npy'
+        contourCell = np.load(os.path.join(srcDir, contourName))
+        poly = Polygon(contourCell)
+        xc, yc = poly.centroid.xy
+        X_MTcenter, Y_MTcenter = int(xc[0]), int(yc[0])
+    
+    df = pd.read_csv(os.path.join(dstDir, trackName), sep='\t')
+    
+    dict_geom = {'particle':[], 'np':[],
+                 'xc':[], 'yc':[],
+                 'theta':[],
+                 'a':[], 'b':[],
+                 'L':[], 'l':[], 'AR':[],
+                 'phi':[],}
+    
+    grouped = df.groupby('particle')
+    
+    for p, df_p in grouped:
+        points = np.array([[x, y] for (x, y) in zip(df_p.x, df_p.y)])
+        
+        MPoints = MultiPoint(points)
+        Hull = MPoints.convex_hull
+        xy_ch = np.array([xy for xy in Hull.exterior.coords[1:]])
+        xc, yc = Hull.centroid.coords[0]
+        
+        out = ufun.fit_ellipse_fixedCenter(xy_ch[:, 0], xy_ch[:, 1], 
+                                           xc, yc, mode='cartesian')
+        _, _, a, b, phi = out
+        theta = np.atan2(yc - Y_MTcenter, xc - X_MTcenter)
+        # theta_deg = theta * 180/np.pi
+        dotprod = np.cos(theta)*np.cos(phi) + np.sin(theta)*np.sin(phi)
+        if dotprod < 0:
+            phi = phi - np.sign(phi) * np.pi
+        # phi_deg = phi * 180/np.pi
+        L, l = max(a, b), min(a, b)
+        AR = L/l
+        
+        dict_geom['particle'].append(p)
+        dict_geom['np'].append(len(df_p))
+        dict_geom['xc'].append(xc)
+        dict_geom['yc'].append(yc)
+        dict_geom['theta'].append(theta)
+        dict_geom['a'].append(a)
+        dict_geom['b'].append(b)
+        dict_geom['L'].append(L)
+        dict_geom['l'].append(l)
+        dict_geom['AR'].append(AR)
+        dict_geom['phi'].append(phi)
+    
+    df_geom = pd.DataFrame(dict_geom)
+    df_geom_f = df_geom[df_geom['AR'] > 1.5]    
+    df_geom_f['theta_bin'] = (df_geom_f['theta'].values * 18/np.pi).astype(int) * 10 + 5
+    
+    C = np.cos(df_geom_f['theta'].values) * np.cos(df_geom_f['phi'].values) + \
+        np.sin(df_geom_f['theta'].values) * np.sin(df_geom_f['phi'].values)
+    DA = np.acos(C)   
+    
+    
+    pm.setGraphicOptions(mode='screen')
+    fig, axes = plt.subplots(2, 1, figsize=(3.5, 7),
+                             layout='compressed')
+    colors = pm.cL_Set21
+    ax = axes[0]
+    ax.set_aspect('equal', adjustable='box')
+    ax.set_title(title)
+    grouped = df_geom_f.groupby('particle')
+    ax.plot([X_MTcenter], [Y_MTcenter], 'ko')
+    for p, df_gp in grouped:
+        xc, yc = df_gp['xc'].to_numpy()[0], df_gp['yc'].to_numpy()[0]
+        a, b = df_gp['a'].to_numpy()[0], df_gp['b'].to_numpy()[0]
+        phi = df_gp['phi'].to_numpy()[0]
+        c = colors[p%len(colors)]       
+        if p%10 == 0:
+            aa = np.linspace(0, 2*np.pi, 360)
+            xp, yp = ufun.get_ellipse_xy(xc, yc, a, b, phi, aa=aa)
+            ax.plot(xp, yp, c=c, ls='-', lw=0.5)
+            
+    ax = axes[1]
+    ax.hist(DA, bins=20)
+    ax.set_ylabel('N trajectories')
+    ax.set_xlabel(r'$|\theta - \phi|$ (rad)')
+    ax.set_xticks([0, np.pi/8, np.pi/4, 3*np.pi/8, np.pi/2])
+    ax.set_xticklabels(['0', r'$\pi/8$', r'$\pi/4$', r'$3\pi/8$', r'$\pi/2$'])
+    ax.grid()
+    plt.show()
+    
+    return(df_geom, DA, fig, axes)
+
+
+df_geom, DA, fig, axes = getEllipses(fileName, tifPath, df_cellGeom, 
+                                     Use_DriftCorrected, Dict_Files_Suffix)
 
 
 # -----------------------------------------------------------------------------
@@ -2151,9 +2368,9 @@ title = '26-09-30_D2'
 df_diff = import_and_plot_MSD(fileNames, Dict_Files_Suffix, fig_title=title)
 df_diff, df_pairDiff = import_and_plot_pairMSD(fileNames, Dict_Files_Suffix, fig_title=title)
 
-for i in plt.get_fignums():
-    plt.figure(i)
-    plt.savefig(os.path.join(plotDir, title + f'_MSDfig_{i:02d}.png'))
+# for i in plt.get_fignums():
+#     plt.figure(i)
+#     plt.savefig(os.path.join(figDir, title + f'_MSDfig_{i:02d}.png'))
 
 
 
