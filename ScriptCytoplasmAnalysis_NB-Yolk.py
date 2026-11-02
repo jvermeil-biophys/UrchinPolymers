@@ -543,7 +543,274 @@ def NByolk_analysis_sequence(mainDir, srcDir, dstDir, tifNames,
             pairMsdFitsName = fN + suf_globalPairMsdFits + '.json'
             ufun.dict2json(dict_pairMSDfits, Dict_rP['dir_pairMsd'], pairMsdFitsName)
 
+#### Analysis functions 2
 
+def autofill_SPT_Data(srcDir, tifNames, df_films_path):
+    DF_FILMS = pd.read_csv(df_films_path)
+    for tN in tifNames:
+        tP = os.path.join(srcDir, tN)
+        if tN in DF_FILMS['tN'].to_numpy():
+            idx = DF_FILMS[DF_FILMS['tN'] == tN].index[0]
+            im_shape, im_type = ufun.tiff_inspect(tP)
+            nT, nY, nX = im_shape
+            DF_FILMS.loc[idx, 'n_frames'] = int(nT)
+            DF_FILMS.loc[idx, 'im_width'] = int(nX)
+            DF_FILMS.loc[idx, 'im_height'] = int(nY)
+            
+            img = ufun.load_stack_region(tP, time_indices=[nT//2])[0]
+            QA, uiXY = pointCellCenter(img)
+            if QA == 'No center':
+                xc, yc = np.nan, np.nan
+            else:
+                xc, yc = uiXY[0]
+            DF_FILMS.loc[idx, 'x_center'] = int(xc)
+            DF_FILMS.loc[idx, 'y_center'] = int(yc)
+            
+    DF_FILMS.to_csv(df_films_path, index=False, na_rep='NaN')
+    
+
+def NByolk_analysis_sequence2(srcDir, tifNames, DF_CELLS, DF_FILMS, 
+                             Dict_fSuf, Dict_rP, Dict_pP, 
+                             Dict_Image_Settings, 
+                             Dict_TrackMate_Settings, 
+                             Dict_Analysis_Settings,
+                             Do_Contours = True, 
+                             Do_Tracking = True, Ignore_ROIs = False,
+                             Do_TrackCleaning = True, Do_DriftCorrection = False,
+                             Use_DriftCorrected = False,
+                             Do_MSD = True, Do_PairMSD = True):
+    
+    tifPaths = [os.path.join(srcDir, tifName) for tifName in tifNames]
+    fileNames = [fN.split('.')[0] for fN in tifNames]
+    
+    for i in range(len(fileNames)):
+        tP, tN, fN = tifPaths[i], tifNames[i], fileNames[i]
+        print(pm.CYAN + f'\nFile {i+1:.0f}/{len(fileNames):.0f} - {fN}' + pm.NORMAL)
+        
+        idx = DF_FILMS[DF_FILMS['tN'] == tN].index[0]
+    
+        PixPerUm = DF_FILMS.loc[idx, 'PixPerUm']
+        FPS = DF_FILMS.loc[idx, 'FPS']
+        
+        Segmentation_Mode = DF_FILMS.loc[idx, 'segmentation']
+        Do_DriftCorrection = DF_FILMS.loc[idx, 'drift_correction']
+        
+        mask_buffer_um = DF_FILMS.loc[idx, 'mask_edge_cutoff_um']
+        edge_buffer_cutoff_um = DF_FILMS.loc[idx, 'tracking_edge_cutoff_um']
+        max_Dt_s = DF_FILMS.loc[idx, 'msd_max_Dt_s']
+        lowDt_upper = DF_FILMS.loc[idx, 'msd_lowDt_upper_s']
+        highDt_lower = DF_FILMS.loc[idx, 'msd_highDt_lower_s']
+        pairMSD_Dt_s = DF_FILMS.loc[idx, 'pMsd_max_Dt_s']
+        pairMSD_dist_th_um = DF_FILMS.loc[idx, 'pMSD_dist_th_um']
+                
+        
+        #### Make and save cell contours and masks
+        if Do_Contours:
+            print(pm.BRIGHTORANGE + '1. Contours step' + pm.NORMAL)
+            for i in range(len(fileNames)): # len(fileNames)
+                tP, fN = tifPaths[i], fileNames[i]
+                print(pm.CYAN + f'\nFile {i+1:.0f}/{len(fileNames):.0f} - {fN}' + pm.NORMAL)
+                
+                shape, dtype = ufun.tiff_inspect(tP)
+                nT = shape[0]
+                TT = range(0, nT, nT//100)
+                img = ufun.load_stack_region(tP, time_indices=TT)
+                
+                Contour_cell, Mask_cell = tbca.make_NbYolkCell_contour_and_mask(img, PixPerUm,
+                                                                                buffer_um = 0.0,
+                                                                                mode = 'dark_background', 
+                                                                                keep_only_largest = True,
+                                                                                exclude_on_edges = True,
+                                                                                PLOT = True)
+                contourFile = fN + Dict_fSuf['suf_contour'] + '.npy'
+                maskFile = fN + Dict_fSuf['suf_mask'] + '.npy'
+                np.save(os.path.join(Dict_rP['dir_segmentation'], contourFile), Contour_cell)
+                np.save(os.path.join(Dict_rP['dir_segmentation'], maskFile), Mask_cell)
+    
+    
+        #### Run Trackmate
+        if Do_Tracking:
+            print(pm.BRIGHTORANGE + '2. Tracking step' + pm.NORMAL)
+            rawTrackName = fN + Dict_fSuf['suf_rawTracks'] + '.xml'
+            maskFile = fN + Dict_fSuf['suf_mask'] + '.npy'
+            if not Ignore_ROIs:
+                Mask_cell = np.load(os.path.join(srcDir, maskFile))
+            else:
+                Mask_cell = None
+            
+            tbca.pretreat_and_track_NbYolk(tifPath, rawTrackName, Dict_rP['dir_rawTracks'], PixPerUm,
+                                           Dict_TrackMate_Settings = Dict_TrackMate_Settings,
+                                           Mask_cell = Mask_cell, mask_buffer_um = mask_buffer_um,
+                                           PLOT = True, SHOWPLOT = False, SAVEPLOT = True)
+    
+    
+        #### Import & format tracks
+        if Do_TrackCleaning:
+            print(pm.BRIGHTORANGE + '3. Tracks formatting step' + pm.NORMAL)
+            img_0 = ufun.load_stack_region(tP, time_indices=[0])[0]
+            
+            rawTrackName = fN + Dict_fSuf['suf_rawTracks'] + '.xml'
+            cleanTrackName = fN + Dict_fSuf['suf_cleanTracks'] + '.csv'
+            contourPath = os.path.join(Dict_rP['dir_segmentation'], fN + Dict_fSuf['suf_contour'] + '.npy')
+            
+            rawTracks = tbca.import_TrackMate_tracks(os.path.join(Dict_rP['dir_rawTracks'], rawTrackName))
+            
+            if not Ignore_ROIs:
+                Contour_cell = np.load(contourPath)
+                shape = None
+            else:
+                Contour_cell = None
+                shape, dtype = ufun.tiff_inspect(tP)
+                shape = shape[1:]
+            
+            tbca.rawTracks_2_cleanTracks(rawTracks, Dict_rP['dir_cleanTracks'], cleanTrackName, PixPerUm,
+                                         Contour_cell = Contour_cell, shape = shape, 
+                                         edge_buffer_cutoff_um = edge_buffer_cutoff_um, nPoints_cuttoff = 30,
+                                         RefImg = img_0, PLOT = True, SHOWPLOT = False, SAVEPLOT = True,
+                                        )
+            plt.close('all')
+        
+        
+        #### Correct global drift in trajectory
+        if Do_DriftCorrection:
+            print(pm.BRIGHTORANGE + '3.5. Drift correction' + pm.NORMAL)                
+            cleanTrackName = fN + Dict_fSuf['suf_cleanTracks'] + '.csv'
+            df = pd.read_csv(os.path.join(dstDir, cleanTrackName), sep='\t')
+        
+            df2, Dxy_corr = correct_drift_in_Tracks(df, fN, tP, dstDir, PixPerUm, FPS, 
+                                          PLOT = True, SHOWPLOT = False, SAVEPLOT = True, 
+                                          export_image = False)
+            driftArrayName = fN + Dict_fSuf['suf_drift']  + '.txt'
+            np.savetxt(os.path.join(Dict_rP['dir_cleanTracks'], driftArrayName), Dxy_corr)
+            
+            dcTrackName = fN + Dict_fSuf['suf_cleanTracks_DriftCorr'] + '.csv'
+            df2.to_csv(os.path.join(Dict_rP['dir_cleanTracks'], dcTrackName), sep='\t')
+    
+    
+        #### Import tracks, run trackpy.emsd, fit MSD
+        if Do_MSD:
+            print(pm.BRIGHTORANGE + '4. MSD compute & fit step' + pm.NORMAL)
+            rawTrackName = fN + Dict_fSuf['suf_rawTracks'] + '.xml'
+            if Use_DriftCorrected:
+                trackName = fN + Dict_fSuf['suf_cleanTracks_DriftCorr'] + '.csv'
+            else:
+                trackName = fN + Dict_fSuf['suf_cleanTracks'] + '.csv'
+                
+            msdName = fN + Dict_fSuf['suf_globalMsd'] + '.csv'
+            msdFitsName = fN + Dict_fSuf['suf_globalMsdFits']
+            
+            df = pd.read_csv(os.path.join(Dict_rP['dir_cleanTracks'], trackName), sep='\t')
+            
+            max_lagtime = int(max_Dt_s * FPS)
+            res_emsd = tp.motion.emsd(df, 1/PixPerUm, FPS, max_lagtime=max_lagtime).reset_index()
+            res_emsd.to_csv(os.path.join(Dict_rP['dir_msd'], msdName), index=False, sep='\t')
+            
+            T, MSD = res_emsd['lagt'].values, res_emsd['msd'].values
+            iLow = ufun.findFirst(lowDt_upper, T) + 1
+            iHigh = ufun.findFirst(highDt_lower, T)
+            
+            parms, results = ufun.fitLineHuber(T, MSD, with_intercept = False)
+            D_linear = parms[0]/4
+            
+            parms, results = ufun.fitLineHuber(np.log(T), np.log(MSD), with_intercept = True)
+            b, a = parms
+            k_full = a
+            D_full = np.exp(b)/4
+            
+            if len(T[:iLow]) >= 3:
+                parms, results = ufun.fitLineHuber(np.log(T[:iLow]), np.log(MSD[:iLow]), with_intercept = True)
+                b, a = parms
+                k_lowDt = a
+                D_lowDt = np.exp(b)/4
+            else:
+                k_lowDt, D_lowDt = np.nan, np.nan
+            
+            if len(T[iHigh:]) >= 6:
+                parms, results = ufun.fitLineHuber(np.log(T[iHigh:]), np.log(MSD[iHigh:]), with_intercept = True)
+                b, a = parms
+                k_highDt = a
+                D_highDt = np.exp(b)/4
+            else:
+                k_highDt, D_highDt = np.nan, np.nan
+            
+            dict_MSDfits = {
+                'maxDt_s': max_Dt_s,
+                'lowDt_upper': lowDt_upper, 'highDt_lower': highDt_lower,
+                'D_linear': D_linear,
+                'k_full': k_full, 'D_full': D_full,
+                'k_lowDt': k_lowDt, 'D_lowDt': D_lowDt,
+                'k_highDt': k_highDt, 'D_highDt': D_highDt,
+                }
+            
+            ufun.dict2json(dict_MSDfits, Dict_rP['dir_msd'], msdFitsName)
+    
+    
+        #### Import tracks, compute pairs, fit pair-MSD
+        if Do_PairMSD:
+            print(pm.BRIGHTORANGE + '5. pair-MSD compute & fit step' + pm.NORMAL)            
+            if Use_DriftCorrected:
+                trackName = fN + Dict_fSuf['suf_cleanTracks_DriftCorr'] + '.csv'
+            else:
+                trackName = fN + Dict_fSuf['suf_cleanTracks'] + '.csv'
+            
+            df = pd.read_csv(os.path.join(Dict_rP['dir_cleanTracks'], trackName), sep='\t')
+            
+            # Compute Pair MSD
+            Nframes = np.max(df['frame'].to_numpy()) 
+            len_TRanges = int(FPS * pairMSD_Dt_s)
+            dist_th_um = pairMSD_dist_th_um
+            df_allTRange_pair_MSD = tbca.compute_pairwise_MSD(df, PixPerUm, FPS, Nframes,
+                                                              len_TRanges = len_TRanges, 
+                                                              delta_TRanges = -1, 
+                                                              dist_th_um = dist_th_um, 
+                                                              max_Dt_s = max_Dt_s)
+            
+            pairMsdName = fN + Dict_fSuf['suf_globalPairMsd'] + '.csv'
+            df_allTRange_pair_MSD.to_csv(os.path.join(Dict_rP['dir_pairMsd'], pairMsdName), index=False, sep='\t')
+            
+            # Fit Pair MSD
+            T = df_allTRange_pair_MSD['lagt'].to_numpy()
+            MSD = df_allTRange_pair_MSD['msd_median'].to_numpy()
+            
+            iLow = ufun.findFirst(lowDt_upper, T) + 1
+            iHigh = ufun.findFirst(highDt_lower, T)
+            
+            parms, results = ufun.fitLineHuber(T, MSD, with_intercept = False)
+            D_linear = parms[0]/8
+            
+            parms, results = ufun.fitLineHuber(np.log(T), np.log(MSD), with_intercept = True)
+            b, a = parms
+            k_full = a
+            D_full = np.exp(b)/8
+            
+            if len(T[:iLow]) >= 3:
+                parms, results = ufun.fitLineHuber(np.log(T[:iLow]), np.log(MSD[:iLow]), with_intercept = True)
+                b, a = parms
+                k_lowDt = a
+                D_lowDt = np.exp(b)/8
+            else:
+                k_lowDt, D_lowDt = np.nan, np.nan
+            
+            if len(T[iHigh:]) >= 6:
+                parms, results = ufun.fitLineHuber(np.log(T[iHigh:]), np.log(MSD[iHigh:]), with_intercept = True)
+                b, a = parms
+                k_highDt = a
+                D_highDt = np.exp(b)/8
+            else:
+                k_highDt, D_highDt = np.nan, np.nan
+            
+            dict_pairMSDfits = {
+                'max_Dt_s': max_Dt_s,
+                'lowDt_upper': lowDt_upper, 'highDt_lower': highDt_lower,
+                'D_linear': D_linear,
+                'k_full': k_full, 'D_full': D_full,
+                'k_lowDt': k_lowDt, 'D_lowDt': D_lowDt,
+                'k_highDt': k_highDt, 'D_highDt': D_highDt,
+                }
+            
+            pairMsdFitsName = fN + Dict_fSuf['suf_globalPairMsdFits'] + '.json'
+            ufun.dict2json(dict_pairMSDfits, Dict_rP['dir_pairMsd'], pairMsdFitsName)
+                
 
 #### Plotting functions
 
