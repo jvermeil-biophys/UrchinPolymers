@@ -798,7 +798,7 @@ def NByolk_msd_compute(tifNames, df_films_path, df_res_name,
             
             ufun.dict2json(dict_MSDfits, Dict_rP['dir_msd'], msdFitsName)
             for k, v in dict_MSDfits.items():
-                DF_RES.loc[idx, k] = v
+                DF_RES.loc[(DF_RES['tN'] == tN), k] = v
 
     
         #### Import tracks, compute pairs, fit pair-MSD
@@ -883,7 +883,7 @@ def NByolk_msd_compute(tifNames, df_films_path, df_res_name,
             
             ufun.dict2json(dict_pairMSDfits, Dict_rP['dir_pairMsd'], pairMsdFitsName)
             for k, v in dict_pairMSDfits.items():
-                DF_RES.loc[idx, k] = v
+                DF_RES.loc[(DF_RES['tN'] == tN), k] = v
         
         #### End of the loop -> Save the dataframe
         DF_RES.to_csv(os.path.join(RES_DIR, df_res_name + '.csv'), index=False)
@@ -1787,7 +1787,7 @@ tifNames = [
     '26-10-07_D1-s_PreF_0min_C1_20fps_Texp50ms_L30p1_CSU642.ome.tf2',
     '26-10-07_D1-s_PreF_0min_C2_20fps_Texp50ms_L30p1_CSU642.ome.tf2',
     '26-10-07_D1-s_PreF_0min_C3_20fps_Texp50ms_L30p1_CSU642.ome.tf2',
-    # '26-10-07_D1-s_PreF_0min_C3_5fps_Texp200ms_L30p1_CSU642.ome.tf2',
+    '26-10-07_D1-s_PreF_0min_C3_5fps_Texp200ms_L30p1_CSU642.ome.tf2',
     '26-10-07_D1-s_PostF_3min_C4_20fps_Texp50ms_L30p1_CSU642.ome.tf2',
     '26-10-07_D1-s_PostF_6min_C4_20fps_Texp50ms_L30p1_CSU642.ome.tf2',
     '26-10-07_D1-s_PostF_9min_C4_20fps_Texp50ms_L30p1_CSU642.ome.tf2',
@@ -2794,6 +2794,14 @@ Dict_Analysis_Settings = {
     'pairMSD_Dt_s' : 5,
     'pairMSD_dist_th_um' : 5,
     }
+
+# %%%% Run new MSD
+
+df_res_name = 'SPT_Results_01'
+NByolk_msd_compute(tifNames, df_films_PATH, df_res_name,
+                    Dict_fSuf, Dict_rP, Dict_pP, 
+                    Do_MSD = True, Do_PairMSD = True)
+
 
 # %%%% Little script to fill the table
 
