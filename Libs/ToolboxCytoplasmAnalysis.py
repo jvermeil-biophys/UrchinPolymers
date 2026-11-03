@@ -233,12 +233,11 @@ def get_cell_inner_circle(img, PLOT = False):
         plt.show()
     return(contour)
 
-def make_NbYolkCell_contour_and_mask(img, PixPerUm,
-                                     mode = 'dark_background', 
-                                     buffer_um = 0,
-                                     keep_only_largest = False,
-                                     exclude_on_edges = True,
-                                     PLOT = False):
+
+def make_NbYolkCell_contour_and_mask(img, tifName, figDir, PixPerUm,
+                                     mode = 'dark_background', buffer_um = 0.0,
+                                     keep_only_largest = False, exclude_on_edges = True,
+                                     PLOT = False, SHOWPLOT = False, SAVEPLOT = False):
     nT, nY, nX = img.shape
     k_th = 1.0
     
@@ -298,7 +297,13 @@ def make_NbYolkCell_contour_and_mask(img, PixPerUm,
     Mask_inner = ufun.contour_to_mask((nY, nX), Contour_inner)
     
     
+    # Plot
     if PLOT:
+        if not SHOWPLOT:
+            plt.ioff()
+        else:
+            plt.ion()
+            
         fig, axes = plt.subplots(2, 2, figsize=(8, 8), sharex=True, sharey=True)
         axes_f = axes.flatten()
         
@@ -334,7 +339,16 @@ def make_NbYolkCell_contour_and_mask(img, PixPerUm,
         #     x_as, y_as = poly.exterior.xy
         #     ax.plot(x_as, y_as, lw='0.75')
         
-        plt.show()
+        if SHOWPLOT:
+            plt.show()
+        
+        if SAVEPLOT:
+            figName = tifName.split('.')[0] + '_contour.png'
+            figPath = os.path.join(figDir, figName)
+            fig.savefig(figPath, dpi=300, )
+    
+    if not SHOWPLOT:
+        plt.ion()
         
     return(Contour_inner, Mask_inner)
 
@@ -513,8 +527,8 @@ def get_N_random_square_ROIs_in_cell(mask, L, N,
 # %%%% Data
 
 
-def rawTracks_2_cleanTracks(rawTracks, dstDir, cleanTrackName, PixPerUm, 
-                            Contour_cell = None, shape = None,
+def rawTracks_2_cleanTracks(rawTracks, cleanTrackName, plotDir, 
+                            PixPerUm, shape = None, Contour_cell = None, 
                             edge_buffer_cutoff_um = 2.5, nPoints_cuttoff = 30,
                             column_names = None,
                             RefImg = None, PLOT = False, SHOWPLOT = False, SAVEPLOT = False):
@@ -561,8 +575,7 @@ def rawTracks_2_cleanTracks(rawTracks, dstDir, cleanTrackName, PixPerUm,
     df = pd.DataFrame({column_names[k] : concat_tracks[:,k] for k in range(len(column_names))})
     df[column_names[0]] = df[column_names[0]].values.astype(int)
     df[column_names[3]] = df[column_names[3]].values.astype(int)
-    df.to_csv(os.path.join(dstDir, cleanTrackName), index=False, sep = '\t')
-    
+        
     
     # Plot
     if PLOT:
@@ -611,7 +624,7 @@ def rawTracks_2_cleanTracks(rawTracks, dstDir, cleanTrackName, PixPerUm,
         
         if SAVEPLOT:
             figName = '_'.join(cleanTrackName.split('_')[:-1]) + '_cleanTracks.png'
-            figPath = os.path.join(dstDir, figName)
+            figPath = os.path.join(plotDir, figName)
             fig.savefig(figPath, dpi=500, )
     
     if not SHOWPLOT:
@@ -1318,7 +1331,7 @@ def pretreatAndTrack_CropedYolk(tifPath, xmlName, dstDir,
     return(Tracks)
 
 
-def pretreat_and_track_NbYolk(tifPath, rawTrackName, dstDir,
+def pretreat_and_track_NbYolk(tifPath, rawTrackName, dstDir, figDir,
                               Pix_Per_Um, Dict_TrackMate_Settings = None,
                               Mask_cell = None, mask_buffer_um = 0.0,
                               return_tracks = False,
