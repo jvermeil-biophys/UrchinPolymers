@@ -598,13 +598,10 @@ def NByolk_track_sequence(srcDir, tifNames, df_films_path,
         print(pm.CYAN + f'\nFile {i+1:.0f}/{len(fileNames):.0f} - {fN}' + pm.NORMAL)
         
         idx = DF_FILMS[DF_FILMS['tN'] == tN].index[0]
-    
         PixPerUm = DF_FILMS.loc[idx, 'PixPerUm']
         FPS = DF_FILMS.loc[idx, 'FPS']
-        
         Segmentation_Mode = DF_FILMS.loc[idx, 'segmentation']
         Do_DriftCorrection = DF_FILMS.loc[idx, 'drift_correction']
-        
         mask_buffer_um = DF_FILMS.loc[idx, 'mask_edge_cutoff_um']
         edge_buffer_cutoff_um = DF_FILMS.loc[idx, 'tracking_edge_cutoff_um']
         nT = DF_FILMS.loc[idx, 'n_frames']
@@ -702,15 +699,12 @@ def NByolk_track_sequence(srcDir, tifNames, df_films_path,
             df2.to_csv(os.path.join(Dict_rP['dir_cleanTracks'], dcTrackName), sep='\t')
     
     
-        
-            
-            
 def NByolk_msd_compute(tifNames, df_films_path, df_res_name,
                        Dict_fSuf, Dict_rP, Dict_pP, 
                        Do_MSD = True, Do_PairMSD = True):
     
     DF_FILMS = pd.read_csv(df_films_path)
-    DF_RES = pd.read_csv(os.path.join(RES_DIR, df_res_name + '.csv'))
+    
     tifPaths = [os.path.join(srcDir, tifName) for tifName in tifNames]
     fileNames = [fN.split('.')[0] for fN in tifNames]
     
@@ -718,14 +712,14 @@ def NByolk_msd_compute(tifNames, df_films_path, df_res_name,
         tP, tN, fN = tifPaths[i], tifNames[i], fileNames[i]
         print(pm.CYAN + f'\nFile {i+1:.0f}/{len(fileNames):.0f} - {fN}' + pm.NORMAL)
         
+        DF_RES = pd.read_csv(os.path.join(RES_DIR, df_res_name + '.csv')).reset_index(drop=True)
+        if tN not in DF_RES['tN'].to_numpy():
+            DF_RES.loc[len(DF_RES), 'tN'] = tN
+        
         idx = DF_FILMS[DF_FILMS['tN'] == tN].index[0]
-    
         PixPerUm = DF_FILMS.loc[idx, 'PixPerUm']
         FPS = DF_FILMS.loc[idx, 'FPS']
-        
-        Segmentation_Mode = DF_FILMS.loc[idx, 'segmentation']
         Use_DriftCorrected = DF_FILMS.loc[idx, 'drift_correction']
-        
         max_Dt_s = DF_FILMS.loc[idx, 'msd_max_Dt_s']
         lowDt_upper = DF_FILMS.loc[idx, 'msd_lowDt_upper_s']
         highDt_lower = DF_FILMS.loc[idx, 'msd_highDt_lower_s']
@@ -746,6 +740,7 @@ def NByolk_msd_compute(tifNames, df_films_path, df_res_name,
             msdFitsName = fN + Dict_fSuf['suf_globalMsdFits']
             
             df = pd.read_csv(os.path.join(Dict_rP['dir_cleanTracks'], trackName), sep='\t')
+            msd_N_tracks = len(df['particle'].unique())
             
             max_lagtime = int(max_Dt_s * FPS)
             res_emsd = tp.motion.emsd(df, 1/PixPerUm, FPS, max_lagtime=max_lagtime).reset_index()
@@ -754,48 +749,57 @@ def NByolk_msd_compute(tifNames, df_films_path, df_res_name,
             T, MSD = res_emsd['lagt'].values, res_emsd['msd'].values
             iLow = ufun.findFirst(lowDt_upper, T) + 1
             iHigh = ufun.findFirst(highDt_lower, T)
-            
+
             parms, results = ufun.fitLineHuber(T, MSD, with_intercept = False)
-            D_linear = parms[0]/4
+            msd_D_lin = parms[0]/4
             
             parms, results = ufun.fitLineHuber(
                 np.log(T), np.log(MSD), 
                 with_intercept = True)
             b, a = parms
-            k_full = a
-            D_full = np.exp(b)/4
+            msd_k_full = a
+            msd_D_full = np.exp(b)/4
             
             if len(T[:iLow]) >= 3:
                 parms, results = ufun.fitLineHuber(
                     np.log(T[:iLow]), np.log(MSD[:iLow]), 
                     with_intercept = True)
                 b, a = parms
-                k_lowDt = a
-                D_lowDt = np.exp(b)/4
+                msd_k_lowDt = a
+                msd_D_lowDt = np.exp(b)/4
             else:
-                k_lowDt, D_lowDt = np.nan, np.nan
+                msd_k_lowDt, msd_D_lowDt = np.nan, np.nan
             
             if len(T[iHigh:]) >= 6:
+                parms, results = ufun.fitLineHuber(
+                    T[iHigh:], MSD[iHigh:], 
+                    with_intercept = False)
+                msd_D_lin_highDt = parms[0]/4
+                
                 parms, results = ufun.fitLineHuber(
                     np.log(T[iHigh:]), np.log(MSD[iHigh:]), 
                     with_intercept = True)
                 b, a = parms
-                k_highDt = a
-                D_highDt = np.exp(b)/4
+                msd_k_highDt = a
+                msd_D_highDt = np.exp(b)/4
             else:
-                k_highDt, D_highDt = np.nan, np.nan
+                msd_k_highDt, msd_D_highDt = np.nan, np.nan
+                
+            msd_tc = (msd_D_lowDt/msd_D_highDt)**(1/(msd_k_highDt - msd_k_lowDt))
             
             dict_MSDfits = {
-                'maxDt_s': max_Dt_s,
-                'lowDt_upper': lowDt_upper, 'highDt_lower': highDt_lower,
-                'D_linear': D_linear,
-                'k_full': k_full, 'D_full': D_full,
-                'k_lowDt': k_lowDt, 'D_lowDt': D_lowDt,
-                'k_highDt': k_highDt, 'D_highDt': D_highDt,
+                # 'maxDt_s': max_Dt_s, 'lowDt_upper': lowDt_upper, 'highDt_lower': highDt_lower,
+                'msd_N_tracks': msd_N_tracks, 'msd_tc': msd_tc, 
+                'msd_D_lin': msd_D_lin, 'msd_D_lin_highDt': msd_D_lin_highDt,
+                'msd_k_full': msd_k_full, 'msd_D_full': msd_D_full,
+                'msd_k_lowDt': msd_k_lowDt, 'msd_D_lowDt': msd_D_lowDt,
+                'msd_k_highDt': msd_k_highDt, 'msd_D_highDt': msd_D_highDt, 
                 }
             
             ufun.dict2json(dict_MSDfits, Dict_rP['dir_msd'], msdFitsName)
-    
+            for k, v in dict_MSDfits.items():
+                DF_RES.loc[idx, k] = v
+
     
         #### Import tracks, compute pairs, fit pair-MSD
         if Do_PairMSD:
@@ -806,6 +810,7 @@ def NByolk_msd_compute(tifNames, df_films_path, df_res_name,
                 trackName = fN + Dict_fSuf['suf_cleanTracks'] + '.csv'
             
             df = pd.read_csv(os.path.join(Dict_rP['dir_cleanTracks'], trackName), sep='\t')
+            pmsd_N_tracks = len(df['particle'].unique())
             
             # Compute Pair MSD
             Nframes = np.max(df['frame'].to_numpy()) 
@@ -818,6 +823,8 @@ def NByolk_msd_compute(tifNames, df_films_path, df_res_name,
                 )
             
             pairMsdName = fN + Dict_fSuf['suf_globalPairMsd'] + '.csv'
+            pairMsdFitsName = fN + Dict_fSuf['suf_globalPairMsdFits'] + '.json'
+            
             df_allTRange_pair_MSD.to_csv(os.path.join(Dict_rP['dir_pairMsd'], pairMsdName), 
                                          index=False, sep='\t')
             
@@ -829,47 +836,60 @@ def NByolk_msd_compute(tifNames, df_films_path, df_res_name,
             iHigh = ufun.findFirst(highDt_lower, T)
             
             parms, results = ufun.fitLineHuber(T, MSD, with_intercept = False)
-            D_linear = parms[0]/8
+            pmsd_D_lin = parms[0]/8
             
             parms, results = ufun.fitLineHuber(
                 np.log(T), np.log(MSD), 
                 with_intercept = True)
             b, a = parms
-            k_full = a
-            D_full = np.exp(b)/8
+            pmsd_k_full = a
+            pmsd_D_full = np.exp(b)/8
             
             if len(T[:iLow]) >= 3:
                 parms, results = ufun.fitLineHuber(
                     np.log(T[:iLow]), np.log(MSD[:iLow]), 
                     with_intercept = True)
                 b, a = parms
-                k_lowDt = a
-                D_lowDt = np.exp(b)/8
+                pmsd_k_lowDt = a
+                pmsd_D_lowDt = np.exp(b)/8
             else:
-                k_lowDt, D_lowDt = np.nan, np.nan
+                pmsd_k_lowDt, pmsd_D_lowDt = np.nan, np.nan
             
             if len(T[iHigh:]) >= 6:
+                parms, results = ufun.fitLineHuber(
+                    T[iHigh:], MSD[iHigh:], 
+                    with_intercept = False)
+                pmsd_D_lin_highDt = parms[0]/8
+                
                 parms, results = ufun.fitLineHuber(
                     np.log(T[iHigh:]), np.log(MSD[iHigh:]), 
                     with_intercept = True)
                 b, a = parms
-                k_highDt = a
-                D_highDt = np.exp(b)/8
+                pmsd_k_highDt = a
+                pmsd_D_highDt = np.exp(b)/8
             else:
-                k_highDt, D_highDt = np.nan, np.nan
+                pmsd_k_highDt, pmsd_D_highDt = np.nan, np.nan
+                
+            pmsd_tc = (pmsd_D_lowDt/pmsd_D_highDt)**(1/(pmsd_k_highDt - pmsd_k_lowDt))
             
             dict_pairMSDfits = {
-                'max_Dt_s': max_Dt_s,
-                'lowDt_upper': lowDt_upper, 'highDt_lower': highDt_lower,
-                'D_linear': D_linear,
-                'k_full': k_full, 'D_full': D_full,
-                'k_lowDt': k_lowDt, 'D_lowDt': D_lowDt,
-                'k_highDt': k_highDt, 'D_highDt': D_highDt,
+                # 'max_Dt_s': max_Dt_s, 'lowDt_upper': lowDt_upper, 'highDt_lower': highDt_lower,
+                'pmsd_N_tracks': pmsd_N_tracks, 'pmsd_tc': pmsd_tc,
+                'pmsd_D_lin': pmsd_D_lin, 'pmsd_D_lin_highDt': pmsd_D_lin_highDt,
+                'pmsd_k_full': pmsd_k_full, 'pmsd_D_full': pmsd_D_full,
+                'pmsd_k_lowDt': pmsd_k_lowDt, 'pmsd_D_lowDt': pmsd_D_lowDt,
+                'pmsd_k_highDt': pmsd_k_highDt, 'pmsd_D_highDt': pmsd_D_highDt,
                 }
             
-            pairMsdFitsName = fN + Dict_fSuf['suf_globalPairMsdFits'] + '.json'
             ufun.dict2json(dict_pairMSDfits, Dict_rP['dir_pairMsd'], pairMsdFitsName)
+            for k, v in dict_pairMSDfits.items():
+                DF_RES.loc[idx, k] = v
+        
+        #### End of the loop -> Save the dataframe
+        DF_RES.to_csv(os.path.join(RES_DIR, df_res_name + '.csv'), index=False)
                 
+    #### End of the function
+    
 
 #### Plotting functions
 
@@ -1494,6 +1514,14 @@ Dict_Analysis_Settings = {
     'pairMSD_dist_th_um' : 5,
     }
 
+# %%%% Run new MSD
+
+df_res_name = 'SPT_Results_01'
+NByolk_msd_compute(tifNames, df_films_PATH, df_res_name,
+                    Dict_fSuf, Dict_rP, Dict_pP, 
+                    Do_MSD = True, Do_PairMSD = True)
+
+
 # %%%% Little script to fill the table
 
 
@@ -1821,10 +1849,18 @@ Dict_Analysis_Settings = {
     'pairMSD_dist_th_um' : 5,
     }
 
+# %%%% Run new MSD
+
+df_res_name = 'SPT_Results_01'
+NByolk_msd_compute(tifNames, df_films_PATH, df_res_name,
+                    Dict_fSuf, Dict_rP, Dict_pP, 
+                    Do_MSD = True, Do_PairMSD = True)
+
+
 # %%%% Little script to fill the table
 
 
-df_films_path = os.path.join(resDir, 'SPT_Data_Films.csv')
+df_films_path = os.path.join(RES_DIR, 'SPT_Data_Films.csv')
 DF_FILMS = pd.read_csv(df_films_path)
 
 for fN, tN, tP in zip(fileNames, tifNames, tifPaths):
@@ -2302,10 +2338,20 @@ Dict_Analysis_Settings = {
     'pairMSD_dist_th_um' : 5,
     }
 
+# %%%% Run new MSD
+
+df_res_name = 'SPT_Results_01'
+NByolk_msd_compute(tifNames, df_films_PATH, df_res_name,
+                    Dict_fSuf, Dict_rP, Dict_pP, 
+                    Do_MSD = True, Do_PairMSD = True)
+
+
+
+
 # %%%% Little script to fill the table
 
 
-df_films_path = os.path.join(resDir, 'SPT_Data_Films.csv')
+df_films_path = os.path.join(RES_DIR, 'SPT_Data_Films.csv')
 DF_FILMS = pd.read_csv(df_films_path)
 
 for fN, tN, tP in zip(fileNames, tifNames, tifPaths):
@@ -2345,7 +2391,7 @@ df_diff, df_pairDiff = import_and_plot_pairMSD(fileNames, Dict_fSuf, fig_title=t
 
 for i in plt.get_fignums():
     plt.figure(i)
-    plt.savefig(os.path.join(figDir, title + f'_MSDfig_{i:02d}.png'))
+    plt.savefig(os.path.join(FIG_DIR, title + f'_MSDfig_{i:02d}.png'))
 
 # %%%% Import tracks & analyse shape of explored zone
 
@@ -2674,7 +2720,7 @@ def getEllipses(fileName, tifPath, df_cellGeom,
 
 
 df_geom, DA, fig, axes = getEllipses(fileName, tifPath, df_cellGeom, 
-                                     Use_DriftCorrected, Dict_Files_Suffix)
+                                     Use_DriftCorrected, Dict_fSuf)
 
 
 # -----------------------------------------------------------------------------
@@ -2752,7 +2798,7 @@ Dict_Analysis_Settings = {
 # %%%% Little script to fill the table
 
 
-df_films_path = os.path.join(resDir, 'SPT_Data_Films.csv')
+df_films_path = os.path.join(RES_DIR, 'SPT_Data_Films.csv')
 DF_FILMS = pd.read_csv(df_films_path)
 
 # for fN, tN, tP in zip(fileNames, tifNames, tifPaths):
@@ -3004,15 +3050,15 @@ srcDir = os.path.join(mainDir, 'Crops')
 dstDir = os.path.join(mainDir, 'SPT_results')
 
 tifNames = [
-            '26-07-29_PostF_2min_Pos11_10fps_Texp100ms_CSU642_crop.tif',
-            # '26-07-29_PostF_6min30_Pos11_10fps_Texp100ms_CSU642_crop.tif',
-            # '26-07-29_PostF_12min_Pos11_10fps_Texp100ms_CSU642_crop.tif',
-            # '26-07-29_PostF_20min_Pos11_10fps_Texp100ms_CSU642_crop.tif',
-            # '26-07-29_PostF_30min_Pos11_10fps_Texp100ms_CSU642_crop.tif',
-            # '26-07-29_PostF_45min_Pos11_10fps_Texp100ms_CSU642_crop.tif',
-            # '26-07-29_PostF_60min_Pos11_10fps_Texp100ms_CSU642_crop.tif',
-            # '26-07-29_PostF_70min_Pos11_10fps_Texp100ms_CSU642_crop.tif',
-            ]
+    '26-07-29_PostF_2min_Pos11_10fps_Texp100ms_CSU642_crop.tif',
+    '26-07-29_PostF_6min30_Pos11_10fps_Texp100ms_CSU642_crop.tif',
+    '26-07-29_PostF_12min_Pos11_10fps_Texp100ms_CSU642_crop.tif',
+    '26-07-29_PostF_20min_Pos11_10fps_Texp100ms_CSU642_crop.tif',
+    '26-07-29_PostF_30min_Pos11_10fps_Texp100ms_CSU642_crop.tif',
+    '26-07-29_PostF_45min_Pos11_10fps_Texp100ms_CSU642_crop.tif',
+    '26-07-29_PostF_60min_Pos11_10fps_Texp100ms_CSU642_crop.tif',
+    '26-07-29_PostF_70min_Pos11_10fps_Texp100ms_CSU642_crop.tif',
+    ]
 
 tifPaths = [os.path.join(srcDir, tifName) for tifName in tifNames]
 fileNames = [fN.split('.')[0] for fN in tifNames]
