@@ -296,9 +296,15 @@ def autofill_SPT_Data(srcDir, tifNames, df_films_path):
                 xc, yc = np.nan, np.nan
             else:
                 xc, yc = uiXY[0]
-            DF_FILMS.loc[idx, 'x_center'] = int(xc)
-            DF_FILMS.loc[idx, 'y_center'] = int(yc)
-            
+                xc, yc = round(xc), round(yc)
+                
+            DF_FILMS.loc[idx, 'x_center'] = xc
+            DF_FILMS.loc[idx, 'y_center'] = yc
+    
+    int_cols = ['n_frames', 'im_width', 'im_height']
+    for col in int_cols:
+        DF_FILMS[col] = DF_FILMS[col].astype(int)
+    
     DF_FILMS.to_csv(df_films_path, index=False, na_rep='NaN')
     
 
@@ -325,9 +331,9 @@ def NByolk_track_sequence(srcDir, tifNames, df_films_path,
         Do_DriftCorrection = DF_FILMS.loc[idx, 'drift_correction']
         mask_buffer_um = DF_FILMS.loc[idx, 'mask_edge_cutoff_um']
         edge_buffer_cutoff_um = DF_FILMS.loc[idx, 'tracking_edge_cutoff_um']
-        nT = DF_FILMS.loc[idx, 'n_frames']
-        nY = DF_FILMS.loc[idx, 'im_height']
-        nX = DF_FILMS.loc[idx, 'im_width']
+        nT = int(DF_FILMS.loc[idx, 'n_frames'])
+        nY = int(DF_FILMS.loc[idx, 'im_height'])
+        nX = int(DF_FILMS.loc[idx, 'im_width'])
         
         #### Make and save cell contours and masks
         if Do_Contours:
@@ -2312,11 +2318,11 @@ tifNames = [
     '26-07-29_PostF_2min_Pos11_10fps_Texp100ms_CSU642_crop.tif',
     '26-07-29_PostF_6min30_Pos11_10fps_Texp100ms_CSU642_crop.tif',
     '26-07-29_PostF_12min_Pos11_10fps_Texp100ms_CSU642_crop.tif',
-    '26-07-29_PostF_20min_Pos11_10fps_Texp100ms_CSU642_crop.tif',
-    '26-07-29_PostF_30min_Pos11_10fps_Texp100ms_CSU642_crop.tif',
-    '26-07-29_PostF_45min_Pos11_10fps_Texp100ms_CSU642_crop.tif',
-    '26-07-29_PostF_60min_Pos11_10fps_Texp100ms_CSU642_crop.tif',
-    '26-07-29_PostF_70min_Pos11_10fps_Texp100ms_CSU642_crop.tif',
+    # '26-07-29_PostF_20min_Pos11_10fps_Texp100ms_CSU642_crop.tif',
+    # '26-07-29_PostF_30min_Pos11_10fps_Texp100ms_CSU642_crop.tif',
+    # '26-07-29_PostF_45min_Pos11_10fps_Texp100ms_CSU642_crop.tif',
+    # '26-07-29_PostF_60min_Pos11_10fps_Texp100ms_CSU642_crop.tif',
+    # '26-07-29_PostF_70min_Pos11_10fps_Texp100ms_CSU642_crop.tif',
     ]
 
 tifPaths = [os.path.join(srcDir, tifName) for tifName in tifNames]
