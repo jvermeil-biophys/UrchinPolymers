@@ -261,7 +261,7 @@ def NByolk_msd_compute(tifNames, df_films_path, df_res_name,
         except:
             DF_RES = pd.DataFrame({})
             
-        if tN not in DF_RES['tN'].to_numpy():
+        if ('tN' not in DF_RES.columns) or (tN not in DF_RES['tN'].to_numpy()):
             DF_RES.loc[len(DF_RES), 'tN'] = tN
         
         idx = DF_FILMS[DF_FILMS['tN'] == tN].index[0]
@@ -2188,10 +2188,10 @@ NByolk_msd_compute(tifNames, df_films_PATH, df_res_name,
 # %%%% Settings
 
 #### Paths
-mainDir = os.path.join(up.Path_IntraCellTracking, '2026_2601_Fixed_NileBlue_CharlotteMallart')
+mainDir = os.path.join(up.Path_IntraCellTracking, '2026_26-01_Fixed_NileBlue_CharlotteMallart')
 srcDir = os.path.join(mainDir, 'CropedFilms')
 dstDir = os.path.join(mainDir, 'SPT_results')
-os.listdir(srcDir)
+# print(os.listdir(srcDir))
 
 tifNames = [
     '2026_2601_NileBlue_Fix_1-2.tif',
