@@ -27,6 +27,7 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 import os
 import re
 import time
+import pyautogui
 import alphashape
 # import cv2
 
@@ -50,26 +51,110 @@ import Libs.UtilityFunctions as ufun
 import Libs.ToolboxCytoplasmAnalysis as tbca
 # import Libs.ToolboxStructureAnalysis as tbsa
 
-Dict_Files_Suffix = {
-    'suffix_contour' : '_cellContour',
-    'suffix_mask' : '_cellMask',
-    'suffix_rawTracks' : '_TmTracks',
-    'suffix_cleanTracks' : '_PyTracks',
-    'suffix_cleanTracks_DriftCorr' : '_PyTracks2',
-    'suffix_drift' : '_XYdrift',
-    'suffix_globalMsd' : '_GlobalMsd',
-    'suffix_globalMsdFits' : '_GlobalMsdFits',
-    'suffix_globalPairMsd' : '_GlobalPairMsd',
-    'suffix_globalPairMsdFits' : '_GlobalPairMsdFits',
+
+#### Paths
+
+FIG_DIR = os.path.join(up.Path_IntraCellTracking, 'SPT_figures')
+RES_DIR = os.path.join(up.Path_IntraCellTracking, 'SPT_results')
+
+Dict_rP = {
+    'dir_segmentation': os.path.join(RES_DIR, 'segmentation'),
+    'dir_rawTracks': os.path.join(RES_DIR, 'rawTracks'),
+    'dir_cleanTracks': os.path.join(RES_DIR, 'cleanTracks'),
+    'dir_msd': os.path.join(RES_DIR, 'MSD'),
+    'dir_pairMsd': os.path.join(RES_DIR, 'pairMSD'),
+    }
+
+Dict_pP = {
+    'dir_trackFig': os.path.join(FIG_DIR, 'Tracking'),
+    'dir_segmentFig': os.path.join(FIG_DIR, 'Segmentation'),
+    'dir_driftFig': os.path.join(FIG_DIR, 'Drift correction'),
+    }
+
+df_cells_PATH = os.path.join(RES_DIR, 'SPT_Data_Cells.csv')
+df_films_PATH = os.path.join(RES_DIR, 'SPT_Data_Films.csv')
+df_res_PATH = os.path.join(RES_DIR, 'SPT_Results.csv')
+
+DF_CELLS = pd.read_csv(df_cells_PATH)
+DF_FILMS = pd.read_csv(df_films_PATH)
+
+
+
+Dict_fSuf = {
+    'suf_contour' : '_cellContour',
+    'suf_mask' : '_cellMask',
+    'suf_rawTracks' : '_TmTracks',
+    'suf_cleanTracks' : '_PyTracks',
+    'suf_cleanTracks_DriftCorr' : '_PyTracks2',
+    'suf_drift' : '_XYdrift',
+    'suf_globalMsd' : '_GlobalMsd',
+    'suf_globalMsdFits' : '_GlobalMsdFits',
+    'suf_globalPairMsd' : '_GlobalPairMsd',
+    'suf_globalPairMsdFits' : '_GlobalPairMsdFits',
     }
 
 
-plotDir = 'C://Users//Joseph//Desktop//Presentations//2026-10-21_DiscussionsNouvellesManipes//MSDplots'
 
 # %% Helper functions
 
+#### TEST !
 
-def correct_drift_in_Tracks(df, fN, tP, dstDir, PixPerUm, FPS, 
+
+def ui2array(uixy):
+    """
+    Translate the output of the function plt.ginput() 
+    (which are lists of tuples), in an XY array with this shape:
+    XY = [[x0, y0], [x1, y1], [x2, y2], ...]
+    So if you need the [x, y] of 1 specific point, call XY[i]
+    If you need the list of all x coordinates, call XY[:, 0]
+    """
+    n = len(uixy)
+    XY = np.zeros((n, 2))
+    for i in range(n):
+        XY[i,0], XY[i,1] = uixy[i][0], uixy[i][1]
+    return(XY)
+
+def showAndQA(img, strech = True, 
+              QAtitle = 'Question', QAtext = '?', QAbuttons = ['Yes', 'No']
+              ):
+    if strech:
+        pStart, pStop = np.percentile(img, (1, 99))
+    else:
+        pStart, pStop = None, None
+        
+    fig, ax = plt.subplots(1,1)
+    ax.imshow(img, cmap = 'gray', vmin = pStart, vmax = pStop)
+    fig.show()
+    # mngr = plt.get_current_fig_manager()
+    # mngr.window.setGeometry(720, 50, 1175, 1000)
+    QA = pyautogui.confirm(
+        title=QAtitle,
+        text=QAtext,
+        buttons = QAbuttons,
+        )
+    
+    return(QA)
+
+def pointCellCenter(img):
+    QAtitle='Cell Microtubules Center',
+    QAtext='Can the organizing center of the microtubules be pointed?',
+    QAbuttons = ['Point center', 'No center']
+    QA = showAndQA(img, strech = True, 
+                   QAtitle = QAtitle, QAtext = QAtext, QAbuttons = QAbuttons)
+    if QA == 'Point center':
+        ui = plt.ginput(1, timeout=0)
+        uiXY = ui2array(ui)
+    else:
+        uiXY = []
+    fig = plt.gcf()
+    plt.close(fig)
+    return(QA, uiXY)
+
+
+####
+
+def correct_drift_in_Tracks(df, fN, tP, dstDir, figDir,
+                            PixPerUm, FPS, 
                             PLOT = False, SHOWPLOT = False, SAVEPLOT = False, 
                             export_image = False):
     if PLOT:
@@ -164,7 +249,7 @@ def correct_drift_in_Tracks(df, fN, tP, dstDir, PixPerUm, FPS,
 
         if SAVEPLOT:
             figName = fN + '_DriftCorr.png'
-            figPath = os.path.join(dstDir, figName)
+            figPath = os.path.join(figDir, figName)
             fig.savefig(figPath)
         if SHOWPLOT:
             plt.show()
@@ -193,268 +278,346 @@ def correct_drift_in_Tracks(df, fN, tP, dstDir, PixPerUm, FPS,
 
 #### Analysis functions
 
-def NByolk_analysis_sequence(mainDir, srcDir, dstDir, tifNames, Dict_Files_Suffix, 
-                             Dict_Image_Settings, 
-                             Dict_TrackMate_Settings, 
-                             Dict_Analysis_Settings,
-                             Do_Contours = True, 
-                             Do_Tracking = True, Ignore_ROIs = False,
-                             Do_TrackCleaning = True, Do_DriftCorrection = False,
-                             Use_DriftCorrected = False,
-                             Do_MSD = True, Do_PairMSD = True):
+def autofill_SPT_Data(srcDir, tifNames, df_films_path):
+    DF_FILMS = pd.read_csv(df_films_path)
+    for tN in tifNames:
+        tP = os.path.join(srcDir, tN)
+        if tN in DF_FILMS['tN'].to_numpy():
+            idx = DF_FILMS[DF_FILMS['tN'] == tN].index[0]
+            im_shape, im_type = ufun.tiff_inspect(tP)
+            nT, nY, nX = im_shape
+            DF_FILMS.loc[idx, 'n_frames'] = int(nT)
+            DF_FILMS.loc[idx, 'im_width'] = int(nX)
+            DF_FILMS.loc[idx, 'im_height'] = int(nY)
+            
+            img = ufun.load_stack_region(tP, time_indices=[nT//2])[0]
+            QA, uiXY = pointCellCenter(img)
+            if QA == 'No center':
+                xc, yc = np.nan, np.nan
+            else:
+                xc, yc = uiXY[0]
+                xc, yc = round(xc), round(yc)
+                
+            DF_FILMS.loc[idx, 'x_center'] = xc
+            DF_FILMS.loc[idx, 'y_center'] = yc
     
+    int_cols = ['n_frames', 'im_width', 'im_height']
+    for col in int_cols:
+        DF_FILMS[col] = DF_FILMS[col].astype(int)
+    
+    DF_FILMS.to_csv(df_films_path, index=False, na_rep='NaN')
+    
+
+def NByolk_track_sequence(srcDir, tifNames, df_films_path, 
+                          Dict_fSuf, Dict_rP, Dict_pP, 
+                          Dict_TrackMate_Settings, 
+                          Do_Contours = True, 
+                          Do_Tracking = True, 
+                          Do_TrackCleaning = True, 
+                          Do_DriftCorrection = False):
+    
+    DF_FILMS = pd.read_csv(df_films_path)
     tifPaths = [os.path.join(srcDir, tifName) for tifName in tifNames]
     fileNames = [fN.split('.')[0] for fN in tifNames]
     
-    suffix_contour = Dict_Files_Suffix['suffix_contour']
-    suffix_mask = Dict_Files_Suffix['suffix_mask']
-    suffix_rawTracks = Dict_Files_Suffix['suffix_rawTracks']
-    suffix_cleanTracks = Dict_Files_Suffix['suffix_cleanTracks']
-    suffix_driftCorrTracks = Dict_Files_Suffix['suffix_cleanTracks_DriftCorr']
-    suffix_drift = Dict_Files_Suffix['suffix_drift'] 
-    suffix_globalMsd = Dict_Files_Suffix['suffix_globalMsd']
-    suffix_globalMsdFits = Dict_Files_Suffix['suffix_globalMsdFits']
-    suffix_globalPairMsd = Dict_Files_Suffix['suffix_globalPairMsd']
-    suffix_globalPairMsdFits = Dict_Files_Suffix['suffix_globalPairMsdFits']
+    for i in range(len(fileNames)):
+        tP, tN, fN = tifPaths[i], tifNames[i], fileNames[i]
+        print(pm.CYAN + f'\nFile {i+1:.0f}/{len(fileNames):.0f} - {fN}' + pm.NORMAL)
+        
+        idx = DF_FILMS[DF_FILMS['tN'] == tN].index[0]
+        PixPerUm = DF_FILMS.loc[idx, 'PixPerUm']
+        FPS = DF_FILMS.loc[idx, 'FPS']
+        Segmentation_Mode = DF_FILMS.loc[idx, 'segmentation']
+        Do_DriftCorrection = DF_FILMS.loc[idx, 'drift_correction']
+        mask_buffer_um = DF_FILMS.loc[idx, 'mask_edge_cutoff_um']
+        edge_buffer_cutoff_um = DF_FILMS.loc[idx, 'tracking_edge_cutoff_um']
+        nT = int(DF_FILMS.loc[idx, 'n_frames'])
+        nY = int(DF_FILMS.loc[idx, 'im_height'])
+        nX = int(DF_FILMS.loc[idx, 'im_width'])
+        
+        #### Make and save cell contours and masks
+        if Do_Contours:
+            print(pm.BRIGHTORANGE + '1. Contours step' + pm.NORMAL)
+            for i in range(len(fileNames)): # len(fileNames)
+                tP, fN = tifPaths[i], fileNames[i]
+                print(pm.CYAN + f'\nFile {i+1:.0f}/{len(fileNames):.0f} - {fN}' + pm.NORMAL)
+                
+                # shape, dtype = ufun.tiff_inspect(tP)
+                # nT = shape[0]
+                TT = range(0, nT, nT//100)
+                img = ufun.load_stack_region(tP, time_indices=TT)
+                
+                Contour_cell, Mask_cell = tbca.make_NbYolkCell_contour_and_mask(
+                    img, tN, Dict_pP['dir_segmentFig'], PixPerUm,
+                    keep_only_largest = True, exclude_on_edges = True,
+                    PLOT = True, SHOWPLOT = False, SAVEPLOT = True
+                    )
+                
+                contourFile = fN + Dict_fSuf['suf_contour'] + '.npy'
+                maskFile = fN + Dict_fSuf['suf_mask'] + '.npy'
+                np.save(os.path.join(Dict_rP['dir_segmentation'], contourFile), Contour_cell)
+                np.save(os.path.join(Dict_rP['dir_segmentation'], maskFile), Mask_cell)
     
-    # UmPerPix = Dict_Image_Settings['UmPerPix']
-    PixPerUm = Dict_Image_Settings['PixPerUm']
-    FPS = Dict_Image_Settings['FPS']
     
-    mask_buffer_um = Dict_Analysis_Settings['mask_buffer_um']
-    edge_buffer_cutoff_um = Dict_Analysis_Settings['edge_buffer_cutoff_um']
-    max_Dt_s = Dict_Analysis_Settings['max_Dt_s']
-    lowDt_upper = Dict_Analysis_Settings['lowDt_upper']
-    highDt_lower = Dict_Analysis_Settings['highDt_lower']
-    pairMSD_Dt_s = Dict_Analysis_Settings['pairMSD_Dt_s']
-    pairMSD_dist_th_um = Dict_Analysis_Settings['pairMSD_dist_th_um']
-    
-    #### Make and save cell contours and masks
-    if Do_Contours:
-        print(pm.BRIGHTORANGE + '\n\n1. Contours step\n' + pm.NORMAL)
-        for i in range(len(fileNames)): # len(fileNames)
-            tP, fN = tifPaths[i], fileNames[i]
-            print(pm.CYAN + f'File {i+1:.0f}/{len(fileNames):.0f} - {fN}\n' + pm.NORMAL)
-            
-            shape, dtype = ufun.tiff_inspect(tP)
-            nT = shape[0]
-            TT = range(0, nT, nT//100)
-            img = ufun.load_stack_region(tP, time_indices=TT)
-            
-            Contour_cell, Mask_cell = tbca.make_NbYolkCell_contour_and_mask(img, PixPerUm,
-                                                                            buffer_um = 0.0,
-                                                                            mode = 'dark_background', 
-                                                                            keep_only_largest = True,
-                                                                            exclude_on_edges = True,
-                                                                            PLOT = True)
-            
-            contourFile = fN + suffix_contour + '.npy'
-            maskFile = fN + suffix_mask + '.npy'
-            np.save(os.path.join(srcDir, contourFile), Contour_cell)
-            np.save(os.path.join(srcDir, maskFile), Mask_cell)
-
-    #### Run Trackmate
-    if Do_Tracking:
-        print(pm.BRIGHTORANGE + '\n\n2. Tracking step\n' + pm.NORMAL)
-        for i in range(len(fileNames)): #len(fileNames)
-            tifPath, fN = tifPaths[i], fileNames[i]
-            print(pm.CYAN + f'\nFile {i+1:.0f}/{len(fileNames):.0f} - {fN}' + pm.NORMAL)
-            
-            rawTrackName = fN + suffix_rawTracks + '.xml'
-            maskFile = fN + suffix_mask + '.npy'
-            if not Ignore_ROIs:
+        #### Run Trackmate
+        if Do_Tracking:
+            print(pm.BRIGHTORANGE + '2. Tracking step' + pm.NORMAL)
+            rawTrackName = fN + Dict_fSuf['suf_rawTracks'] + '.xml'
+            maskFile = fN + Dict_fSuf['suf_mask'] + '.npy'
+            if Segmentation_Mode == 'cell-contour':
                 Mask_cell = np.load(os.path.join(srcDir, maskFile))
             else:
                 Mask_cell = None
             
-            tbca.pretreat_and_track_NbYolk(tifPath, rawTrackName, dstDir, PixPerUm,
-                                           Dict_TrackMate_Settings = Dict_TrackMate_Settings,
-                                           Mask_cell = Mask_cell, mask_buffer_um = mask_buffer_um,
-                                           PLOT = True, SHOWPLOT = False, SAVEPLOT = True)
-
-    #### Import & format tracks
-    if Do_TrackCleaning:
-        print(pm.BRIGHTORANGE + '\n\n3. Tracks formatting step\n' + pm.NORMAL)
-        for i in range(len(fileNames)): #len(fileNames)
-            tP, fN = tifPaths[i], fileNames[i]
-            print(pm.CYAN + f'File {i+1:.0f}/{len(fileNames):.0f} - {fN}' + pm.NORMAL)
+            tbca.pretreat_and_track_NbYolk(
+                tifPath, rawTrackName, 
+                Dict_rP['dir_rawTracks'], Dict_pP['dir_trackFig'], 
+                PixPerUm, Dict_TrackMate_Settings = Dict_TrackMate_Settings,
+                Mask_cell = Mask_cell, mask_buffer_um = mask_buffer_um,
+                PLOT = True, SHOWPLOT = False, SAVEPLOT = True
+                )
+    
+    
+        #### Import & format tracks
+        if Do_TrackCleaning:
+            print(pm.BRIGHTORANGE + '3. Tracks formatting step' + pm.NORMAL)
             img_0 = ufun.load_stack_region(tP, time_indices=[0])[0]
             
-            rawTrackName = fN + suffix_rawTracks + '.xml'
-            cleanTrackName = fN + suffix_cleanTracks + '.csv'
-            contourPath = os.path.join(srcDir, fN + suffix_contour + '.npy')
+            rawTrackName = fN + Dict_fSuf['suf_rawTracks'] + '.xml'
+            cleanTrackName = fN + Dict_fSuf['suf_cleanTracks'] + '.csv'
+            contourPath = os.path.join(Dict_rP['dir_segmentation'], fN + Dict_fSuf['suf_contour'] + '.npy')
             
-            rawTracks = tbca.import_TrackMate_tracks(os.path.join(dstDir, rawTrackName))
+            rawTracks = tbca.import_TrackMate_tracks(os.path.join(Dict_rP['dir_rawTracks'], rawTrackName))
+            shape = [nY, nX]
             
-            if not Ignore_ROIs:
+            if Segmentation_Mode == 'cell-contour':
                 Contour_cell = np.load(contourPath)
-                shape = None
             else:
                 Contour_cell = None
-                shape, dtype = ufun.tiff_inspect(tP)
-                shape = shape[1:]
-
-            tbca.rawTracks_2_cleanTracks(rawTracks, dstDir, cleanTrackName, PixPerUm,
-                                         Contour_cell = Contour_cell, shape = shape, 
-                                         edge_buffer_cutoff_um = edge_buffer_cutoff_um, nPoints_cuttoff = 30,
-                                         RefImg = img_0, PLOT = True, SHOWPLOT = False, SAVEPLOT = True,
-                                        )
-            plt.close('all')
-    
-    #### Correct global drift in trajectory
-    if Do_DriftCorrection:
-        print(pm.BRIGHTORANGE + '\n\n3.5. Drift correction\n' + pm.NORMAL)
-        for i in range(len(fileNames)): #len(fileNames)
-            tP, fN = tifPaths[i], fileNames[i]
-            print(pm.CYAN + f'File {i+1:.0f}/{len(fileNames):.0f} - {fN}' + pm.NORMAL)
             
-            cleanTrackName = fN + suffix_cleanTracks + '.csv'
+            df = tbca.rawTracks_2_cleanTracks(
+                rawTracks, cleanTrackName, Dict_pP['dir_trackFig'], 
+                PixPerUm, shape = shape, Contour_cell = Contour_cell, 
+                edge_buffer_cutoff_um = edge_buffer_cutoff_um, nPoints_cuttoff = 30,
+                RefImg = img_0, PLOT = True, SHOWPLOT = False, SAVEPLOT = True,
+                )
+            
+            df.to_csv(os.path.join(Dict_rP['dir_cleanTracks'], cleanTrackName), index=False, sep = '\t')
+            plt.close('all')
+        
+        
+        #### Correct global drift in trajectory
+        if Do_DriftCorrection:
+            print(pm.BRIGHTORANGE + '3.5. Drift correction' + pm.NORMAL)                
+            cleanTrackName = fN + Dict_fSuf['suf_cleanTracks'] + '.csv'
             df = pd.read_csv(os.path.join(dstDir, cleanTrackName), sep='\t')
         
-            df2, Dxy_corr = correct_drift_in_Tracks(df, fN, tP, dstDir, PixPerUm, FPS, 
-                                          PLOT = True, SHOWPLOT = False, SAVEPLOT = True, 
-                                          export_image = False)
-            driftArrayName = fN + suffix_drift + '.txt'
-            np.savetxt(os.path.join(dstDir, driftArrayName), Dxy_corr)
+            df2, Dxy_corr = correct_drift_in_Tracks(
+                df, fN, tP, Dict_rP['dir_cleanTracks'], Dict_pP['dir_driftFig'], 
+                PixPerUm, FPS, 
+                PLOT = True, SHOWPLOT = False, SAVEPLOT = True, 
+                export_image = False
+                )
             
-            dcTrackName = fN + suffix_driftCorrTracks + '.csv'
-            df2.to_csv(os.path.join(dstDir, dcTrackName), sep='\t')
-
-    #### Import tracks, run trackpy.emsd, fit MSD
-    if Do_MSD:
-        print(pm.BRIGHTORANGE + '\n\n4. MSD compute & fit step\n' + pm.NORMAL)
-        for i in range(len(fileNames)): #len(fileNames)
-            tP, fN = tifPaths[i], fileNames[i]
-            print(pm.CYAN + f'File {i+1:.0f}/{len(fileNames):.0f} - {fN}' + pm.NORMAL)
+            driftArrayName = fN + Dict_fSuf['suf_drift']  + '.txt'
+            np.savetxt(os.path.join(Dict_rP['dir_cleanTracks'], driftArrayName), Dxy_corr)
             
-            rawTrackName = fN + suffix_rawTracks + '.xml'
+            dcTrackName = fN + Dict_fSuf['suf_cleanTracks_DriftCorr'] + '.csv'
+            df2.to_csv(os.path.join(Dict_rP['dir_cleanTracks'], dcTrackName), sep='\t')
+    
+    
+def NByolk_msd_compute(tifNames, df_films_path, df_res_name,
+                       Dict_fSuf, Dict_rP, Dict_pP, 
+                       Do_MSD = True, Do_PairMSD = True):
+    
+    DF_FILMS = pd.read_csv(df_films_path)
+    
+    tifPaths = [os.path.join(srcDir, tifName) for tifName in tifNames]
+    fileNames = [fN.split('.')[0] for fN in tifNames]
+    
+    for i in range(len(fileNames)):
+        tP, tN, fN = tifPaths[i], tifNames[i], fileNames[i]
+        print(pm.CYAN + f'\nFile {i+1:.0f}/{len(fileNames):.0f} - {fN}' + pm.NORMAL)
+        
+        DF_RES = pd.read_csv(os.path.join(RES_DIR, df_res_name + '.csv')).reset_index(drop=True)
+        if tN not in DF_RES['tN'].to_numpy():
+            DF_RES.loc[len(DF_RES), 'tN'] = tN
+        
+        idx = DF_FILMS[DF_FILMS['tN'] == tN].index[0]
+        PixPerUm = DF_FILMS.loc[idx, 'PixPerUm']
+        FPS = DF_FILMS.loc[idx, 'FPS']
+        Use_DriftCorrected = DF_FILMS.loc[idx, 'drift_correction']
+        max_Dt_s = DF_FILMS.loc[idx, 'msd_max_Dt_s']
+        lowDt_upper = DF_FILMS.loc[idx, 'msd_lowDt_upper_s']
+        highDt_lower = DF_FILMS.loc[idx, 'msd_highDt_lower_s']
+        pairMSD_Dt_s = DF_FILMS.loc[idx, 'pMsd_max_Dt_s']
+        pairMSD_dist_th_um = DF_FILMS.loc[idx, 'pMSD_dist_th_um']
+    
+    
+        #### Import tracks, run trackpy.emsd, fit MSD
+        if Do_MSD:
+            print(pm.BRIGHTORANGE + '4. MSD compute & fit step' + pm.NORMAL)
+            # rawTrackName = fN + Dict_fSuf['suf_rawTracks'] + '.xml'
             if Use_DriftCorrected:
-                trackName = fN + suffix_driftCorrTracks + '.csv'
+                trackName = fN + Dict_fSuf['suf_cleanTracks_DriftCorr'] + '.csv'
             else:
-                trackName = fN + suffix_cleanTracks + '.csv'
+                trackName = fN + Dict_fSuf['suf_cleanTracks'] + '.csv'
                 
-            msdName = fN + suffix_globalMsd + '.csv'
-            msdFitsName = fN + suffix_globalMsdFits
+            msdName = fN + Dict_fSuf['suf_globalMsd'] + '.csv'
+            msdFitsName = fN + Dict_fSuf['suf_globalMsdFits']
             
-            df = pd.read_csv(os.path.join(dstDir, trackName), sep='\t')
+            df = pd.read_csv(os.path.join(Dict_rP['dir_cleanTracks'], trackName), sep='\t')
+            msd_N_tracks = len(df['particle'].unique())
             
             max_lagtime = int(max_Dt_s * FPS)
             res_emsd = tp.motion.emsd(df, 1/PixPerUm, FPS, max_lagtime=max_lagtime).reset_index()
-            res_emsd.to_csv(os.path.join(dstDir, msdName), index=False, sep='\t')
+            res_emsd.to_csv(os.path.join(Dict_rP['dir_msd'], msdName), index=False, sep='\t')
             
             T, MSD = res_emsd['lagt'].values, res_emsd['msd'].values
             iLow = ufun.findFirst(lowDt_upper, T) + 1
             iHigh = ufun.findFirst(highDt_lower, T)
-            
+
             parms, results = ufun.fitLineHuber(T, MSD, with_intercept = False)
-            D_linear = parms[0]/4
+            msd_D_lin = parms[0]/4
             
-            parms, results = ufun.fitLineHuber(np.log(T), np.log(MSD), with_intercept = True)
+            parms, results = ufun.fitLineHuber(
+                np.log(T), np.log(MSD), 
+                with_intercept = True)
             b, a = parms
-            k_full = a
-            D_full = np.exp(b)/4
+            msd_k_full = a
+            msd_D_full = np.exp(b)/4
             
             if len(T[:iLow]) >= 3:
-                parms, results = ufun.fitLineHuber(np.log(T[:iLow]), np.log(MSD[:iLow]), with_intercept = True)
+                parms, results = ufun.fitLineHuber(
+                    np.log(T[:iLow]), np.log(MSD[:iLow]), 
+                    with_intercept = True)
                 b, a = parms
-                k_lowDt = a
-                D_lowDt = np.exp(b)/4
+                msd_k_lowDt = a
+                msd_D_lowDt = np.exp(b)/4
             else:
-                k_lowDt, D_lowDt = np.nan, np.nan
+                msd_k_lowDt, msd_D_lowDt = np.nan, np.nan
             
             if len(T[iHigh:]) >= 6:
-                parms, results = ufun.fitLineHuber(np.log(T[iHigh:]), np.log(MSD[iHigh:]), with_intercept = True)
+                parms, results = ufun.fitLineHuber(
+                    T[iHigh:], MSD[iHigh:], 
+                    with_intercept = False)
+                msd_D_lin_highDt = parms[0]/4
+                
+                parms, results = ufun.fitLineHuber(
+                    np.log(T[iHigh:]), np.log(MSD[iHigh:]), 
+                    with_intercept = True)
                 b, a = parms
-                k_highDt = a
-                D_highDt = np.exp(b)/4
+                msd_k_highDt = a
+                msd_D_highDt = np.exp(b)/4
             else:
-                k_highDt, D_highDt = np.nan, np.nan
+                msd_k_highDt, msd_D_highDt = np.nan, np.nan
+                
+            msd_tc = (msd_D_lowDt/msd_D_highDt)**(1/(msd_k_highDt - msd_k_lowDt))
             
             dict_MSDfits = {
-                'maxDt_s': max_Dt_s,
-                'lowDt_upper': lowDt_upper, 'highDt_lower': highDt_lower,
-                'D_linear': D_linear,
-                'k_full': k_full, 'D_full': D_full,
-                'k_lowDt': k_lowDt, 'D_lowDt': D_lowDt,
-                'k_highDt': k_highDt, 'D_highDt': D_highDt,
+                # 'maxDt_s': max_Dt_s, 'lowDt_upper': lowDt_upper, 'highDt_lower': highDt_lower,
+                'msd_N_tracks': msd_N_tracks, 'msd_tc': msd_tc, 
+                'msd_D_lin': msd_D_lin, 'msd_D_lin_highDt': msd_D_lin_highDt,
+                'msd_k_full': msd_k_full, 'msd_D_full': msd_D_full,
+                'msd_k_lowDt': msd_k_lowDt, 'msd_D_lowDt': msd_D_lowDt,
+                'msd_k_highDt': msd_k_highDt, 'msd_D_highDt': msd_D_highDt, 
                 }
             
-            ufun.dict2json(dict_MSDfits, dstDir, msdFitsName)
+            ufun.dict2json(dict_MSDfits, Dict_rP['dir_msd'], msdFitsName)
+            for k, v in dict_MSDfits.items():
+                DF_RES.loc[(DF_RES['tN'] == tN), k] = v
 
-    #### Import tracks, compute pairs, fit pair-MSD
-    if Do_PairMSD:
-        print(pm.BRIGHTORANGE + '\n\n5. pair-MSD compute & fit step\n' + pm.NORMAL)
-        for i in range(len(fileNames)):
-            tP, fN = tifPaths[i], fileNames[i]
-            print(pm.CYAN + f'File {i+1:.0f}/{len(fileNames):.0f} - {fN}' + pm.NORMAL)
-            
+    
+        #### Import tracks, compute pairs, fit pair-MSD
+        if Do_PairMSD:
+            print(pm.BRIGHTORANGE + '5. pair-MSD compute & fit step' + pm.NORMAL)            
             if Use_DriftCorrected:
-                trackName = fN + suffix_driftCorrTracks + '.csv'
+                trackName = fN + Dict_fSuf['suf_cleanTracks_DriftCorr'] + '.csv'
             else:
-                trackName = fN + suffix_cleanTracks + '.csv'
+                trackName = fN + Dict_fSuf['suf_cleanTracks'] + '.csv'
             
-            df = pd.read_csv(os.path.join(dstDir, trackName), sep='\t')
+            df = pd.read_csv(os.path.join(Dict_rP['dir_cleanTracks'], trackName), sep='\t')
+            pmsd_N_tracks = len(df['particle'].unique())
             
             # Compute Pair MSD
             Nframes = np.max(df['frame'].to_numpy()) 
             len_TRanges = int(FPS * pairMSD_Dt_s)
             dist_th_um = pairMSD_dist_th_um
-            df_allTRange_pair_MSD = tbca.compute_pairwise_MSD(df, PixPerUm, FPS, Nframes,
-                                                              len_TRanges = len_TRanges, 
-                                                              delta_TRanges = -1, 
-                                                              dist_th_um = dist_th_um, 
-                                                              max_Dt_s = max_Dt_s)
+            df_allTRange_pair_MSD = tbca.compute_pairwise_MSD(
+                df, PixPerUm, FPS, Nframes,
+                len_TRanges = len_TRanges, delta_TRanges = -1, 
+                dist_th_um = dist_th_um, max_Dt_s = max_Dt_s
+                )
             
-            pairMsdName = fN + suffix_globalPairMsd + '.csv'
-            df_allTRange_pair_MSD.to_csv(os.path.join(dstDir, pairMsdName), index=False, sep='\t')
+            pairMsdName = fN + Dict_fSuf['suf_globalPairMsd'] + '.csv'
+            pairMsdFitsName = fN + Dict_fSuf['suf_globalPairMsdFits'] + '.json'
+            
+            df_allTRange_pair_MSD.to_csv(os.path.join(Dict_rP['dir_pairMsd'], pairMsdName), 
+                                         index=False, sep='\t')
             
             # Fit Pair MSD
             T = df_allTRange_pair_MSD['lagt'].to_numpy()
             MSD = df_allTRange_pair_MSD['msd_median'].to_numpy()
-        
-            lowDt_upper = Dict_Analysis_Settings['lowDt_upper']
-            highDt_lower = Dict_Analysis_Settings['highDt_lower']
             
             iLow = ufun.findFirst(lowDt_upper, T) + 1
             iHigh = ufun.findFirst(highDt_lower, T)
             
             parms, results = ufun.fitLineHuber(T, MSD, with_intercept = False)
-            D_linear = parms[0]/8
+            pmsd_D_lin = parms[0]/8
             
-            parms, results = ufun.fitLineHuber(np.log(T), np.log(MSD), with_intercept = True)
+            parms, results = ufun.fitLineHuber(
+                np.log(T), np.log(MSD), 
+                with_intercept = True)
             b, a = parms
-            k_full = a
-            D_full = np.exp(b)/8
+            pmsd_k_full = a
+            pmsd_D_full = np.exp(b)/8
             
             if len(T[:iLow]) >= 3:
-                parms, results = ufun.fitLineHuber(np.log(T[:iLow]), np.log(MSD[:iLow]), with_intercept = True)
+                parms, results = ufun.fitLineHuber(
+                    np.log(T[:iLow]), np.log(MSD[:iLow]), 
+                    with_intercept = True)
                 b, a = parms
-                k_lowDt = a
-                D_lowDt = np.exp(b)/8
+                pmsd_k_lowDt = a
+                pmsd_D_lowDt = np.exp(b)/8
             else:
-                k_lowDt, D_lowDt = np.nan, np.nan
+                pmsd_k_lowDt, pmsd_D_lowDt = np.nan, np.nan
             
             if len(T[iHigh:]) >= 6:
-                parms, results = ufun.fitLineHuber(np.log(T[iHigh:]), np.log(MSD[iHigh:]), with_intercept = True)
+                parms, results = ufun.fitLineHuber(
+                    T[iHigh:], MSD[iHigh:], 
+                    with_intercept = False)
+                pmsd_D_lin_highDt = parms[0]/8
+                
+                parms, results = ufun.fitLineHuber(
+                    np.log(T[iHigh:]), np.log(MSD[iHigh:]), 
+                    with_intercept = True)
                 b, a = parms
-                k_highDt = a
-                D_highDt = np.exp(b)/8
+                pmsd_k_highDt = a
+                pmsd_D_highDt = np.exp(b)/8
             else:
-                k_highDt, D_highDt = np.nan, np.nan
+                pmsd_k_highDt, pmsd_D_highDt = np.nan, np.nan
+                
+            pmsd_tc = (pmsd_D_lowDt/pmsd_D_highDt)**(1/(pmsd_k_highDt - pmsd_k_lowDt))
             
             dict_pairMSDfits = {
-                'max_Dt_s': max_Dt_s,
-                'lowDt_upper': lowDt_upper, 'highDt_lower': highDt_lower,
-                'D_linear': D_linear,
-                'k_full': k_full, 'D_full': D_full,
-                'k_lowDt': k_lowDt, 'D_lowDt': D_lowDt,
-                'k_highDt': k_highDt, 'D_highDt': D_highDt,
+                # 'max_Dt_s': max_Dt_s, 'lowDt_upper': lowDt_upper, 'highDt_lower': highDt_lower,
+                'pmsd_N_tracks': pmsd_N_tracks, 'pmsd_tc': pmsd_tc,
+                'pmsd_D_lin': pmsd_D_lin, 'pmsd_D_lin_highDt': pmsd_D_lin_highDt,
+                'pmsd_k_full': pmsd_k_full, 'pmsd_D_full': pmsd_D_full,
+                'pmsd_k_lowDt': pmsd_k_lowDt, 'pmsd_D_lowDt': pmsd_D_lowDt,
+                'pmsd_k_highDt': pmsd_k_highDt, 'pmsd_D_highDt': pmsd_D_highDt,
                 }
             
-            pairMsdFitsName = fN + suffix_globalPairMsdFits + '.json'
-            ufun.dict2json(dict_pairMSDfits, dstDir, pairMsdFitsName)
-
-
+            ufun.dict2json(dict_pairMSDfits, Dict_rP['dir_pairMsd'], pairMsdFitsName)
+            for k, v in dict_pairMSDfits.items():
+                DF_RES.loc[(DF_RES['tN'] == tN), k] = v
+        
+        #### End of the loop -> Save the dataframe
+        DF_RES.to_csv(os.path.join(RES_DIR, df_res_name + '.csv'), index=False)
+                
+    #### End of the function
+    pass
+    
 
 #### Plotting functions
 
@@ -482,7 +645,7 @@ def Tpf_label2num(fileName_str):
 
 
 def import_and_plot_MSD(fileNames, #tifPaths,
-                        Dict_Files_Suffix,
+                        Dict_fSuf,
                         fig_title = '',
                         # Use_DriftCorrected = False,
                         ):    
@@ -508,12 +671,12 @@ def import_and_plot_MSD(fileNames, #tifPaths,
         fN = fileNames[i]
         # tP = tifPaths[i]
         
-        msdName = fN + Dict_Files_Suffix['suffix_globalMsd'] + '.csv'
-        msdFitsName = fN + Dict_Files_Suffix['suffix_globalMsdFits'] + '.json'
+        msdName = fN + Dict_fSuf['suf_globalMsd'] + '.csv'
+        msdFitsName = fN + Dict_fSuf['suf_globalMsdFits'] + '.json'
         # if not Use_DriftCorrected:
-        #     trackName = fN + Dict_Files_Suffix['suffix_cleanTracks'] + '.csv'
+        #     trackName = fN + Dict_fSuf['suf_cleanTracks'] + '.csv'
         # else:
-        #     trackName = fN + Dict_Files_Suffix['suffix_cleanTracks_DriftCorr'] + '.csv'
+        #     trackName = fN + Dict_fSuf['suf_cleanTracks_DriftCorr'] + '.csv'
         # df = pd.read_csv(os.path.join(dstDir, trackName), sep='\t')
         
         res_emsd = pd.read_csv(os.path.join(dstDir, msdName), sep='\t')
@@ -599,7 +762,7 @@ def import_and_plot_MSD(fileNames, #tifPaths,
 
 
 
-def import_and_plot_pairMSD(fileNames, Dict_Files_Suffix, fig_title=''):
+def import_and_plot_pairMSD(fileNames, Dict_fSuf, fig_title=''):
     fig, axes = plt.subplots(1, 2, figsize=(11, 5), sharey=True)
     for ax in axes:
         ax.set_xscale('log')
@@ -625,12 +788,12 @@ def import_and_plot_pairMSD(fileNames, Dict_Files_Suffix, fig_title=''):
     
     for i in range(len(fileNames)):
         fN = fileNames[i]
-        msdName = fN + Dict_Files_Suffix['suffix_globalMsd'] + '.csv'
-        msdFitsName = fN + Dict_Files_Suffix['suffix_globalMsdFits']
-        pairMsdName = fN + Dict_Files_Suffix['suffix_globalPairMsd'] + '.csv'
-        pairMsdFitsName = fN + Dict_Files_Suffix['suffix_globalPairMsdFits']
+        msdName = fN + Dict_fSuf['suf_globalMsd'] + '.csv'
+        msdFitsName = fN + Dict_fSuf['suf_globalMsdFits']
+        pairMsdName = fN + Dict_fSuf['suf_globalPairMsd'] + '.csv'
+        pairMsdFitsName = fN + Dict_fSuf['suf_globalPairMsdFits']
         
-        # cleanTrackName = fN + Dict_Files_Suffix['suffix_cleanTracks'] + '.csv'
+        # cleanTrackName = fN + Dict_fSuf['suf_cleanTracks'] + '.csv'
         # df = pd.read_csv(os.path.join(dstDir, cleanTrackName), sep='\t')
         
         # "Normal" MSD
@@ -913,101 +1076,14 @@ def msd_fft_trackpyStyle(traj, mpp, fps, max_lagtime=100, pos_columns=['x', 'y']
 
 # %% 1. Tracking and MSD
 
-# %%% Charlotte Fixed Cells
-
-# %%%% Settings
-
-#### Paths
-mainDir = os.path.join(up.Path_IntraCellTracking, '2026_2601_Fixed_NileBlue_CharlotteMallart')
-srcDir = os.path.join(mainDir, 'CropedFilms')
-dstDir = os.path.join(mainDir, 'SPT_results')
-os.listdir(srcDir)
-
-tifNames = [
-    '2026_2601_NileBlue_Fix_1-2.tif',
-    '2026_2601_NileBlue_Fix_2-2.tif',
-    '2026_2601_NileBlue_Fix_3-2.tif',
-    '2026_2601_NileBlue_Fix_4-1.tif',
-    '2026_2601_NileBlue_Fix_5-1.tif',
-    '2026_2601_NileBlue_Fix_5-2.tif',
-    '2026_2601_NileBlue_Fix_6-1.tif',
-    '2026_2601_NileBlue_Fix_6-2.tif',
-    '2026_2601_NileBlue_Fix_6-3.tif',
-    ]
-
-tifPaths = [os.path.join(srcDir, tifName) for tifName in tifNames]
-fileNames = [fN.split('.')[0] for fN in tifNames]
-
-Dict_Files_Suffix = {
-    'suffix_contour' : '_cellContour',
-    'suffix_mask' : '_cellMask',
-    'suffix_rawTracks' : '_TmTracks',
-    'suffix_cleanTracks' : '_PyTracks',
-    'suffix_cleanTracks_DriftCorr' : '_PyTracks2',
-    'suffix_drift' : '_XYdrift',
-    'suffix_globalMsd' : '_GlobalMsd',
-    'suffix_globalMsdFits' : '_GlobalMsdFits',
-    'suffix_globalPairMsd' : '_GlobalPairMsd',
-    'suffix_globalPairMsdFits' : '_GlobalPairMsdFits',
-    }
-
-
-#### Settings
-UmPerPix = cd.UmPerPix_40X_X1
-Dict_Image_Settings = {
-    'UmPerPix' : UmPerPix,
-    'PixPerUm' : 1/UmPerPix,
-    'FPS' : 1/0.45,
-    }
-
-Dict_TrackMate_Settings = {
-    'RADIUS_UM' : 0.8, 
-    'THRESH_SPOT_QLT' : 0.25,
-    'THRESH_LINK_UM' : 0.25, 
-    'THRESH_MIN_DURATION' : 30,
-    }
-
-Dict_Analysis_Settings = {
-    'mask_buffer_um' : 2.0,
-    'edge_buffer_cutoff_um' : 3.0,
-    'max_Dt_s' : 40,
-    'lowDt_upper' : 0.5,
-    'highDt_lower' : 1.0,
-    'pairMSD_Dt_s' : 50,
-    'pairMSD_dist_th_um' : 5,
-    }
-
-
-
-
-# %%%% Run analysis
-
-NByolk_analysis_sequence(mainDir, srcDir, dstDir, tifNames, Dict_Files_Suffix, 
-                         Dict_Image_Settings, Dict_TrackMate_Settings, Dict_Analysis_Settings,
-                         Do_Contours = False, 
-                         Do_Tracking = False, Ignore_ROIs = True,
-                         Do_TrackCleaning = False, Do_DriftCorrection = True, 
-                         Use_DriftCorrected = True,
-                         Do_MSD = True, 
-                         Do_PairMSD = True)
-
-
-# %%%% Import MSD & plot / Import pairMSD & plot
-
-df_diff = import_and_plot_MSD(fileNames, Dict_Files_Suffix,)
-df_diff, df_pairDiff = import_and_plot_pairMSD(fileNames, Dict_Files_Suffix,)
-
-
 
 # %%% 26-10-07_D1-L - Noco
 
 # %%%% Settings
 
 #### Paths
-mainDir = os.path.join(up.Path_IntraCellTracking, '26-10-07_FastAcq-Channel_Fec_NB-Yolk')
-srcDir = os.path.join(mainDir, 'D1-L')
-dstDir = os.path.join(mainDir, 'SPT_results')
-# os.listdir(srcDir)
+dateDir = os.path.join(up.Path_IntraCellTracking, '26-10-07_FastAcq-Channel_Fec_NB-Yolk')
+srcDir = os.path.join(dateDir, 'D1-L')
 
 tifNames = [
     '26-10-07_D1-L_PreF_0min_C1_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
@@ -1040,68 +1116,43 @@ tifNames = [
 tifPaths = [os.path.join(srcDir, tifName) for tifName in tifNames]
 fileNames = [fN.split('.')[0] for fN in tifNames]
 
-Dict_Files_Suffix = {
-    'suffix_contour' : '_cellContour',
-    'suffix_mask' : '_cellMask',
-    'suffix_rawTracks' : '_TmTracks',
-    'suffix_cleanTracks' : '_PyTracks',
-    'suffix_cleanTracks_DriftCorr' : '_PyTracks2',
-    'suffix_drift' : '_XYdrift',
-    'suffix_globalMsd' : '_GlobalMsd',
-    'suffix_globalMsdFits' : '_GlobalMsdFits',
-    'suffix_globalPairMsd' : '_GlobalPairMsd',
-    'suffix_globalPairMsdFits' : '_GlobalPairMsdFits',
-    }
+# %%%% Run table autofill
 
+autofill_SPT_Data(srcDir, tifNames, df_films_PATH)
+
+# %%%% Run new Tracking
 
 #### Settings
-UmPerPix = cd.UmPerPix_60X_W1
-Dict_Image_Settings = {
-    'UmPerPix' : UmPerPix,
-    'PixPerUm' : 1/UmPerPix,
-    'FPS' : 20,
-    }
-
 Dict_TrackMate_Settings = {
-    'RADIUS_UM' : 0.8, 
-    'THRESH_SPOT_QLT' : 0.25,
-    'THRESH_LINK_UM' : 0.25, 
-    'THRESH_MIN_DURATION' : 30,
+    'RADIUS_UM' : 0.8, 'THRESH_SPOT_QLT' : 0.25,
+    'THRESH_LINK_UM' : 0.25, 'THRESH_MIN_DURATION' : 30,
     }
 
-Dict_Analysis_Settings = {
-    'mask_buffer_um' : 2.0,
-    'edge_buffer_cutoff_um' : 3.0,
-    'max_Dt_s' : 4,
-    'lowDt_upper' : 0.5,
-    'highDt_lower' : 1.0,
-    'pairMSD_Dt_s' : 5,
-    'pairMSD_dist_th_um' : 5,
-    }
+NByolk_track_sequence(
+    srcDir, tifNames, df_films_PATH, 
+    Dict_fSuf, Dict_rP, Dict_pP, 
+    Dict_TrackMate_Settings, 
+    Do_Contours = True, Do_Tracking = True, 
+    Do_TrackCleaning = True, Do_DriftCorrection = False,
+    )
 
+# %%%% Run new MSD
 
-# %%%% Run analysis
-
-NByolk_analysis_sequence(mainDir, srcDir, dstDir, tifNames, Dict_Files_Suffix, 
-                         Dict_Image_Settings, Dict_TrackMate_Settings, Dict_Analysis_Settings,
-                         Do_Contours = False, 
-                         Do_Tracking = False, Ignore_ROIs = False,
-                         Do_TrackCleaning = False, 
-                         Do_DriftCorrection = False, Use_DriftCorrected = False,
-                         Do_MSD = False, 
-                         Do_PairMSD = True)
-
+df_res_name = 'SPT_Results_01'
+NByolk_msd_compute(tifNames, df_films_PATH, df_res_name,
+                    Dict_fSuf, Dict_rP, Dict_pP, 
+                    Do_MSD = True, Do_PairMSD = True)
 
 
 # %%%% Import MSD & plot / Import pairMSD & plot
 
 title = '26-10-07_D1-L_Noco'
-df_diff = import_and_plot_MSD(fileNames, Dict_Files_Suffix, fig_title=title)
-df_diff, df_pairDiff = import_and_plot_pairMSD(fileNames, Dict_Files_Suffix, fig_title=title)
+df_diff = import_and_plot_MSD(fileNames, Dict_fSuf, fig_title=title)
+df_diff, df_pairDiff = import_and_plot_pairMSD(fileNames, Dict_fSuf, fig_title=title)
 
 for i in plt.get_fignums():
     plt.figure(i)
-    plt.savefig(os.path.join(plotDir, title + f'_MSDfig_{i:02d}.png'))
+    plt.savefig(os.path.join(FIG_DIR, title + f'_MSDfig_{i:02d}.png'))
 
 
 # %%%% Import tracks & analyse shape of explored zone
@@ -1161,16 +1212,16 @@ for i in range(len(tifNames)):
     Y_MTcenter = df_g.loc[df_g['tN']==tN, 'yc'].to_numpy()[0]
 
     title = '_'.join(fN.split('_')[1:3])
-    rawTrackName = fN + Dict_Files_Suffix['suffix_rawTracks'] + '.xml'
+    rawTrackName = fN + Dict_fSuf['suf_rawTracks'] + '.xml'
     if Use_DriftCorrected:
-        trackName = fN + Dict_Files_Suffix['suffix_driftCorrTracks'] + '.csv'
+        trackName = fN + Dict_fSuf['suf_driftCorrTracks'] + '.csv'
     else:
-        trackName = fN + Dict_Files_Suffix['suffix_cleanTracks'] + '.csv'
+        trackName = fN + Dict_fSuf['suf_cleanTracks'] + '.csv'
         
-    # msdName = fN + Dict_Files_Suffix['suffix_globalMsd'] + '.csv'
-    # msdFitsName = fN + Dict_Files_Suffix['suffix_globalMsdFits']
+    # msdName = fN + Dict_fSuf['suf_globalMsd'] + '.csv'
+    # msdFitsName = fN + Dict_fSuf['suf_globalMsdFits']
     if np.isnan(X_MTcenter) or np.isnan(Y_MTcenter):
-        contourName = fN + Dict_Files_Suffix['suffix_contour'] + '.npy'
+        contourName = fN + Dict_fSuf['suf_contour'] + '.npy'
         contourCell = np.load(os.path.join(srcDir, contourName))
         poly = Polygon(contourCell)
         xc, yc = poly.centroid.xy
@@ -1255,16 +1306,16 @@ for i in range(len(tifNames)):
     # print(X_MTcenter, Y_MTcenter)
 
     title = '_'.join(fN.split('_')[1:4])
-    rawTrackName = fN + Dict_Files_Suffix['suffix_rawTracks'] + '.xml'
+    rawTrackName = fN + Dict_fSuf['suf_rawTracks'] + '.xml'
     if Use_DriftCorrected:
-        trackName = fN + Dict_Files_Suffix['suffix_driftCorrTracks'] + '.csv'
+        trackName = fN + Dict_fSuf['suf_driftCorrTracks'] + '.csv'
     else:
-        trackName = fN + Dict_Files_Suffix['suffix_cleanTracks'] + '.csv'
+        trackName = fN + Dict_fSuf['suf_cleanTracks'] + '.csv'
         
-    # msdName = fN + Dict_Files_Suffix['suffix_globalMsd'] + '.csv'
-    # msdFitsName = fN + Dict_Files_Suffix['suffix_globalMsdFits']
+    # msdName = fN + Dict_fSuf['suf_globalMsd'] + '.csv'
+    # msdFitsName = fN + Dict_fSuf['suf_globalMsdFits']
     if np.isnan(X_MTcenter) or np.isnan(Y_MTcenter):
-        contourName = fN + Dict_Files_Suffix['suffix_contour'] + '.npy'
+        contourName = fN + Dict_fSuf['suf_contour'] + '.npy'
         contourCell = np.load(os.path.join(srcDir, contourName))
         poly = Polygon(contourCell)
         xc, yc = poly.centroid.xy
@@ -1312,16 +1363,14 @@ plt.show()
 # %%%% Settings
 
 #### Paths
-mainDir = os.path.join(up.Path_IntraCellTracking, '26-10-07_FastAcq-Channel_Fec_NB-Yolk')
-srcDir = os.path.join(mainDir, 'D1-s')
-dstDir = os.path.join(mainDir, 'SPT_results')
-# os.listdir(srcDir)
+dateDir = os.path.join(up.Path_IntraCellTracking, '26-10-07_FastAcq-Channel_Fec_NB-Yolk')
+srcDir = os.path.join(dateDir, 'D1-s')
 
 tifNames = [
     '26-10-07_D1-s_PreF_0min_C1_20fps_Texp50ms_L30p1_CSU642.ome.tf2',
     '26-10-07_D1-s_PreF_0min_C2_20fps_Texp50ms_L30p1_CSU642.ome.tf2',
     '26-10-07_D1-s_PreF_0min_C3_20fps_Texp50ms_L30p1_CSU642.ome.tf2',
-    # '26-10-07_D1-s_PreF_0min_C3_5fps_Texp200ms_L30p1_CSU642.ome.tf2',
+    '26-10-07_D1-s_PreF_0min_C3_5fps_Texp200ms_L30p1_CSU642.ome.tf2',
     '26-10-07_D1-s_PostF_3min_C4_20fps_Texp50ms_L30p1_CSU642.ome.tf2',
     '26-10-07_D1-s_PostF_6min_C4_20fps_Texp50ms_L30p1_CSU642.ome.tf2',
     '26-10-07_D1-s_PostF_9min_C4_20fps_Texp50ms_L30p1_CSU642.ome.tf2',
@@ -1344,67 +1393,44 @@ tifNames = [
 tifPaths = [os.path.join(srcDir, tifName) for tifName in tifNames]
 fileNames = [fN.split('.')[0] for fN in tifNames]
 
-Dict_Files_Suffix = {
-    'suffix_contour' : '_cellContour',
-    'suffix_mask' : '_cellMask',
-    'suffix_rawTracks' : '_TmTracks',
-    'suffix_cleanTracks' : '_PyTracks',
-    'suffix_cleanTracks_DriftCorr' : '_PyTracks2',
-    'suffix_drift' : '_XYdrift',
-    'suffix_globalMsd' : '_GlobalMsd',
-    'suffix_globalMsdFits' : '_GlobalMsdFits',
-    'suffix_globalPairMsd' : '_GlobalPairMsd',
-    'suffix_globalPairMsdFits' : '_GlobalPairMsdFits',
-    }
 
+# %%%% Run table autofill
+
+autofill_SPT_Data(srcDir, tifNames, df_films_PATH)
+
+# %%%% Run new Tracking
 
 #### Settings
-UmPerPix = cd.UmPerPix_60X_W1
-Dict_Image_Settings = {
-    'UmPerPix' : UmPerPix,
-    'PixPerUm' : 1/UmPerPix,
-    'FPS' : 20,
-    }
-
 Dict_TrackMate_Settings = {
-    'RADIUS_UM' : 0.8, 
-    'THRESH_SPOT_QLT' : 0.25,
-    'THRESH_LINK_UM' : 0.25, 
-    'THRESH_MIN_DURATION' : 30,
+    'RADIUS_UM' : 0.8, 'THRESH_SPOT_QLT' : 0.25,
+    'THRESH_LINK_UM' : 0.25, 'THRESH_MIN_DURATION' : 30,
     }
 
-Dict_Analysis_Settings = {
-    'mask_buffer_um' : 2.0,
-    'edge_buffer_cutoff_um' : 3.0,
-    'max_Dt_s' : 4,
-    'lowDt_upper' : 0.5,
-    'highDt_lower' : 1.0,
-    'pairMSD_Dt_s' : 5,
-    'pairMSD_dist_th_um' : 5,
-    }
+NByolk_track_sequence(
+    srcDir, tifNames, df_films_PATH, 
+    Dict_fSuf, Dict_rP, Dict_pP, 
+    Dict_TrackMate_Settings, 
+    Do_Contours = True, Do_Tracking = True, 
+    Do_TrackCleaning = True, Do_DriftCorrection = False,
+    )
 
+# %%%% Run new MSD
 
-# %%%% Run analysis
-
-NByolk_analysis_sequence(mainDir, srcDir, dstDir, tifNames, Dict_Files_Suffix, 
-                         Dict_Image_Settings, Dict_TrackMate_Settings, Dict_Analysis_Settings,
-                         Do_Contours = False, 
-                         Do_Tracking = False, Ignore_ROIs = False,
-                         Do_TrackCleaning = False, 
-                         Do_DriftCorrection = False, Use_DriftCorrected = False,
-                         Do_MSD = True, 
-                         Do_PairMSD = True)
+df_res_name = 'SPT_Results_01'
+NByolk_msd_compute(tifNames, df_films_PATH, df_res_name,
+                    Dict_fSuf, Dict_rP, Dict_pP, 
+                    Do_MSD = True, Do_PairMSD = True)
 
 
 # %%%% Import MSD & plot / Import pairMSD & plot
 
 title = '26-10-07_D1-s'
-df_diff = import_and_plot_MSD(fileNames, Dict_Files_Suffix, fig_title=title)
-df_diff, df_pairDiff = import_and_plot_pairMSD(fileNames, Dict_Files_Suffix, fig_title=title)
+df_diff = import_and_plot_MSD(fileNames, Dict_fSuf, fig_title=title)
+df_diff, df_pairDiff = import_and_plot_pairMSD(fileNames, Dict_fSuf, fig_title=title)
 
 for i in plt.get_fignums():
     plt.figure(i)
-    plt.savefig(os.path.join(plotDir, title + f'_MSDfig_{i:02d}.png'))
+    plt.savefig(os.path.join(FIG_DIR, title + f'_MSDfig_{i:02d}.png'))
     
     
 # %%%% Import tracks & analyse shape of explored zone
@@ -1460,16 +1486,16 @@ for i in range(len(tifNames)):
     Y_MTcenter = df_g.loc[df_g['tN']==tN, 'yc'].to_numpy()[0]
 
     title = '_'.join(fN.split('_')[1:3])
-    rawTrackName = fN + Dict_Files_Suffix['suffix_rawTracks'] + '.xml'
+    rawTrackName = fN + Dict_fSuf['suf_rawTracks'] + '.xml'
     if Use_DriftCorrected:
-        trackName = fN + Dict_Files_Suffix['suffix_driftCorrTracks'] + '.csv'
+        trackName = fN + Dict_fSuf['suf_driftCorrTracks'] + '.csv'
     else:
-        trackName = fN + Dict_Files_Suffix['suffix_cleanTracks'] + '.csv'
+        trackName = fN + Dict_fSuf['suf_cleanTracks'] + '.csv'
         
-    # msdName = fN + Dict_Files_Suffix['suffix_globalMsd'] + '.csv'
-    # msdFitsName = fN + Dict_Files_Suffix['suffix_globalMsdFits']
+    # msdName = fN + Dict_fSuf['suf_globalMsd'] + '.csv'
+    # msdFitsName = fN + Dict_fSuf['suf_globalMsdFits']
     if np.isnan(X_MTcenter) or np.isnan(Y_MTcenter):
-        contourName = fN + Dict_Files_Suffix['suffix_contour'] + '.npy'
+        contourName = fN + Dict_fSuf['suf_contour'] + '.npy'
         contourCell = np.load(os.path.join(srcDir, contourName))
         poly = Polygon(contourCell)
         xc, yc = poly.centroid.xy
@@ -1554,16 +1580,16 @@ for i in range(len(tifNames)):
     # print(X_MTcenter, Y_MTcenter)
 
     title = '_'.join(fN.split('_')[1:4])
-    rawTrackName = fN + Dict_Files_Suffix['suffix_rawTracks'] + '.xml'
+    rawTrackName = fN + Dict_fSuf['suf_rawTracks'] + '.xml'
     if Use_DriftCorrected:
-        trackName = fN + Dict_Files_Suffix['suffix_driftCorrTracks'] + '.csv'
+        trackName = fN + Dict_fSuf['suf_driftCorrTracks'] + '.csv'
     else:
-        trackName = fN + Dict_Files_Suffix['suffix_cleanTracks'] + '.csv'
+        trackName = fN + Dict_fSuf['suf_cleanTracks'] + '.csv'
         
-    # msdName = fN + Dict_Files_Suffix['suffix_globalMsd'] + '.csv'
-    # msdFitsName = fN + Dict_Files_Suffix['suffix_globalMsdFits']
+    # msdName = fN + Dict_fSuf['suf_globalMsd'] + '.csv'
+    # msdFitsName = fN + Dict_fSuf['suf_globalMsdFits']
     if np.isnan(X_MTcenter) or np.isnan(Y_MTcenter):
-        contourName = fN + Dict_Files_Suffix['suffix_contour'] + '.npy'
+        contourName = fN + Dict_fSuf['suf_contour'] + '.npy'
         contourCell = np.load(os.path.join(srcDir, contourName))
         poly = Polygon(contourCell)
         xc, yc = poly.centroid.xy
@@ -1606,179 +1632,14 @@ plt.show()
     
 
 # -----------------------------------------------------------------------------
-# %%%% Settings - Long & Slow
-
-#### Paths
-mainDir = os.path.join(up.Path_IntraCellTracking, '26-10-07_FastAcq-Channel_Fec_NB-Yolk')
-srcDir = os.path.join(mainDir, 'D1-s')
-dstDir = os.path.join(mainDir, 'SPT_results')
-os.listdir(srcDir)
-
-tifNames = [
-    '26-10-07_D1-s_PreF_0min_C3_5fps_Texp200ms_L30p1_CSU642.ome.tf2',
-    ]
-
-tifPaths = [os.path.join(srcDir, tifName) for tifName in tifNames]
-fileNames = [fN.split('.')[0] for fN in tifNames]
-
-Dict_Files_Suffix = {
-    'suffix_contour' : '_cellContour',
-    'suffix_mask' : '_cellMask',
-    'suffix_rawTracks' : '_TmTracks',
-    'suffix_cleanTracks' : '_PyTracks',
-    'suffix_cleanTracks_DriftCorr' : '_PyTracks2',
-    'suffix_drift' : '_XYdrift',
-    'suffix_globalMsd' : '_GlobalMsd',
-    'suffix_globalMsdFits' : '_GlobalMsdFits',
-    'suffix_globalPairMsd' : '_GlobalPairMsd',
-    'suffix_globalPairMsdFits' : '_GlobalPairMsdFits',
-    }
-
-
-#### Settings
-UmPerPix = cd.UmPerPix_60X_W1
-Dict_Image_Settings = {
-    'UmPerPix' : UmPerPix,
-    'PixPerUm' : 1/UmPerPix,
-    'FPS' : 5,
-    }
-
-Dict_TrackMate_Settings = {
-    'RADIUS_UM' : 0.8, 
-    'THRESH_SPOT_QLT' : 0.25,
-    'THRESH_LINK_UM' : 0.5, 
-    'THRESH_MIN_DURATION' : 30,
-    }
-
-Dict_Analysis_Settings = {
-    'mask_buffer_um' : 2.0,
-    'edge_buffer_cutoff_um' : 3.0,
-    'max_Dt_s' : 4,
-    'lowDt_upper' : 0.5,
-    'highDt_lower' : 1.0,
-    'pairMSD_Dt_s' : 5,
-    'pairMSD_dist_th_um' : 5,
-    }
-
-# %%%% Run analysis
-
-NByolk_analysis_sequence(mainDir, srcDir, dstDir, tifNames, Dict_Files_Suffix, 
-                         Dict_Image_Settings, Dict_TrackMate_Settings, Dict_Analysis_Settings,
-                         Do_Contours = False, Do_Tracking = False, Do_TrackCleaning = False, Do_MSD = True)
-
-# %%%% Verification...
-
-#### Paths
-mainDir = os.path.join(up.Path_IntraCellTracking, '26-10-07_FastAcq-Channel_Fec_NB-Yolk')
-srcDir = os.path.join(mainDir, 'D1-s')
-dstDir = os.path.join(mainDir, 'Verification')
-os.listdir(srcDir)
-
-tifNames = [
-    '26-10-07_D1-s_PostF_83min_C4_20fps_Texp50ms_L30p1_CSU642.ome.tf2',
-    ]
-tifPaths = [os.path.join(srcDir, tifName) for tifName in tifNames]
-fileNames = [fN.split('.')[0] for fN in tifNames]
-
-Dict_Files_Suffix = {
-    'suffix_contour' : '_cellContour',
-    'suffix_mask' : '_cellMask',
-    'suffix_rawTracks' : '_Tracks',
-    'suffix_cleanTracks' : '_PyTracks',
-    'suffix_cleanTracks_DriftCorr' : '_PyTracks2',
-    'suffix_drift' : '_XYdrift',
-    'suffix_globalMsd' : '_GlobalMsd',
-    'suffix_globalMsdFits' : '_GlobalMsdFits',
-    'suffix_globalPairMsd' : '_GlobalPairMsd',
-    'suffix_globalPairMsdFits' : '_GlobalPairMsdFits',
-    }
-
-
-#### Settings
-UmPerPix = cd.UmPerPix_60X_W1
-Dict_Image_Settings = {
-    'UmPerPix' : UmPerPix,
-    'PixPerUm' : 1/UmPerPix,
-    'FPS' : 20,
-    }
-
-Dict_TrackMate_Settings = {
-    'RADIUS_UM' : 0.8, 
-    'THRESH_SPOT_QLT' : 0.25,
-    'THRESH_LINK_UM' : 0.5, 
-    'THRESH_MIN_DURATION' : 30,
-    }
-
-Dict_Analysis_Settings = {
-    'mask_buffer_um' : 2.0,
-    'edge_buffer_cutoff_um' : 3.0,
-    'max_Dt_s' : 2,
-    'lowDt_upper' : 0.5,
-    'highDt_lower' : 1.0,
-    'pairMSD_Dt_s' : 5,
-    'pairMSD_dist_th_um' : 5,
-    }
-
-NByolk_analysis_sequence(mainDir, srcDir, dstDir, tifNames, Dict_Files_Suffix, 
-                         Dict_Image_Settings, Dict_TrackMate_Settings, Dict_Analysis_Settings,
-                         Do_Contours = False, 
-                         Do_Tracking = False, Ignore_ROIs = False,
-                         Do_TrackCleaning = False, 
-                         Do_DriftCorrection = False, Use_DriftCorrected = False,
-                         Do_MSD = False, 
-                         Do_PairMSD = False)
-
-df_diff = import_and_plot_MSD(fileNames, Dict_Files_Suffix,)
-
-
-# msd_fft_trackpyStyle(traj, mpp, fps, max_lagtime=100, pos_columns=['x', 'y'])
-
-i = 0
-fN = fileNames[i]
-PixPerUm = Dict_Image_Settings['PixPerUm']
-FPS = 20
-
-rawTrackName = fN + Dict_Files_Suffix['suffix_rawTracks'] + '.xml'
-trackName = fN + Dict_Files_Suffix['suffix_cleanTracks'] + '.csv'
-
-df = pd.read_csv(os.path.join(dstDir, trackName), sep='\t')
-
-max_lagtime = 100 # int(max_Dt_s * FPS)
-res_emsd = tp.motion.emsd(df, 1/PixPerUm, FPS, max_lagtime=max_lagtime).reset_index()
-T, MSD = res_emsd['lagt'].values, res_emsd['msd'].values
-
-fig, ax = plt.subplots(1, 1)
-# ax.set_xscale('log')
-# ax.set_yscale('log')
-ax.plot(T, MSD, color='pink', ls='-', marker='o')
-plt.show()
-
-
-
-res_imsd = tp.motion.imsd(df, 1/PixPerUm, FPS, max_lagtime=max_lagtime).reset_index()
-T =  res_imsd['lag time [s]'].to_numpy()
-fig, ax = plt.subplots(1, 1)
-# ax.set_xscale('log')
-# ax.set_yscale('log')
-
-for k in res_imsd.columns[1:].to_numpy()[::120]:
-    MSD = res_imsd.loc[:,k].to_numpy()
-    ax.plot(T, MSD, ls='-')
-    
-plt.show()
-
-
-# -----------------------------------------------------------------------------
 # %%% 26-09-30_D1
 
 # %%%% Settings
 
 #### Paths    
 
-
-mainDir = os.path.join(up.Path_IntraCellTracking, '26-09-30_FastAcq-Channel_Fec_NB-Yolk')
-srcDir = os.path.join(mainDir, 'D1')
-dstDir = os.path.join(mainDir, 'SPT_results')
+dateDir = os.path.join(up.Path_IntraCellTracking, '26-09-30_FastAcq-Channel_Fec_NB-Yolk')
+srcDir = os.path.join(dateDir, 'D1')
 
 tifNames = [
     '26-09-30_D1_PreF_C1_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
@@ -1803,67 +1664,44 @@ tifNames = [
 tifPaths = [os.path.join(srcDir, tifName) for tifName in tifNames]
 fileNames = [fN.split('.')[0] for fN in tifNames]
 
-Dict_Files_Suffix = {
-    'suffix_contour' : '_cellContour',
-    'suffix_mask' : '_cellMask',
-    'suffix_rawTracks' : '_TmTracks',
-    'suffix_cleanTracks' : '_PyTracks',
-    'suffix_cleanTracks_DriftCorr' : '_PyTracks2',
-    'suffix_drift' : '_XYdrift',
-    'suffix_globalMsd' : '_GlobalMsd',
-    'suffix_globalMsdFits' : '_GlobalMsdFits',
-    'suffix_globalPairMsd' : '_GlobalPairMsd',
-    'suffix_globalPairMsdFits' : '_GlobalPairMsdFits',
-    }
+
+# %%%% Run table autofill
+
+autofill_SPT_Data(srcDir, tifNames, df_films_PATH)
+
+# %%%% Run new Tracking
 
 #### Settings
-
-UmPerPix = cd.UmPerPix_60X_W1
-Dict_Image_Settings = {
-    'UmPerPix' : UmPerPix,
-    'PixPerUm' : 1/UmPerPix,
-    'FPS' : 20,
-    }
-
 Dict_TrackMate_Settings = {
-    'RADIUS_UM' : 0.8, 
-    'THRESH_SPOT_QLT' : 0.25,
-    'THRESH_LINK_UM' : 0.25, 
-    'THRESH_MIN_DURATION' : 30,
+    'RADIUS_UM' : 0.8, 'THRESH_SPOT_QLT' : 0.25,
+    'THRESH_LINK_UM' : 0.25, 'THRESH_MIN_DURATION' : 30,
     }
 
-Dict_Analysis_Settings = {
-    'mask_buffer_um' : 2.0,
-    'edge_buffer_cutoff_um' : 3.0,
-    'max_Dt_s' : 4,
-    'lowDt_upper' : 0.5,
-    'highDt_lower' : 1.0,
-    'pairMSD_Dt_s' : 5,
-    'pairMSD_dist_th_um' : 5,
-    }
+NByolk_track_sequence(
+    srcDir, tifNames, df_films_PATH, 
+    Dict_fSuf, Dict_rP, Dict_pP, 
+    Dict_TrackMate_Settings, 
+    Do_Contours = True, Do_Tracking = True, 
+    Do_TrackCleaning = True, Do_DriftCorrection = False,
+    )
 
+# %%%% Run new MSD
 
-# %%%% Run analysis
-
-NByolk_analysis_sequence(mainDir, srcDir, dstDir, tifNames, Dict_Files_Suffix, 
-                         Dict_Image_Settings, Dict_TrackMate_Settings, Dict_Analysis_Settings,
-                         Do_Contours = False, 
-                         Do_Tracking = False, Ignore_ROIs = False,
-                         Do_TrackCleaning = False, 
-                         Do_DriftCorrection = False, Use_DriftCorrected = False,
-                         Do_MSD = False, 
-                         Do_PairMSD = True)
+df_res_name = 'SPT_Results_01'
+NByolk_msd_compute(tifNames, df_films_PATH, df_res_name,
+                    Dict_fSuf, Dict_rP, Dict_pP, 
+                    Do_MSD = True, Do_PairMSD = True)
 
 
 # %%%% Import MSD & plot / Import pairMSD & plot
 
 title = '26-09-30_D1'
-df_diff = import_and_plot_MSD(fileNames, Dict_Files_Suffix, fig_title=title)
-df_diff, df_pairDiff = import_and_plot_pairMSD(fileNames, Dict_Files_Suffix, fig_title=title)
+df_diff = import_and_plot_MSD(fileNames, Dict_fSuf, fig_title=title)
+df_diff, df_pairDiff = import_and_plot_pairMSD(fileNames, Dict_fSuf, fig_title=title)
 
 for i in plt.get_fignums():
     plt.figure(i)
-    plt.savefig(os.path.join(plotDir, title + f'_MSDfig_{i:02d}.png'))
+    plt.savefig(os.path.join(FIG_DIR, title + f'_MSDfig_{i:02d}.png'))
 
 # %%%% Import tracks & analyse shape of explored zone
 
@@ -1914,16 +1752,16 @@ for i in range(len(tifNames)):
     Y_MTcenter = df_g.loc[df_g['tN']==tN, 'yc'].to_numpy()[0]
 
     title = '_'.join(fN.split('_')[1:3])
-    rawTrackName = fN + Dict_Files_Suffix['suffix_rawTracks'] + '.xml'
+    rawTrackName = fN + Dict_fSuf['suf_rawTracks'] + '.xml'
     if Use_DriftCorrected:
-        trackName = fN + Dict_Files_Suffix['suffix_driftCorrTracks'] + '.csv'
+        trackName = fN + Dict_fSuf['suf_driftCorrTracks'] + '.csv'
     else:
-        trackName = fN + Dict_Files_Suffix['suffix_cleanTracks'] + '.csv'
+        trackName = fN + Dict_fSuf['suf_cleanTracks'] + '.csv'
         
-    # msdName = fN + Dict_Files_Suffix['suffix_globalMsd'] + '.csv'
-    # msdFitsName = fN + Dict_Files_Suffix['suffix_globalMsdFits']
+    # msdName = fN + Dict_fSuf['suf_globalMsd'] + '.csv'
+    # msdFitsName = fN + Dict_fSuf['suf_globalMsdFits']
     if np.isnan(X_MTcenter) or np.isnan(Y_MTcenter):
-        contourName = fN + Dict_Files_Suffix['suffix_contour'] + '.npy'
+        contourName = fN + Dict_fSuf['suf_contour'] + '.npy'
         contourCell = np.load(os.path.join(srcDir, contourName))
         poly = Polygon(contourCell)
         xc, yc = poly.centroid.xy
@@ -2008,16 +1846,16 @@ for i in range(len(tifNames)):
     # print(X_MTcenter, Y_MTcenter)
 
     title = '_'.join(fN.split('_')[1:4])
-    rawTrackName = fN + Dict_Files_Suffix['suffix_rawTracks'] + '.xml'
+    rawTrackName = fN + Dict_fSuf['suf_rawTracks'] + '.xml'
     if Use_DriftCorrected:
-        trackName = fN + Dict_Files_Suffix['suffix_driftCorrTracks'] + '.csv'
+        trackName = fN + Dict_fSuf['suf_driftCorrTracks'] + '.csv'
     else:
-        trackName = fN + Dict_Files_Suffix['suffix_cleanTracks'] + '.csv'
+        trackName = fN + Dict_fSuf['suf_cleanTracks'] + '.csv'
         
-    # msdName = fN + Dict_Files_Suffix['suffix_globalMsd'] + '.csv'
-    # msdFitsName = fN + Dict_Files_Suffix['suffix_globalMsdFits']
+    # msdName = fN + Dict_fSuf['suf_globalMsd'] + '.csv'
+    # msdFitsName = fN + Dict_fSuf['suf_globalMsdFits']
     if np.isnan(X_MTcenter) or np.isnan(Y_MTcenter):
-        contourName = fN + Dict_Files_Suffix['suffix_contour'] + '.npy'
+        contourName = fN + Dict_fSuf['suf_contour'] + '.npy'
         contourCell = np.load(os.path.join(srcDir, contourName))
         poly = Polygon(contourCell)
         xc, yc = poly.centroid.xy
@@ -2057,7 +1895,142 @@ for i in range(len(tifNames)):
 
 plt.show()
 
+# %%%% DEV FUNCTION ! Import tracks & analyse shape of explored zone
 
+Use_DriftCorrected = False
+
+mainDir = os.path.join(up.Path_IntraCellTracking, '26-09-30_FastAcq-Channel_Fec_NB-Yolk')
+srcDir = os.path.join(mainDir, 'D1')
+dstDir = os.path.join(mainDir, 'SPT_results')
+
+tifNames = [
+    '26-09-30_D1_PostF_18min_C4_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
+    ]
+
+tifPaths = [os.path.join(srcDir, tifName) for tifName in tifNames]
+fileNames = [fN.split('.')[0] for fN in tifNames]
+
+dict_res = {'label':[],
+            'AngleDiffs':[]}
+
+GEOM_DATA = []
+
+df_cellGeom = pd.read_csv(os.path.join(srcDir, 'Cell_geometry.csv'), sep=',')
+
+i = 0
+print(i)
+
+tifPath, fileName = tifPaths[i], fileNames[i]
+
+def getEllipses(fileName, tifPath, df_cellGeom, 
+                Use_DriftCorrected, Dict_Files_Suffix):
+    fN = fileName
+    tP = tifPath
+    _, tN = os.path.split(tP)
+    # shape, dtype = ufun.tiff_inspect(tP)
+    
+    df_g = df_cellGeom
+    X_MTcenter = df_g.loc[df_g['tN']==tN, 'xc'].to_numpy()[0]
+    Y_MTcenter = df_g.loc[df_g['tN']==tN, 'yc'].to_numpy()[0]
+    
+    title = '_'.join(fN.split('_')[1:3])
+    if Use_DriftCorrected:
+        trackName = fN + Dict_Files_Suffix['suffix_driftCorrTracks'] + '.csv'
+    else:
+        trackName = fN + Dict_Files_Suffix['suffix_cleanTracks'] + '.csv'
+        
+    if np.isnan(X_MTcenter) or np.isnan(Y_MTcenter):
+        contourName = fN + Dict_Files_Suffix['suffix_contour'] + '.npy'
+        contourCell = np.load(os.path.join(srcDir, contourName))
+        poly = Polygon(contourCell)
+        xc, yc = poly.centroid.xy
+        X_MTcenter, Y_MTcenter = int(xc[0]), int(yc[0])
+    
+    df = pd.read_csv(os.path.join(dstDir, trackName), sep='\t')
+    
+    dict_geom = {'particle':[], 'np':[],
+                 'xc':[], 'yc':[],
+                 'theta':[],
+                 'a':[], 'b':[],
+                 'L':[], 'l':[], 'AR':[],
+                 'phi':[],}
+    
+    grouped = df.groupby('particle')
+    
+    for p, df_p in grouped:
+        points = np.array([[x, y] for (x, y) in zip(df_p.x, df_p.y)])
+        
+        MPoints = MultiPoint(points)
+        Hull = MPoints.convex_hull
+        xy_ch = np.array([xy for xy in Hull.exterior.coords[1:]])
+        xc, yc = Hull.centroid.coords[0]
+        
+        out = ufun.fit_ellipse_fixedCenter(xy_ch[:, 0], xy_ch[:, 1], 
+                                           xc, yc, mode='cartesian')
+        _, _, a, b, phi = out
+        theta = np.atan2(yc - Y_MTcenter, xc - X_MTcenter)
+        # theta_deg = theta * 180/np.pi
+        dotprod = np.cos(theta)*np.cos(phi) + np.sin(theta)*np.sin(phi)
+        if dotprod < 0:
+            phi = phi - np.sign(phi) * np.pi
+        # phi_deg = phi * 180/np.pi
+        L, l = max(a, b), min(a, b)
+        AR = L/l
+        
+        dict_geom['particle'].append(p)
+        dict_geom['np'].append(len(df_p))
+        dict_geom['xc'].append(xc)
+        dict_geom['yc'].append(yc)
+        dict_geom['theta'].append(theta)
+        dict_geom['a'].append(a)
+        dict_geom['b'].append(b)
+        dict_geom['L'].append(L)
+        dict_geom['l'].append(l)
+        dict_geom['AR'].append(AR)
+        dict_geom['phi'].append(phi)
+    
+    df_geom = pd.DataFrame(dict_geom)
+    df_geom_f = df_geom[df_geom['AR'] > 1.5]    
+    df_geom_f['theta_bin'] = (df_geom_f['theta'].values * 18/np.pi).astype(int) * 10 + 5
+    
+    C = np.cos(df_geom_f['theta'].values) * np.cos(df_geom_f['phi'].values) + \
+        np.sin(df_geom_f['theta'].values) * np.sin(df_geom_f['phi'].values)
+    DA = np.acos(C)   
+    
+    
+    pm.setGraphicOptions(mode='screen')
+    fig, axes = plt.subplots(2, 1, figsize=(3.5, 7),
+                             layout='compressed')
+    colors = pm.cL_Set21
+    ax = axes[0]
+    ax.set_aspect('equal', adjustable='box')
+    ax.set_title(title)
+    grouped = df_geom_f.groupby('particle')
+    ax.plot([X_MTcenter], [Y_MTcenter], 'ko')
+    for p, df_gp in grouped:
+        xc, yc = df_gp['xc'].to_numpy()[0], df_gp['yc'].to_numpy()[0]
+        a, b = df_gp['a'].to_numpy()[0], df_gp['b'].to_numpy()[0]
+        phi = df_gp['phi'].to_numpy()[0]
+        c = colors[p%len(colors)]       
+        if p%10 == 0:
+            aa = np.linspace(0, 2*np.pi, 360)
+            xp, yp = ufun.get_ellipse_xy(xc, yc, a, b, phi, aa=aa)
+            ax.plot(xp, yp, c=c, ls='-', lw=0.5)
+            
+    ax = axes[1]
+    ax.hist(DA, bins=20)
+    ax.set_ylabel('N trajectories')
+    ax.set_xlabel(r'$|\theta - \phi|$ (rad)')
+    ax.set_xticks([0, np.pi/8, np.pi/4, 3*np.pi/8, np.pi/2])
+    ax.set_xticklabels(['0', r'$\pi/8$', r'$\pi/4$', r'$3\pi/8$', r'$\pi/2$'])
+    ax.grid()
+    plt.show()
+    
+    return(df_geom, DA, fig, axes)
+
+
+df_geom, DA, fig, axes = getEllipses(fileName, tifPath, df_cellGeom, 
+                                     Use_DriftCorrected, Dict_fSuf)
 
 
 # -----------------------------------------------------------------------------
@@ -2093,67 +2066,44 @@ tifNames = [
 tifPaths = [os.path.join(srcDir, tifName) for tifName in tifNames]
 fileNames = [fN.split('.')[0] for fN in tifNames]
 
-Dict_Files_Suffix = {
-    'suffix_contour' : '_cellContour',
-    'suffix_mask' : '_cellMask',
-    'suffix_rawTracks' : '_TmTracks',
-    'suffix_cleanTracks' : '_PyTracks',
-    'suffix_cleanTracks_DriftCorr' : '_PyTracks2',
-    'suffix_drift' : '_XYdrift',
-    'suffix_globalMsd' : '_GlobalMsd',
-    'suffix_globalMsdFits' : '_GlobalMsdFits',
-    'suffix_globalPairMsd' : '_GlobalPairMsd',
-    'suffix_globalPairMsdFits' : '_GlobalPairMsdFits',
-    }
 
+# %%%% Run table autofill
+
+autofill_SPT_Data(srcDir, tifNames, df_films_PATH)
+
+# %%%% Run new Tracking
 
 #### Settings
-UmPerPix = cd.UmPerPix_60X_W1
-Dict_Image_Settings = {
-    'UmPerPix' : UmPerPix,
-    'PixPerUm' : 1/UmPerPix,
-    'FPS' : 20,
-    }
-
 Dict_TrackMate_Settings = {
-    'RADIUS_UM' : 0.8, 
-    'THRESH_SPOT_QLT' : 0.25,
-    'THRESH_LINK_UM' : 0.25, 
-    'THRESH_MIN_DURATION' : 30,
+    'RADIUS_UM' : 0.8, 'THRESH_SPOT_QLT' : 0.25,
+    'THRESH_LINK_UM' : 0.25, 'THRESH_MIN_DURATION' : 30,
     }
 
-Dict_Analysis_Settings = {
-    'mask_buffer_um' : 2.0,
-    'edge_buffer_cutoff_um' : 3.0,
-    'max_Dt_s' : 4,
-    'lowDt_upper' : 0.5,
-    'highDt_lower' : 1.0,
-    'pairMSD_Dt_s' : 5,
-    'pairMSD_dist_th_um' : 5,
-    }
+NByolk_track_sequence(
+    srcDir, tifNames, df_films_PATH, 
+    Dict_fSuf, Dict_rP, Dict_pP, 
+    Dict_TrackMate_Settings, 
+    Do_Contours = True, Do_Tracking = True, 
+    Do_TrackCleaning = True, Do_DriftCorrection = False,
+    )
 
+# %%%% Run new MSD
 
-# %%%% Run analysis
-
-NByolk_analysis_sequence(mainDir, srcDir, dstDir, tifNames, Dict_Files_Suffix, 
-                         Dict_Image_Settings, Dict_TrackMate_Settings, Dict_Analysis_Settings,
-                         Do_Contours = False, 
-                         Do_Tracking = False, Ignore_ROIs = False,
-                         Do_TrackCleaning = True, 
-                         Do_DriftCorrection = False, Use_DriftCorrected = False,
-                         Do_MSD = True, 
-                         Do_PairMSD = True)
+df_res_name = 'SPT_Results_01'
+NByolk_msd_compute(tifNames, df_films_PATH, df_res_name,
+                    Dict_fSuf, Dict_rP, Dict_pP, 
+                    Do_MSD = True, Do_PairMSD = True)
 
 
 # %%%% Import MSD & plot / Import pairMSD & plot
 
 title = '26-09-30_D2'
-df_diff = import_and_plot_MSD(fileNames, Dict_Files_Suffix, fig_title=title)
-df_diff, df_pairDiff = import_and_plot_pairMSD(fileNames, Dict_Files_Suffix, fig_title=title)
+df_diff = import_and_plot_MSD(fileNames, Dict_fSuf, fig_title=title)
+df_diff, df_pairDiff = import_and_plot_pairMSD(fileNames, Dict_fSuf, fig_title=title)
 
-for i in plt.get_fignums():
-    plt.figure(i)
-    plt.savefig(os.path.join(plotDir, title + f'_MSDfig_{i:02d}.png'))
+# for i in plt.get_fignums():
+#     plt.figure(i)
+#     plt.savefig(os.path.join(figDir, title + f'_MSDfig_{i:02d}.png'))
 
 
 
@@ -2207,16 +2157,16 @@ for i in range(len(tifNames)):
     Y_MTcenter = df_g.loc[df_g['tN']==tN, 'yc'].to_numpy()[0]
 
     title = '_'.join(fN.split('_')[1:3])
-    rawTrackName = fN + Dict_Files_Suffix['suffix_rawTracks'] + '.xml'
+    rawTrackName = fN + Dict_fSuf['suf_rawTracks'] + '.xml'
     if Use_DriftCorrected:
-        trackName = fN + Dict_Files_Suffix['suffix_driftCorrTracks'] + '.csv'
+        trackName = fN + Dict_fSuf['suf_driftCorrTracks'] + '.csv'
     else:
-        trackName = fN + Dict_Files_Suffix['suffix_cleanTracks'] + '.csv'
+        trackName = fN + Dict_fSuf['suf_cleanTracks'] + '.csv'
         
-    # msdName = fN + Dict_Files_Suffix['suffix_globalMsd'] + '.csv'
-    # msdFitsName = fN + Dict_Files_Suffix['suffix_globalMsdFits']
+    # msdName = fN + Dict_fSuf['suf_globalMsd'] + '.csv'
+    # msdFitsName = fN + Dict_fSuf['suf_globalMsdFits']
     if np.isnan(X_MTcenter) or np.isnan(Y_MTcenter):
-        contourName = fN + Dict_Files_Suffix['suffix_contour'] + '.npy'
+        contourName = fN + Dict_fSuf['suf_contour'] + '.npy'
         contourCell = np.load(os.path.join(srcDir, contourName))
         poly = Polygon(contourCell)
         xc, yc = poly.centroid.xy
@@ -2301,16 +2251,16 @@ for i in range(len(tifNames)):
     # print(X_MTcenter, Y_MTcenter)
 
     title = '_'.join(fN.split('_')[1:4])
-    rawTrackName = fN + Dict_Files_Suffix['suffix_rawTracks'] + '.xml'
+    rawTrackName = fN + Dict_fSuf['suf_rawTracks'] + '.xml'
     if Use_DriftCorrected:
-        trackName = fN + Dict_Files_Suffix['suffix_driftCorrTracks'] + '.csv'
+        trackName = fN + Dict_fSuf['suf_driftCorrTracks'] + '.csv'
     else:
-        trackName = fN + Dict_Files_Suffix['suffix_cleanTracks'] + '.csv'
+        trackName = fN + Dict_fSuf['suf_cleanTracks'] + '.csv'
         
-    # msdName = fN + Dict_Files_Suffix['suffix_globalMsd'] + '.csv'
-    # msdFitsName = fN + Dict_Files_Suffix['suffix_globalMsdFits']
+    # msdName = fN + Dict_fSuf['suf_globalMsd'] + '.csv'
+    # msdFitsName = fN + Dict_fSuf['suf_globalMsdFits']
     if np.isnan(X_MTcenter) or np.isnan(Y_MTcenter):
-        contourName = fN + Dict_Files_Suffix['suffix_contour'] + '.npy'
+        contourName = fN + Dict_fSuf['suf_contour'] + '.npy'
         contourCell = np.load(os.path.join(srcDir, contourName))
         poly = Polygon(contourCell)
         xc, yc = poly.centroid.xy
@@ -2378,55 +2328,98 @@ tifNames = [
 tifPaths = [os.path.join(srcDir, tifName) for tifName in tifNames]
 fileNames = [fN.split('.')[0] for fN in tifNames]
 
-Dict_Files_Suffix = {
-    'suffix_contour' : '_cellContour',
-    'suffix_mask' : '_cellMask',
-    'suffix_rawTracks' : '_TmTracks',
-    'suffix_cleanTracks' : '_PyTracks',
-    'suffix_cleanTracks_DriftCorr' : '_PyTracks2',
-    'suffix_drift' : '_XYdrift',
-    'suffix_globalMsd' : '_GlobalMsd',
-    'suffix_globalMsdFits' : '_GlobalMsdFits',
-    'suffix_globalPairMsd' : '_GlobalPairMsd',
-    'suffix_globalPairMsdFits' : '_GlobalPairMsdFits',
-    }
 
+# %%%% Run table autofill
+
+autofill_SPT_Data(srcDir, tifNames, df_films_PATH)
+
+# %%%% Run new Tracking
 
 #### Settings
-UmPerPix = cd.UmPerPix_60X_W1
-Dict_Image_Settings = {
-    'UmPerPix' : UmPerPix,
-    'PixPerUm' : 1/UmPerPix,
-    'FPS' : 10,
-    }
-
 Dict_TrackMate_Settings = {
-    'RADIUS_UM' : 0.8, 
-    'THRESH_SPOT_QLT' : 0.25,
-    'THRESH_LINK_UM' : 0.4, # increased at 0.4um for 10Hz
-    'THRESH_MIN_DURATION' : 30,
+    'RADIUS_UM' : 0.8, 'THRESH_SPOT_QLT' : 0.25,
+    'THRESH_LINK_UM' : 0.25, 'THRESH_MIN_DURATION' : 30,
     }
 
-Dict_Analysis_Settings = {
-    'mask_buffer_um' : 1.5,
-    'edge_buffer_cutoff_um' : 1.5,
-    'max_Dt_s' : 4,
-    'lowDt_upper' : 0.5,
-    'highDt_lower' : 1.0,
-    'pairMSD_Dt_s' : 5,
-    'pairMSD_dist_th_um' : 5,
+NByolk_track_sequence(
+    srcDir, tifNames, df_films_PATH, 
+    Dict_fSuf, Dict_rP, Dict_pP, 
+    Dict_TrackMate_Settings, 
+    Do_Contours = True, Do_Tracking = True, 
+    Do_TrackCleaning = True, Do_DriftCorrection = False,
+    )
+
+# %%%% Run new MSD
+
+df_res_name = 'SPT_Results_01'
+NByolk_msd_compute(tifNames, df_films_PATH, df_res_name,
+                    Dict_fSuf, Dict_rP, Dict_pP, 
+                    Do_MSD = True, Do_PairMSD = True)
+
+
+# -----------------------------------------------------------------------------
+# %%% Charlotte Fixed Cells
+
+# %%%% Settings
+
+#### Paths
+mainDir = os.path.join(up.Path_IntraCellTracking, '2026_2601_Fixed_NileBlue_CharlotteMallart')
+srcDir = os.path.join(mainDir, 'CropedFilms')
+dstDir = os.path.join(mainDir, 'SPT_results')
+os.listdir(srcDir)
+
+tifNames = [
+    '2026_2601_NileBlue_Fix_1-2.tif',
+    '2026_2601_NileBlue_Fix_2-2.tif',
+    '2026_2601_NileBlue_Fix_3-2.tif',
+    '2026_2601_NileBlue_Fix_4-1.tif',
+    '2026_2601_NileBlue_Fix_5-1.tif',
+    '2026_2601_NileBlue_Fix_5-2.tif',
+    '2026_2601_NileBlue_Fix_6-1.tif',
+    '2026_2601_NileBlue_Fix_6-2.tif',
+    '2026_2601_NileBlue_Fix_6-3.tif',
+    ]
+
+tifPaths = [os.path.join(srcDir, tifName) for tifName in tifNames]
+fileNames = [fN.split('.')[0] for fN in tifNames]
+
+# %%%% Run table autofill
+
+autofill_SPT_Data(srcDir, tifNames, df_films_PATH)
+
+# %%%% Run new Tracking
+
+#### Settings
+Dict_TrackMate_Settings = {
+    'RADIUS_UM' : 0.8, 'THRESH_SPOT_QLT' : 0.25,
+    'THRESH_LINK_UM' : 0.25, 'THRESH_MIN_DURATION' : 30,
     }
 
-# %%%% Run analysis
+NByolk_track_sequence(
+    srcDir, tifNames, df_films_PATH, 
+    Dict_fSuf, Dict_rP, Dict_pP, 
+    Dict_TrackMate_Settings, 
+    Do_Contours = False, Do_Tracking = True, 
+    Do_TrackCleaning = True, Do_DriftCorrection = False,
+    )
 
-NByolk_analysis_sequence(mainDir, srcDir, dstDir, tifNames, Dict_Files_Suffix, 
-                         Dict_Image_Settings, Dict_TrackMate_Settings, Dict_Analysis_Settings,
-                         Do_Contours = False, 
-                         Do_Tracking = True, Ignore_ROIs = True,
-                         Do_TrackCleaning = True, 
-                         Do_DriftCorrection = False, Use_DriftCorrected = False,
-                         Do_MSD = True, 
-                         Do_PairMSD = True)
+# %%%% Run new MSD
+
+df_res_name = 'SPT_Results_FixedCells'
+NByolk_msd_compute(tifNames, df_films_PATH, df_res_name,
+                    Dict_fSuf, Dict_rP, Dict_pP, 
+                    Do_MSD = True, Do_PairMSD = True)
+
+
+
+# %%%% Import MSD & plot / Import pairMSD & plot
+
+df_diff = import_and_plot_MSD(fileNames, Dict_fSuf,)
+df_diff, df_pairDiff = import_and_plot_pairMSD(fileNames, Dict_fSuf,)
+
+
+# -----------------------------------------------------------------------------
+# %% -----
 
 # %% Tests
 
@@ -2437,7 +2430,7 @@ pm.setGraphicOptions(mode='screen')
 for i in range(len(fileNames)):
     print(i)
     tP, fN = tifPaths[i], fileNames[i]
-    cleanTrackName = fN + Dict_Files_Suffix['suffix_cleanTracks'] + '.csv'
+    cleanTrackName = fN + Dict_fSuf['suf_cleanTracks'] + '.csv'
     df = pd.read_csv(os.path.join(dstDir, cleanTrackName), sep='\t')
     
     PixPerUm = Dict_Image_Settings['PixPerUm']
@@ -2453,7 +2446,7 @@ for i in range(len(fileNames)):
                                                  dist_th_um = 4, max_Dt_s = 4)
     print(i)
     
-    pairMsdName = fN + Dict_Files_Suffix['suffix_globalPairMsd'] + '.csv'
+    pairMsdName = fN + Dict_fSuf['suf_globalPairMsd'] + '.csv'
     df_allTRange_pair_MSD.to_csv(os.path.join(dstDir, pairMsdName), index=False, sep='\t')
     
     
@@ -2494,7 +2487,7 @@ for i in range(len(fileNames)):
         'k_highDt': k_highDt, 'D_highDt': D_highDt,
         }
     
-    pairMsdFitsName = fN + Dict_Files_Suffix['suffix_globalPairMsdFits']
+    pairMsdFitsName = fN + Dict_fSuf['suf_globalPairMsdFits']
     ufun.dict2json(dict_pairMSDfits, dstDir, pairMsdFitsName)
 
 
@@ -2505,7 +2498,7 @@ i = 0
 print(i)
 tP, fN = tifPaths[i], fileNames[i]
 dirPlots = os.path.join(up.Path_Desktop, "Plots_film_triangles")
-cleanTrackName = fN + Dict_Files_Suffix['suffix_cleanTracks'] + '.csv'
+cleanTrackName = fN + Dict_fSuf['suf_cleanTracks'] + '.csv'
 df = pd.read_csv(os.path.join(dstDir, cleanTrackName), sep='\t')
 shape, _ = ufun.tiff_inspect(tP)
 PixPerUm = cd.PixPerUm_60X_W1
@@ -2523,7 +2516,7 @@ i = 10
 print(i)
 tP, fN = tifPaths[i], fileNames[i]
 
-cleanTrackName = fN + Dict_Files_Suffix['suffix_cleanTracks'] + '.csv'
+cleanTrackName = fN + Dict_fSuf['suf_cleanTracks'] + '.csv'
 df = pd.read_csv(os.path.join(dstDir, cleanTrackName), sep='\t')
 
 PixPerUm = cd.PixPerUm_60X_W1
@@ -2548,17 +2541,17 @@ tifNames = [
 tifPaths = [os.path.join(srcDir, tifName) for tifName in tifNames]
 fileNames = [fN.split('.')[0] for fN in tifNames]
 
-Dict_Files_Suffix = {
-    'suffix_contour' : '_cellContour',
-    'suffix_mask' : '_cellMask',
-    'suffix_rawTracks' : '_TmTracks',
-    'suffix_cleanTracks' : '_PyTracks',
-    'suffix_cleanTracks_DriftCorr' : '_PyTracks2',
-    'suffix_drift' : '_XYdrift',
-    'suffix_globalMsd' : '_GlobalMsd',
-    'suffix_globalMsdFits' : '_GlobalMsdFits',
-    'suffix_globalPairMsd' : '_GlobalPairMsd',
-    'suffix_globalPairMsdFits' : '_GlobalPairMsdFits',
+Dict_fSuf = {
+    'suf_contour' : '_cellContour',
+    'suf_mask' : '_cellMask',
+    'suf_rawTracks' : '_TmTracks',
+    'suf_cleanTracks' : '_PyTracks',
+    'suf_cleanTracks_DriftCorr' : '_PyTracks2',
+    'suf_drift' : '_XYdrift',
+    'suf_globalMsd' : '_GlobalMsd',
+    'suf_globalMsdFits' : '_GlobalMsdFits',
+    'suf_globalPairMsd' : '_GlobalPairMsd',
+    'suf_globalPairMsdFits' : '_GlobalPairMsdFits',
     }
 
 
@@ -2590,7 +2583,7 @@ i = 2
 print(i)
 tP, fN = tifPaths[i], fileNames[i]
 
-cleanTrackName = fN + Dict_Files_Suffix['suffix_cleanTracks'] + '.csv'
+cleanTrackName = fN + Dict_fSuf['suf_cleanTracks'] + '.csv'
 df = pd.read_csv(os.path.join(dstDir, cleanTrackName), sep='\t')
 
 PixPerUm = cd.PixPerUm_60X_W1
@@ -2608,7 +2601,7 @@ i = 3
 print(i)
 tP, fN = tifPaths[i], fileNames[i]
 
-cleanTrackName = fN + Dict_Files_Suffix['suffix_cleanTracks'] + '.csv'
+cleanTrackName = fN + Dict_fSuf['suf_cleanTracks'] + '.csv'
 df = pd.read_csv(os.path.join(dstDir, cleanTrackName), sep='\t')
 
 PixPerUm = cd.PixPerUm_60X_W1
@@ -2725,9 +2718,9 @@ dict_res = {'label':[],
 
 for i in range(len(fileNames)):   
     tifPath, fN = tifPaths[i], fileNames[i]
-    cleanTrackName = fN + Dict_Files_Suffix['suffix_cleanTracks'] + '.csv'
-    msdName = fN + Dict_Files_Suffix['suffix_globalMsd'] + '.csv'
-    msdFitsName = fN + Dict_Files_Suffix['suffix_globalMsdFits']
+    cleanTrackName = fN + Dict_fSuf['suf_cleanTracks'] + '.csv'
+    msdName = fN + Dict_fSuf['suf_globalMsd'] + '.csv'
+    msdFitsName = fN + Dict_fSuf['suf_globalMsdFits']
     
     df = pd.read_csv(os.path.join(dstDir, cleanTrackName), sep='\t')
     res_emsd = pd.read_csv(os.path.join(dstDir, msdName), sep='\t')
@@ -4188,7 +4181,7 @@ pm.setGraphicOptions(mode='screen')
 # for i in range(len(fileNames)):
 i = 13
 tP, fN = tifPaths[i], fileNames[i]
-cleanTrackName = fN + Dict_Files_Suffix['suffix_cleanTracks'] + '.csv'
+cleanTrackName = fN + Dict_fSuf['suf_cleanTracks'] + '.csv'
 df = pd.read_csv(os.path.join(dstDir, cleanTrackName), sep='\t')
 
 PixPerUm = Dict_Image_Settings['PixPerUm']
