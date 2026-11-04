@@ -43,6 +43,7 @@ import numbers
 import tifffile
 # import matplotlib
 # import traceback
+import pyautogui
 
 from scipy import interpolate
 # from scipy import signal
@@ -464,20 +465,6 @@ def OMEData2Df(filepath):
 
 
 
-
-
-# %%%%
-
-nT = 10
-nZ = 3
-nC = 2
-
-# TCZ = np.meshgrid(np.arange(nT), np.arange(nC), np.arange(nZ))
-M = np.array(np.meshgrid(np.arange(nC), np.arange(nZ), np.arange(nT))).T.reshape(-1,3)
-M = M[:,[2,0,1]]
-
-M
-
 # %%%% Former versions
 
 #### Made in PMMH
@@ -655,6 +642,43 @@ def checkDT_multiFile(dirPath):
         D[k] = np.array(D[k])
     df = pd.DataFrame(D)
     return(df)
+
+
+# %%% UI on images (ask & click)
+
+def ui2array(uixy):
+    """
+    Translate the output of the function plt.ginput() 
+    (which are lists of tuples), in an XY array with this shape:
+    XY = [[x0, y0], [x1, y1], [x2, y2], ...]
+    So if you need the [x, y] of 1 specific point, call XY[i]
+    If you need the list of all x coordinates, call XY[:, 0]
+    """
+    n = len(uixy)
+    XY = np.zeros((n, 2))
+    for i in range(n):
+        XY[i,0], XY[i,1] = uixy[i][0], uixy[i][1]
+    return(XY)
+
+def showAndQA(img, strech = True, 
+              QAtitle = 'Question', QAtext = '?', QAbuttons = ['Yes', 'No']
+              ):
+    if strech:
+        pStart, pStop = np.percentile(img, (1, 99))
+    else:
+        pStart, pStop = None, None
+        
+    fig, ax = plt.subplots(1,1)
+    ax.imshow(img, cmap = 'gray', vmin = pStart, vmax = pStop)
+    fig.show()
+    # mngr = plt.get_current_fig_manager()
+    # mngr.window.setGeometry(720, 50, 1175, 1000)
+    QA = pyautogui.confirm(
+        title=QAtitle,
+        text=QAtext,
+        buttons = QAbuttons,
+        )
+    return(QA)
 
 
 

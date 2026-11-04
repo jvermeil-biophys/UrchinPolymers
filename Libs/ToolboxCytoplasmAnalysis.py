@@ -522,9 +522,22 @@ def get_N_random_square_ROIs_in_cell(mask, L, N,
 
 
 
-
-
 # %%%% Data
+
+def point_cell_center(img):
+    QAtitle='Cell Microtubules Center',
+    QAtext='Can the organizing center of the microtubules be pointed?',
+    QAbuttons = ['Point center', 'No center']
+    QA = ufun.showAndQA(img, strech = True, 
+                        QAtitle = QAtitle, QAtext = QAtext, QAbuttons = QAbuttons)
+    if QA == 'Point center':
+        ui = plt.ginput(1, timeout=0)
+        uiXY = ufun.ui2array(ui)
+    else:
+        uiXY = []
+    fig = plt.gcf()
+    plt.close(fig)
+    return(QA, uiXY)
 
 
 def rawTracks_2_cleanTracks(rawTracks, cleanTrackName, plotDir, 
@@ -631,6 +644,132 @@ def rawTracks_2_cleanTracks(rawTracks, cleanTrackName, plotDir,
         plt.ion()
     
     return(df)
+
+
+# %%%% Tracks post-processing
+
+def correct_drift_in_Tracks(df, fN, tP, dstDir, figDir,
+                            PixPerUm, FPS, 
+                            PLOT = False, SHOWPLOT = False, SAVEPLOT = False, 
+                            export_image = False):
+    if PLOT:
+        i_eg = df['particle'].unique()[50]
+        df_eg = df[df['particle']==i_eg]
+        x_eg1 = df_eg['x'].to_numpy()
+        y_eg1 = df_eg['y'].to_numpy()
+        f_eg = df_eg['frame'].to_numpy()
+    
+    grouped = df.groupby('frame')
+    list_df_f = [(f, df_f) for f, df_f in grouped]
+    nF = len(list_df_f)
+    Dxy = np.zeros((nF, 2))
+    for (f1, df_f1), (f2, df_f2) in zip(list_df_f[:-1], list_df_f[1:]):
+        df_f_m = pd.merge(df_f1, df_f2, on='particle', how='inner', suffixes=('_1', '_2'))
+        df_f_m['dx'] = df_f_m['x_2'] - df_f_m['x_1']
+        df_f_m['dy'] = df_f_m['y_2'] - df_f_m['y_1']
+        Dxy[f1, 0] = np.mean(df_f_m['dx'].to_numpy()) #/ PixPerUm
+        Dxy[f1, 1] = np.mean(df_f_m['dy'].to_numpy()) #/ PixPerUm
+    
+    sum_Dxy = np.array([[0, 0]] + [np.sum(Dxy[:k, :], axis=0) for k in range(1, nF)])
+    
+    sDxy = np.zeros_like(Dxy)
+    sDxy = savgol_filter(Dxy, 5, 3, axis=0)
+    sum_sDxy = np.array([[0, 0]] + [np.sum(sDxy[:k, :], axis=0) for k in range(1, nF)])
+    
+    Dxy_corr = np.copy(sum_sDxy)
+    
+    list_df_f = [(f, df_f) for f, df_f in grouped]
+    list_results = []
+    # list_results = [list_df_f[0][1]]
+    for f, df_f in list_df_f: #[1:]:
+        df_f['x'] = df_f['x'] - Dxy_corr[f-1, 0]
+        df_f['y'] = df_f['y'] - Dxy_corr[f-1, 1]
+        list_results.append(df_f)
+    df2 = pd.concat(list_results, axis=0)
+    df2.sort_values(by=["particle", "frame"], inplace=True)
+    # print(df.head())
+    # print(df2.head())
+    
+    if PLOT:
+        if not SHOWPLOT:
+            plt.ioff()
+            
+        # fig, axes = plt.subplots(2, 1, figsize=(7, 7), layout='compressed')
+        pm.setGraphicOptions(mode='print')
+        fig = plt.figure(layout="compressed", figsize=(8, 8))
+
+        gs = mpl.gridspec.GridSpec(3, 3, figure=fig)
+        ax1 = fig.add_subplot(gs[0, :])
+        ax2 = fig.add_subplot(gs[1, :])
+        ax3 = fig.add_subplot(gs[2:, 0])
+        ax4 = fig.add_subplot(gs[2:, 1], sharex=ax3, sharey=ax3)
+        ax5 = fig.add_subplot(gs[2:, 2], sharex=ax3, sharey=ax3)
+        axes = [ax1, ax2, ax3, ax4, ax5]
+
+        axes[0].set_ylabel('dx, dy')
+        axes[1].set_ylabel('Smoothed dx, dy')
+        ax = axes[0]
+        ax.plot(np.arange(0, nF)*FPS, Dxy[:, 0]/PixPerUm, 'b-')
+        ax.plot(np.arange(0, nF)*FPS, sum_Dxy[:, 0]/PixPerUm, ls='-', color='cyan')
+        ax.plot(np.arange(0, nF)*FPS, Dxy[:, 1]/PixPerUm, 'r-')
+        ax.plot(np.arange(0, nF)*FPS, sum_Dxy[:, 1]/PixPerUm, ls='-', color='orange')
+        ax.grid()
+        ax = axes[1]
+        ax.plot(np.arange(0, nF)*FPS, sDxy[:, 0]/PixPerUm, 'b-')
+        ax.plot(np.arange(0, nF)*FPS, sum_sDxy[:, 0]/PixPerUm, ls='-', color='cyan')
+        ax.plot(np.arange(0, nF)*FPS, sDxy[:, 1]/PixPerUm, 'r-')
+        ax.plot(np.arange(0, nF)*FPS, sum_sDxy[:, 1]/PixPerUm, ls='-', color='orange')
+        ax.grid()
+        ax.set_xlabel('Frame No.')
+        
+        
+        # fig, axes = plt.subplots(1, 3, figsize=(10, 3.5), layout='compressed',
+        #                          sharex=True, sharey=True)
+        df2_eg = df2[df2['particle']==i_eg]
+        dx_eg, dy_eg = Dxy_corr[f_eg-1, 0], Dxy_corr[f_eg-1, 1]
+        x_eg2 = df2_eg['x'].to_numpy()
+        y_eg2 = df2_eg['y'].to_numpy()
+        ax = axes[2]
+        ax.set_aspect('equal', adjustable='box')
+        ax.plot(x_eg1-x_eg1[0], y_eg1-y_eg1[0], 'b-')
+        ax.grid()
+        ax = axes[3]
+        ax.set_aspect('equal', adjustable='box')
+        ax.plot(dx_eg, dy_eg, 'k-')
+        ax.grid()
+        ax = axes[4]
+        ax.set_aspect('equal', adjustable='box')
+        ax.plot(x_eg2-x_eg2[0], y_eg2-y_eg2[0], 'r-')
+        ax.grid()
+
+        if SAVEPLOT:
+            figName = fN + '_DriftCorr.png'
+            figPath = os.path.join(figDir, figName)
+            fig.savefig(figPath)
+        if SHOWPLOT:
+            plt.show()
+        if not SHOWPLOT:
+            plt.ion()
+
+    if export_image:
+        nT = nF
+        img = ufun.load_stack_region(tP, time_indices=[i for i in range(nT)])
+        tf_img = np.zeros_like(img)
+        tf_img[0, :, :] = img[0, :, :]
+        # tf_img = []
+        # tf_img.append(img[0, :, :])
+        for t in range(nT-1): # nF-1
+            img_t = img[t+1, :, :]
+            tform = skm.transform.EuclideanTransform(translation=(-sum_sDxy[t, 0], -sum_sDxy[t, 1]))
+            tf_img[t+1] = skm.transform.warp(img_t, tform.inverse, preserve_range=True)
+            # tf_img.append(skm.transform.warp(img_t, tform.inverse, preserve_range=True))
+        tf_img = np.array(tf_img)
+        fpath = os.path.join(dstDir, fN + '_DriftCorr.tif')
+        skm.io.imsave(fpath, tf_img)
+        
+        
+    return(df2, Dxy_corr)
+
 
 # %%%% Pairwise MSD
 
@@ -1230,7 +1369,7 @@ def runTrackMate(tif_file, xmlPath, Pix_Per_Um,
     simple_xml_file = File(xmlPath)
     ExportTracksToXML.export(model, settings, simple_xml_file)
     
-    print('\nDone!')
+    print('\nDone!\n')
 
 
 # runTrackMate(imp, xmlPath)

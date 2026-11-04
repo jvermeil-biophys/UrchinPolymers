@@ -95,188 +95,7 @@ Dict_fSuf = {
 
 
 
-# %% Helper functions
-
-#### TEST !
-
-
-def ui2array(uixy):
-    """
-    Translate the output of the function plt.ginput() 
-    (which are lists of tuples), in an XY array with this shape:
-    XY = [[x0, y0], [x1, y1], [x2, y2], ...]
-    So if you need the [x, y] of 1 specific point, call XY[i]
-    If you need the list of all x coordinates, call XY[:, 0]
-    """
-    n = len(uixy)
-    XY = np.zeros((n, 2))
-    for i in range(n):
-        XY[i,0], XY[i,1] = uixy[i][0], uixy[i][1]
-    return(XY)
-
-def showAndQA(img, strech = True, 
-              QAtitle = 'Question', QAtext = '?', QAbuttons = ['Yes', 'No']
-              ):
-    if strech:
-        pStart, pStop = np.percentile(img, (1, 99))
-    else:
-        pStart, pStop = None, None
-        
-    fig, ax = plt.subplots(1,1)
-    ax.imshow(img, cmap = 'gray', vmin = pStart, vmax = pStop)
-    fig.show()
-    # mngr = plt.get_current_fig_manager()
-    # mngr.window.setGeometry(720, 50, 1175, 1000)
-    QA = pyautogui.confirm(
-        title=QAtitle,
-        text=QAtext,
-        buttons = QAbuttons,
-        )
-    
-    return(QA)
-
-def pointCellCenter(img):
-    QAtitle='Cell Microtubules Center',
-    QAtext='Can the organizing center of the microtubules be pointed?',
-    QAbuttons = ['Point center', 'No center']
-    QA = showAndQA(img, strech = True, 
-                   QAtitle = QAtitle, QAtext = QAtext, QAbuttons = QAbuttons)
-    if QA == 'Point center':
-        ui = plt.ginput(1, timeout=0)
-        uiXY = ui2array(ui)
-    else:
-        uiXY = []
-    fig = plt.gcf()
-    plt.close(fig)
-    return(QA, uiXY)
-
-
-####
-
-def correct_drift_in_Tracks(df, fN, tP, dstDir, figDir,
-                            PixPerUm, FPS, 
-                            PLOT = False, SHOWPLOT = False, SAVEPLOT = False, 
-                            export_image = False):
-    if PLOT:
-        i_eg = df['particle'].unique()[50]
-        df_eg = df[df['particle']==i_eg]
-        x_eg1 = df_eg['x'].to_numpy()
-        y_eg1 = df_eg['y'].to_numpy()
-        f_eg = df_eg['frame'].to_numpy()
-    
-    grouped = df.groupby('frame')
-    list_df_f = [(f, df_f) for f, df_f in grouped]
-    nF = len(list_df_f)
-    Dxy = np.zeros((nF, 2))
-    for (f1, df_f1), (f2, df_f2) in zip(list_df_f[:-1], list_df_f[1:]):
-        df_f_m = pd.merge(df_f1, df_f2, on='particle', how='inner', suffixes=('_1', '_2'))
-        df_f_m['dx'] = df_f_m['x_2'] - df_f_m['x_1']
-        df_f_m['dy'] = df_f_m['y_2'] - df_f_m['y_1']
-        Dxy[f1, 0] = np.mean(df_f_m['dx'].to_numpy()) #/ PixPerUm
-        Dxy[f1, 1] = np.mean(df_f_m['dy'].to_numpy()) #/ PixPerUm
-    
-    sum_Dxy = np.array([[0, 0]] + [np.sum(Dxy[:k, :], axis=0) for k in range(1, nF)])
-    
-    sDxy = np.zeros_like(Dxy)
-    sDxy = savgol_filter(Dxy, 5, 3, axis=0)
-    sum_sDxy = np.array([[0, 0]] + [np.sum(sDxy[:k, :], axis=0) for k in range(1, nF)])
-    
-    Dxy_corr = np.copy(sum_sDxy)
-    
-    list_df_f = [(f, df_f) for f, df_f in grouped]
-    list_results = []
-    # list_results = [list_df_f[0][1]]
-    for f, df_f in list_df_f: #[1:]:
-        df_f['x'] = df_f['x'] - Dxy_corr[f-1, 0]
-        df_f['y'] = df_f['y'] - Dxy_corr[f-1, 1]
-        list_results.append(df_f)
-    df2 = pd.concat(list_results, axis=0)
-    df2.sort_values(by=["particle", "frame"], inplace=True)
-    # print(df.head())
-    # print(df2.head())
-    
-    if PLOT:
-        if not SHOWPLOT:
-            plt.ioff()
-            
-        # fig, axes = plt.subplots(2, 1, figsize=(7, 7), layout='compressed')
-        pm.setGraphicOptions(mode='print')
-        fig = plt.figure(layout="compressed", figsize=(8, 8))
-
-        gs = mpl.gridspec.GridSpec(3, 3, figure=fig)
-        ax1 = fig.add_subplot(gs[0, :])
-        ax2 = fig.add_subplot(gs[1, :])
-        ax3 = fig.add_subplot(gs[2:, 0])
-        ax4 = fig.add_subplot(gs[2:, 1], sharex=ax3, sharey=ax3)
-        ax5 = fig.add_subplot(gs[2:, 2], sharex=ax3, sharey=ax3)
-        axes = [ax1, ax2, ax3, ax4, ax5]
-
-        axes[0].set_ylabel('dx, dy')
-        axes[1].set_ylabel('Smoothed dx, dy')
-        ax = axes[0]
-        ax.plot(np.arange(0, nF)*FPS, Dxy[:, 0]/PixPerUm, 'b-')
-        ax.plot(np.arange(0, nF)*FPS, sum_Dxy[:, 0]/PixPerUm, ls='-', color='cyan')
-        ax.plot(np.arange(0, nF)*FPS, Dxy[:, 1]/PixPerUm, 'r-')
-        ax.plot(np.arange(0, nF)*FPS, sum_Dxy[:, 1]/PixPerUm, ls='-', color='orange')
-        ax.grid()
-        ax = axes[1]
-        ax.plot(np.arange(0, nF)*FPS, sDxy[:, 0]/PixPerUm, 'b-')
-        ax.plot(np.arange(0, nF)*FPS, sum_sDxy[:, 0]/PixPerUm, ls='-', color='cyan')
-        ax.plot(np.arange(0, nF)*FPS, sDxy[:, 1]/PixPerUm, 'r-')
-        ax.plot(np.arange(0, nF)*FPS, sum_sDxy[:, 1]/PixPerUm, ls='-', color='orange')
-        ax.grid()
-        ax.set_xlabel('Frame No.')
-        
-        
-        # fig, axes = plt.subplots(1, 3, figsize=(10, 3.5), layout='compressed',
-        #                          sharex=True, sharey=True)
-        df2_eg = df2[df2['particle']==i_eg]
-        dx_eg, dy_eg = Dxy_corr[f_eg-1, 0], Dxy_corr[f_eg-1, 1]
-        x_eg2 = df2_eg['x'].to_numpy()
-        y_eg2 = df2_eg['y'].to_numpy()
-        ax = axes[2]
-        ax.set_aspect('equal', adjustable='box')
-        ax.plot(x_eg1-x_eg1[0], y_eg1-y_eg1[0], 'b-')
-        ax.grid()
-        ax = axes[3]
-        ax.set_aspect('equal', adjustable='box')
-        ax.plot(dx_eg, dy_eg, 'k-')
-        ax.grid()
-        ax = axes[4]
-        ax.set_aspect('equal', adjustable='box')
-        ax.plot(x_eg2-x_eg2[0], y_eg2-y_eg2[0], 'r-')
-        ax.grid()
-
-        if SAVEPLOT:
-            figName = fN + '_DriftCorr.png'
-            figPath = os.path.join(figDir, figName)
-            fig.savefig(figPath)
-        if SHOWPLOT:
-            plt.show()
-        if not SHOWPLOT:
-            plt.ion()
-
-    if export_image:
-        nT = nF
-        img = ufun.load_stack_region(tP, time_indices=[i for i in range(nT)])
-        tf_img = np.zeros_like(img)
-        tf_img[0, :, :] = img[0, :, :]
-        # tf_img = []
-        # tf_img.append(img[0, :, :])
-        for t in range(nT-1): # nF-1
-            img_t = img[t+1, :, :]
-            tform = skm.transform.EuclideanTransform(translation=(-sum_sDxy[t, 0], -sum_sDxy[t, 1]))
-            tf_img[t+1] = skm.transform.warp(img_t, tform.inverse, preserve_range=True)
-            # tf_img.append(skm.transform.warp(img_t, tform.inverse, preserve_range=True))
-        tf_img = np.array(tf_img)
-        fpath = os.path.join(dstDir, fN + '_DriftCorr.tif')
-        skm.io.imsave(fpath, tf_img)
-        
-        
-    return(df2, Dxy_corr)
-
-
-#### Analysis functions
+# %% Analysis functions
 
 def autofill_SPT_Data(srcDir, tifNames, df_films_path):
     DF_FILMS = pd.read_csv(df_films_path)
@@ -291,7 +110,7 @@ def autofill_SPT_Data(srcDir, tifNames, df_films_path):
             DF_FILMS.loc[idx, 'im_height'] = int(nY)
             
             img = ufun.load_stack_region(tP, time_indices=[nT//2])[0]
-            QA, uiXY = pointCellCenter(img)
+            QA, uiXY = tbca.point_cell_center(img)
             if QA == 'No center':
                 xc, yc = np.nan, np.nan
             else:
@@ -313,8 +132,7 @@ def NByolk_track_sequence(srcDir, tifNames, df_films_path,
                           Dict_TrackMate_Settings, 
                           Do_Contours = True, 
                           Do_Tracking = True, 
-                          Do_TrackCleaning = True, 
-                          Do_DriftCorrection = False):
+                          Do_TrackCleaning = True,):
     
     DF_FILMS = pd.read_csv(df_films_path)
     tifPaths = [os.path.join(srcDir, tifName) for tifName in tifNames]
@@ -370,7 +188,7 @@ def NByolk_track_sequence(srcDir, tifNames, df_films_path,
                 Mask_cell = None
             
             tbca.pretreat_and_track_NbYolk(
-                tifPath, rawTrackName, 
+                tP, rawTrackName, 
                 Dict_rP['dir_rawTracks'], Dict_pP['dir_trackFig'], 
                 PixPerUm, Dict_TrackMate_Settings = Dict_TrackMate_Settings,
                 Mask_cell = Mask_cell, mask_buffer_um = mask_buffer_um,
@@ -412,7 +230,7 @@ def NByolk_track_sequence(srcDir, tifNames, df_films_path,
             cleanTrackName = fN + Dict_fSuf['suf_cleanTracks'] + '.csv'
             df = pd.read_csv(os.path.join(dstDir, cleanTrackName), sep='\t')
         
-            df2, Dxy_corr = correct_drift_in_Tracks(
+            df2, Dxy_corr = tbca.correct_drift_in_Tracks(
                 df, fN, tP, Dict_rP['dir_cleanTracks'], Dict_pP['dir_driftFig'], 
                 PixPerUm, FPS, 
                 PLOT = True, SHOWPLOT = False, SAVEPLOT = True, 
@@ -619,7 +437,7 @@ def NByolk_msd_compute(tifNames, df_films_path, df_res_name,
     pass
     
 
-#### Plotting functions
+# %% Plotting functions
 
 def Tpf_str2num(tpf_str):
     L = tpf_str.split('min')
@@ -1025,6 +843,7 @@ def plot_MSD_HeatMap(df_grid, M_boxes, xy_col, parm_col,
     ax.tick_params(which="minor", bottom=False, left=False)
     return(fig, ax)
 
+# %% Other functions
 
 def autocorr_fft(x):
     N = len(x)
@@ -1133,7 +952,7 @@ NByolk_track_sequence(
     Dict_fSuf, Dict_rP, Dict_pP, 
     Dict_TrackMate_Settings, 
     Do_Contours = True, Do_Tracking = True, 
-    Do_TrackCleaning = True, Do_DriftCorrection = False,
+    Do_TrackCleaning = True, 
     )
 
 # %%%% Run new MSD
@@ -1411,7 +1230,7 @@ NByolk_track_sequence(
     Dict_fSuf, Dict_rP, Dict_pP, 
     Dict_TrackMate_Settings, 
     Do_Contours = True, Do_Tracking = True, 
-    Do_TrackCleaning = True, Do_DriftCorrection = False,
+    Do_TrackCleaning = True, 
     )
 
 # %%%% Run new MSD
@@ -1682,7 +1501,7 @@ NByolk_track_sequence(
     Dict_fSuf, Dict_rP, Dict_pP, 
     Dict_TrackMate_Settings, 
     Do_Contours = True, Do_Tracking = True, 
-    Do_TrackCleaning = True, Do_DriftCorrection = False,
+    Do_TrackCleaning = True, 
     )
 
 # %%%% Run new MSD
@@ -2084,7 +1903,7 @@ NByolk_track_sequence(
     Dict_fSuf, Dict_rP, Dict_pP, 
     Dict_TrackMate_Settings, 
     Do_Contours = True, Do_Tracking = True, 
-    Do_TrackCleaning = True, Do_DriftCorrection = False,
+    Do_TrackCleaning = True, 
     )
 
 # %%%% Run new MSD
@@ -2315,15 +2134,18 @@ srcDir = os.path.join(mainDir, 'Crops')
 dstDir = os.path.join(mainDir, 'SPT_results')
 
 tifNames = [
-            '26-07-29_PostF_2min_Pos11_10fps_Texp100ms_CSU642_crop.tif',
-            '26-07-29_PostF_6min30_Pos11_10fps_Texp100ms_CSU642_crop.tif',
-            '26-07-29_PostF_12min_Pos11_10fps_Texp100ms_CSU642_crop.tif',
-            '26-07-29_PostF_20min_Pos11_10fps_Texp100ms_CSU642_crop.tif',
-            '26-07-29_PostF_30min_Pos11_10fps_Texp100ms_CSU642_crop.tif',
-            '26-07-29_PostF_45min_Pos11_10fps_Texp100ms_CSU642_crop.tif',
-            '26-07-29_PostF_60min_Pos11_10fps_Texp100ms_CSU642_crop.tif',
-            '26-07-29_PostF_70min_Pos11_10fps_Texp100ms_CSU642_crop.tif',
-            ]
+    '26-07-29_PreF_Pos2-1_20fps_Texp50ms_CSU642_crop.tif',
+    '26-07-29_PreF_Pos2-2_20fps_Texp50ms_CSU642_crop.tif',
+    '26-07-29_PostF_2min_Pos11_10fps_Texp100ms_CSU642_crop.tif',
+    '26-07-29_PostF_6min30_Pos11_10fps_Texp100ms_CSU642_crop.tif',
+    '26-07-29_PostF_12min_Pos11_10fps_Texp100ms_CSU642_crop.tif',
+    '26-07-29_PostF_20min_Pos11_10fps_Texp100ms_CSU642_crop.tif',
+    '26-07-29_PostF_30min_Pos11_10fps_Texp100ms_CSU642_crop.tif',
+    '26-07-29_PostF_45min_Pos11_10fps_Texp100ms_CSU642_crop.tif',
+    '26-07-29_PostF_60min_Pos11_10fps_Texp100ms_CSU642_crop.tif',
+    '26-07-29_PostF_70min_Pos11_10fps_Texp100ms_CSU642_crop.tif',
+    '26-07-29_PostF_80min_Pos11_10fps_Texp100ms_CSU642_crop.tif',
+    ]
 
 tifPaths = [os.path.join(srcDir, tifName) for tifName in tifNames]
 fileNames = [fN.split('.')[0] for fN in tifNames]
@@ -2345,8 +2167,8 @@ NByolk_track_sequence(
     srcDir, tifNames, df_films_PATH, 
     Dict_fSuf, Dict_rP, Dict_pP, 
     Dict_TrackMate_Settings, 
-    Do_Contours = True, Do_Tracking = True, 
-    Do_TrackCleaning = True, Do_DriftCorrection = False,
+    Do_Contours = False, Do_Tracking = True, 
+    Do_TrackCleaning = True, 
     )
 
 # %%%% Run new MSD
@@ -2358,7 +2180,7 @@ NByolk_msd_compute(tifNames, df_films_PATH, df_res_name,
 
 
 # -----------------------------------------------------------------------------
-# %%% Charlotte Fixed Cells
+# %%% Charlotte's Fixed Cells
 
 # %%%% Settings
 
@@ -2400,7 +2222,7 @@ NByolk_track_sequence(
     Dict_fSuf, Dict_rP, Dict_pP, 
     Dict_TrackMate_Settings, 
     Do_Contours = False, Do_Tracking = True, 
-    Do_TrackCleaning = True, Do_DriftCorrection = False,
+    Do_TrackCleaning = True, 
     )
 
 # %%%% Run new MSD
@@ -2409,8 +2231,6 @@ df_res_name = 'SPT_Results_FixedCells'
 NByolk_msd_compute(tifNames, df_films_PATH, df_res_name,
                     Dict_fSuf, Dict_rP, Dict_pP, 
                     Do_MSD = True, Do_PairMSD = True)
-
-
 
 # %%%% Import MSD & plot / Import pairMSD & plot
 
@@ -2421,6 +2241,12 @@ df_diff, df_pairDiff = import_and_plot_pairMSD(fileNames, Dict_fSuf,)
 # -----------------------------------------------------------------------------
 # %% -----
 
+# %% 2. Comparing across cells: Data & plots
+
+
+
+
+# %% -----
 # %% Tests
 
 # %%%% Test Compute pair-MSD
