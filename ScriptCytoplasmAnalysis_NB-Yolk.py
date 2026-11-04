@@ -25,11 +25,11 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 # %% Imports
 
 import os
-import re
 import time
-import pyautogui
 import alphashape
+# import re
 # import cv2
+# import pyautogui
 
 import numpy as np
 import pandas as pd
@@ -41,8 +41,8 @@ import scipy.ndimage as ndi
 import matplotlib.pyplot as plt
 
 from shapely.geometry import MultiPoint, Polygon
-from scipy.spatial import Delaunay # ConvexHull
-from scipy.signal import savgol_filter
+# from scipy.spatial import Delaunay # ConvexHull
+# from scipy.signal import savgol_filter
 
 import Libs.PlotMaker as pm
 import Libs.UrchinPaths as up
@@ -73,11 +73,9 @@ Dict_pP = {
 
 df_cells_PATH = os.path.join(RES_DIR, 'SPT_Data_Cells.csv')
 df_films_PATH = os.path.join(RES_DIR, 'SPT_Data_Films.csv')
-df_res_PATH = os.path.join(RES_DIR, 'SPT_Results.csv')
 
 DF_CELLS = pd.read_csv(df_cells_PATH)
 DF_FILMS = pd.read_csv(df_films_PATH)
-
 
 
 Dict_fSuf = {
@@ -250,14 +248,19 @@ def NByolk_msd_compute(tifNames, df_films_path, df_res_name,
     
     DF_FILMS = pd.read_csv(df_films_path)
     
-    tifPaths = [os.path.join(srcDir, tifName) for tifName in tifNames]
     fileNames = [fN.split('.')[0] for fN in tifNames]
+    # tifPaths = [os.path.join(srcDir, tifName) for tifName in tifNames]
     
     for i in range(len(fileNames)):
-        tP, tN, fN = tifPaths[i], tifNames[i], fileNames[i]
+        tN, fN = tifNames[i], fileNames[i]
+        # tP = tifPaths[i]
         print(pm.CYAN + f'\nFile {i+1:.0f}/{len(fileNames):.0f} - {fN}' + pm.NORMAL)
         
-        DF_RES = pd.read_csv(os.path.join(RES_DIR, df_res_name + '.csv')).reset_index(drop=True)
+        try:
+            DF_RES = pd.read_csv(os.path.join(RES_DIR, df_res_name + '.csv')).reset_index(drop=True)
+        except:
+            DF_RES = pd.DataFrame({})
+            
         if tN not in DF_RES['tN'].to_numpy():
             DF_RES.loc[len(DF_RES), 'tN'] = tN
         
@@ -2242,6 +2245,37 @@ df_diff, df_pairDiff = import_and_plot_pairMSD(fileNames, Dict_fSuf,)
 # %% -----
 
 # %% 2. Comparing across cells: Data & plots
+
+# %%% Import tables
+
+df_cells_PATH = os.path.join(RES_DIR, 'SPT_Data_Cells.csv')
+df_films_PATH = os.path.join(RES_DIR, 'SPT_Data_Films.csv')
+df_res_PATH = os.path.join(RES_DIR, 'SPT_Results_01.csv')
+
+DF_CELLS = pd.read_csv(df_cells_PATH)
+DF_FILMS = pd.read_csv(df_films_PATH)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+# %%% -
+
+
 
 
 

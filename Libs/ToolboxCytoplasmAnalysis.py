@@ -38,7 +38,7 @@ import numpy as np
 import pandas as pd
 import trackpy as tp
 import skimage as skm
-import seaborn as sns
+# import seaborn as sns
 import matplotlib as mpl
 import scipy.ndimage as ndi
 import matplotlib.pyplot as plt
@@ -49,10 +49,10 @@ from shapely import MultiPoint, Polygon
 # from shapely.plotting import plot_polygon, plot_points # , plot_line
 
 # from trackpy.motion import msd, imsd, emsd
-from PIL import Image, ImageDraw
-from scipy import signal # stats #, optimize, interpolate, 
-from scipy.special import jv
-from scipy.spatial import ConvexHull, Delaunay
+# from PIL import Image, ImageDraw
+# from scipy.special import jv
+from scipy.spatial import Delaunay # ConvexHull, 
+from scipy.signal import savgol_filter
 
 import trackpy as tp
 
