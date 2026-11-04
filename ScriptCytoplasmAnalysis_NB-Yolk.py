@@ -2366,13 +2366,13 @@ dstDir = os.path.join(mainDir, 'SPT_results')
 
 tifNames = [
             '26-07-29_PostF_2min_Pos11_10fps_Texp100ms_CSU642_crop.tif',
-            # '26-07-29_PostF_6min30_Pos11_10fps_Texp100ms_CSU642_crop.tif',
-            # '26-07-29_PostF_12min_Pos11_10fps_Texp100ms_CSU642_crop.tif',
-            # '26-07-29_PostF_20min_Pos11_10fps_Texp100ms_CSU642_crop.tif',
-            # '26-07-29_PostF_30min_Pos11_10fps_Texp100ms_CSU642_crop.tif',
-            # '26-07-29_PostF_45min_Pos11_10fps_Texp100ms_CSU642_crop.tif',
-            # '26-07-29_PostF_60min_Pos11_10fps_Texp100ms_CSU642_crop.tif',
-            # '26-07-29_PostF_70min_Pos11_10fps_Texp100ms_CSU642_crop.tif',
+            '26-07-29_PostF_6min30_Pos11_10fps_Texp100ms_CSU642_crop.tif',
+            '26-07-29_PostF_12min_Pos11_10fps_Texp100ms_CSU642_crop.tif',
+            '26-07-29_PostF_20min_Pos11_10fps_Texp100ms_CSU642_crop.tif',
+            '26-07-29_PostF_30min_Pos11_10fps_Texp100ms_CSU642_crop.tif',
+            '26-07-29_PostF_45min_Pos11_10fps_Texp100ms_CSU642_crop.tif',
+            '26-07-29_PostF_60min_Pos11_10fps_Texp100ms_CSU642_crop.tif',
+            '26-07-29_PostF_70min_Pos11_10fps_Texp100ms_CSU642_crop.tif',
             ]
 
 tifPaths = [os.path.join(srcDir, tifName) for tifName in tifNames]
