@@ -2254,9 +2254,68 @@ df_res_PATH = os.path.join(RES_DIR, 'SPT_Results_01.csv')
 
 DF_CELLS = pd.read_csv(df_cells_PATH)
 DF_FILMS = pd.read_csv(df_films_PATH)
+DF_RES = pd.read_csv(df_res_PATH)
+DF_M = pd.merge(DF_FILMS, DF_RES, on='tN', how='inner')
+
+DF_M['Mid'] = DF_M['date'] + '_' + DF_M['manip']
+DF_M['Cid'] = DF_M['date'] + '_' + DF_M['manip'] + '_' + DF_M['cell']
+DF_CELLS['Mid'] = DF_CELLS['date'] + '_' + DF_CELLS['manip']
+DF_CELLS['Cid'] = DF_CELLS['date'] + '_' + DF_CELLS['manip'] + '_' + DF_CELLS['cell']
+
+DF_M = pd.merge(DF_M, DF_CELLS, on='Cid', how='left', suffixes=['', '_cell'])
+
+# %%% Plot together
 
 
+FILTERS = [
+    (DF_M['treatment_cell'] == 'none'),
+    ]
+df_f = pm.filterDf(DF_M, FILTERS).reset_index(drop=True)
 
+
+I_PHASES = {'aster-centration':0, 
+          'interphase':1, 
+          'mitosis':2}
+
+for i in range(len(df_f)):
+    row = df_f.loc[i, :]
+    phase = row['phase']
+    if phase == 'non-fertilized':
+        tpf_norm = 0
+    else:
+        tpf = row['tpf']
+        i_phase = I_PHASES[phase]
+        tpf_i, tpf_f = row['T_'+phase+'_i'], row['T_'+phase+'_f']
+        tpf_norm = i_phase + ((tpf - tpf_i)/(tpf_f - tpf_i))
+    df_f.loc[i, 'tpf_norm'] = tpf_norm
+
+
+fig, ax = plt.subplots(1, 1)
+
+metric_T = 'tpf_norm'
+metric_D = 'pmsd_D_highDt'
+normalize = True
+
+Mid_groups = df_f.groupby('Mid')
+for mid, df_c in Mid_groups:
+    if 'postF' in df_c['status'].to_numpy():
+        tpf = df_c[metric_T].to_numpy()
+        
+        if normalize:
+            FILTERS_ctrl = [
+                (df_c['tpf'] == 0),
+                ]
+            df_cf = pm.filterDf(df_c, FILTERS_ctrl)
+            D = (df_c[metric_D] / np.median(df_cf[metric_D])).to_numpy()
+        
+        else:
+            D = df_c[metric_D].to_numpy()
+        
+        
+        ax.plot(tpf, D, ls='-', marker='o', label=mid)
+
+ax.legend()
+plt.show()
 
 
 
