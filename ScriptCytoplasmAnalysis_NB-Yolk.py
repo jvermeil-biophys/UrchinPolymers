@@ -99,6 +99,10 @@ def autofill_SPT_Data(srcDir, tifNames, df_films_path):
     DF_FILMS = pd.read_csv(df_films_path)
     for tN in tifNames:
         tP = os.path.join(srcDir, tN)
+        if tN not in DF_FILMS['tN'].to_numpy():
+            idx = len(DF_FILMS)
+            DF_FILMS.loc[idx, 'tN'] = tN
+            
         if tN in DF_FILMS['tN'].to_numpy():
             idx = DF_FILMS[DF_FILMS['tN'] == tN].index[0]
             im_shape, im_type = ufun.tiff_inspect(tP)
@@ -151,28 +155,23 @@ def NByolk_track_sequence(srcDir, tifNames, df_films_path,
         nY = int(DF_FILMS.loc[idx, 'im_height'])
         nX = int(DF_FILMS.loc[idx, 'im_width'])
         
+        
         #### Make and save cell contours and masks
         if Do_Contours:
             print(pm.BRIGHTORANGE + '1. Contours step' + pm.NORMAL)
-            for i in range(len(fileNames)): # len(fileNames)
-                tP, fN = tifPaths[i], fileNames[i]
-                print(pm.CYAN + f'\nFile {i+1:.0f}/{len(fileNames):.0f} - {fN}' + pm.NORMAL)
-                
-                # shape, dtype = ufun.tiff_inspect(tP)
-                # nT = shape[0]
-                TT = range(0, nT, nT//100)
-                img = ufun.load_stack_region(tP, time_indices=TT)
-                
-                Contour_cell, Mask_cell = tbca.make_NbYolkCell_contour_and_mask(
-                    img, tN, Dict_pP['dir_segmentFig'], PixPerUm,
-                    keep_only_largest = True, exclude_on_edges = True,
-                    PLOT = True, SHOWPLOT = False, SAVEPLOT = True
-                    )
-                
-                contourFile = fN + Dict_fSuf['suf_contour'] + '.npy'
-                maskFile = fN + Dict_fSuf['suf_mask'] + '.npy'
-                np.save(os.path.join(Dict_rP['dir_segmentation'], contourFile), Contour_cell)
-                np.save(os.path.join(Dict_rP['dir_segmentation'], maskFile), Mask_cell)
+            TT = range(0, nT, nT//100)
+            img = ufun.load_stack_region(tP, time_indices=TT)
+            
+            Contour_cell, Mask_cell = tbca.make_NbYolkCell_contour_and_mask(
+                img, tN, Dict_pP['dir_segmentFig'], PixPerUm,
+                keep_only_largest = True, exclude_on_edges = True,
+                PLOT = True, SHOWPLOT = False, SAVEPLOT = True
+                )
+            
+            contourFile = fN + Dict_fSuf['suf_contour'] + '.npy'
+            maskFile = fN + Dict_fSuf['suf_mask'] + '.npy'
+            np.save(os.path.join(Dict_rP['dir_segmentation'], contourFile), Contour_cell)
+            np.save(os.path.join(Dict_rP['dir_segmentation'], maskFile), Mask_cell)
     
     
         #### Run Trackmate
@@ -181,7 +180,7 @@ def NByolk_track_sequence(srcDir, tifNames, df_films_path,
             rawTrackName = fN + Dict_fSuf['suf_rawTracks'] + '.xml'
             maskFile = fN + Dict_fSuf['suf_mask'] + '.npy'
             if Segmentation_Mode == 'cell-contour':
-                Mask_cell = np.load(os.path.join(srcDir, maskFile))
+                Mask_cell = np.load(os.path.join(Dict_rP['dir_segmentation'], maskFile))
             else:
                 Mask_cell = None
             
@@ -898,6 +897,57 @@ def msd_fft_trackpyStyle(traj, mpp, fps, max_lagtime=100, pos_columns=['x', 'y']
 
 # %% 1. Tracking and MSD
 
+# %%% 26-10-28_D2-s - Ctrl ?
+
+# %%%% Settings
+
+dateDir = os.path.join(up.Path_IntraCellTracking, '26-10-28_FastAcq-Channel_Fec_NB-Yolk_FM143-Endo')
+srcDir = os.path.join(dateDir, 'D2-s')
+os.listdir(srcDir)
+
+tifNames = [
+    '26-10-28_D2-s_PreF_0min_C1_20fps_Texp50ms_L30p1_CSU642.ome.tf2',
+    '26-10-28_D2-s_PreF_0min_C2_20fps_Texp50ms_L30p1_CSU642.ome.tf2',
+    '26-10-28_D2-s_PostF_2min_C3_20fps_Texp50ms_L30p1_CSU642.ome.tf2',
+    '26-10-28_D2-s_PostF_5min_C3_20fps_Texp50ms_L30p1_CSU642.ome.tf2',
+    '26-10-28_D2-s_PostF_8min_C3_20fps_Texp50ms_L30p1_CSU642.ome.tf2',
+    '26-10-28_D2-s_PostF_11min_C3_20fps_Texp50ms_L30p1_CSU642.ome.tf2',
+    '26-10-28_D2-s_PostF_15min_C3_20fps_Texp50ms_L30p1_CSU642.ome.tf2',
+    '26-10-28_D2-s_PostF_18min_C3_20fps_Texp50ms_L30p1_CSU642.ome.tf2',
+    '26-10-28_D2-s_PostF_24min_C3_20fps_Texp50ms_L30p1_CSU642.ome.tf2',
+    '26-10-28_D2-s_PostF_28min_C3_20fps_Texp50ms_L30p1_CSU642.ome.tf2',
+    '26-10-28_D2-s_PostF_35min_C3_20fps_Texp50ms_L30p1_CSU642.ome.tf2',
+    ]
+
+tifPaths = [os.path.join(srcDir, tifName) for tifName in tifNames]
+fileNames = [fN.split('.')[0] for fN in tifNames]
+
+# %%%% Run table autofill
+
+autofill_SPT_Data(srcDir, tifNames, df_films_PATH)
+
+# %%%% Run new Tracking
+
+#### Settings
+Dict_TrackMate_Settings = {
+    'RADIUS_UM' : 0.8, 'THRESH_SPOT_QLT' : 0.25,
+    'THRESH_LINK_UM' : 0.25, 'THRESH_MIN_DURATION' : 30,
+    }
+
+NByolk_track_sequence(
+    srcDir, tifNames, df_films_PATH, 
+    Dict_fSuf, Dict_rP, Dict_pP, 
+    Dict_TrackMate_Settings, 
+    Do_Contours = True, Do_Tracking = True, 
+    Do_TrackCleaning = True, 
+    )
+
+# %%%% Run new MSD
+
+df_res_name = 'SPT_Results_01'
+NByolk_msd_compute(tifNames, df_films_PATH, df_res_name,
+                    Dict_fSuf, Dict_rP, Dict_pP, 
+                    Do_MSD = True, Do_PairMSD = True)
 
 # %%% 26-10-07_D1-L - Noco
 
