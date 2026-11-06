@@ -466,7 +466,7 @@ def Tpf_label2num(fileName_str):
 
 
 def import_and_plot_MSD(fileNames, #tifPaths,
-                        Dict_fSuf,
+                        Dict_fSuf, Dict_rP, Dict_pP,
                         fig_title = '',
                         # Use_DriftCorrected = False,
                         ):    
