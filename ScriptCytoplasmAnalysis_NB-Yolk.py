@@ -89,6 +89,10 @@ Dict_fSuf = {
     'suf_globalMsdFits' : '_GlobalMsdFits',
     'suf_globalPairMsd' : '_GlobalPairMsd',
     'suf_globalPairMsdFits' : '_GlobalPairMsdFits',
+    'suf_indivMsd' : '_IndivMsd',
+    'suf_indivMsdFits' : '_IndivMsdFits',
+    'suf_RO_Msd' : '_RO-Msd',
+    'suf_RO_MsdFits' : '_RO-MsdFits',
     }
 
 
@@ -893,6 +897,635 @@ def msd_fft_trackpyStyle(traj, mpp, fps, max_lagtime=100, pos_columns=['x', 'y']
     results.index.name = 'lagt'
     
     return(results)
+
+
+def msd_fft_1D(pos, mpp, fps, max_lagtime=100):
+    """
+    https://stackoverflow.com/questions/34222272/computing-mean-square-displacement-using-python-and-fft/34222273#34222273
+    """
+    
+    r = pos
+    r *= mpp
+
+    t = np.arange(len(pos))
+
+    max_lagtime = min(max_lagtime, len(t))  # checking to be safe
+    lagtimes = 1 + np.arange(max_lagtime)    
+
+    N = len(r)
+
+    D = np.square(r)
+    D = np.append(D, 0)
+    S2 = sum([autocorr_fft(r[:])])
+
+    Q = 2 * D.sum()
+    S1 = np.zeros(max_lagtime+1)
+
+    for m in range(max_lagtime+1):
+        Q = Q - D[m - 1] - D[N - m]
+        S1[m] = Q / (N - m)
+
+    msd = S1 - 2 * S2[:max_lagtime+1]
+    msd = msd[1:]
+
+    lagt = lagtimes / fps
+
+    results = pd.DataFrame(np.array([msd, lagt]).T, columns=['msd', 'lagt'])
+    results.index = 1 + np.arange(max_lagtime)
+    results.index.name = 'lagt'
+    
+    return(results)
+
+
+
+# For Claude ! The function below is the one i want to complete
+def NByolk_imsd_compute(tifNames, df_films_path, df_res_name,
+                       Dict_fSuf, Dict_rP, Dict_pP):
+    
+    DF_FILMS = pd.read_csv(df_films_path)
+    
+    fileNames = [fN.split('.')[0] for fN in tifNames]
+    # tifPaths = [os.path.join(srcDir, tifName) for tifName in tifNames]
+    
+    for i in range(len(fileNames)):
+        tN, fN = tifNames[i], fileNames[i]
+        # tP = tifPaths[i]
+        print(pm.CYAN + f'\nFile {i+1:.0f}/{len(fileNames):.0f} - {fN}' + pm.NORMAL)
+        
+        try:
+            DF_RES = pd.read_csv(os.path.join(RES_DIR, df_res_name + '.csv')).reset_index(drop=True)
+        except:
+            DF_RES = pd.DataFrame({})
+            
+        if ('tN' not in DF_RES.columns) or (tN not in DF_RES['tN'].to_numpy()):
+            DF_RES.loc[len(DF_RES), 'tN'] = tN
+        
+        idx = DF_FILMS[DF_FILMS['tN'] == tN].index[0]
+        PixPerUm = DF_FILMS.loc[idx, 'PixPerUm']
+        FPS = DF_FILMS.loc[idx, 'FPS']
+        Use_DriftCorrected = DF_FILMS.loc[idx, 'drift_correction']
+        max_Dt_s = DF_FILMS.loc[idx, 'msd_max_Dt_s']
+        lowDt_upper = DF_FILMS.loc[idx, 'msd_lowDt_upper_s']
+        highDt_lower = DF_FILMS.loc[idx, 'msd_highDt_lower_s']
+    
+    
+        #### Import tracks, run trackpy.imsd, fit MSD
+        # rawTrackName = fN + Dict_fSuf['suf_rawTracks'] + '.xml'
+        if Use_DriftCorrected:
+            trackName = fN + Dict_fSuf['suf_cleanTracks_DriftCorr'] + '.csv'
+        else:
+            trackName = fN + Dict_fSuf['suf_cleanTracks'] + '.csv'
+            
+        df = pd.read_csv(os.path.join(Dict_rP['dir_cleanTracks'], trackName), sep='\t')
+        msd_N_tracks = len(df['particle'].unique())
+        
+        max_lagtime = int(max_Dt_s * FPS)
+        res_imsd = tp.motion.imsd(df, 1/PixPerUm, FPS, max_lagtime=max_lagtime).reset_index()
+        res_imsd.to_csv(os.path.join(Dict_rP['dir_msd'], msdName), index=False, sep='\t')
+        
+        # For Claude ! COMPLETE CODE HERE
+        # for each particle in the table, I want to fit the same metrics as in the function NByolk_msd_compute, 
+        # and wrap up everything in a pandas dataFrame
+        
+        imsd_rows = []
+        T_all = res_imsd['lagt'].values  # common lag-time axis for all particles
+
+        iLow = ufun.findFirst(lowDt_upper, T_all) + 1
+        iHigh = ufun.findFirst(highDt_lower, T_all)
+
+        for particle_id in res_imsd.columns:
+            if particle_id == 'lagt':
+                continue
+
+            MSD = res_imsd[particle_id].values
+
+            # Skip particles with too many NaN or zero values
+            valid = np.isfinite(MSD) & (MSD > 0)
+            if valid.sum() < 6:
+                continue
+
+            T = T_all[valid]
+            MSD = MSD[valid]
+
+            row = {'particle': particle_id}
+
+            # --- Linear fit over full range (2D: MSD = 4·D·Δt) ---
+            try:
+                parms, _ = ufun.fitLineHuber(T, MSD, with_intercept=False)
+                row['D_lin'] = parms[0] / 4
+            except Exception:
+                row['D_lin'] = np.nan
+
+            # --- Log-log fit over full range ---
+            try:
+                parms, _ = ufun.fitLineHuber(np.log(T), np.log(MSD), with_intercept=True)
+                b, a = parms
+                row['k_full'] = a
+                row['D_full'] = np.exp(b) / 4
+            except Exception:
+                row['k_full'], row['D_full'] = np.nan, np.nan
+
+            # --- Log-log fit over low-Δt range ---
+            # Re-compute valid mask restricted to low-Δt slice
+            valid_low = np.isfinite(res_imsd[particle_id].values[:iLow]) & \
+                        (res_imsd[particle_id].values[:iLow] > 0)
+            T_low  = T_all[:iLow][valid_low]
+            MSD_low = res_imsd[particle_id].values[:iLow][valid_low]
+
+            if len(T_low) >= 3:
+                try:
+                    parms, _ = ufun.fitLineHuber(np.log(T_low), np.log(MSD_low), with_intercept=True)
+                    b, a = parms
+                    row['k_lowDt'] = a
+                    row['D_lowDt'] = np.exp(b) / 4
+                except Exception:
+                    row['k_lowDt'], row['D_lowDt'] = np.nan, np.nan
+            else:
+                row['k_lowDt'], row['D_lowDt'] = np.nan, np.nan
+
+            # --- Linear + log-log fits over high-Δt range ---
+            valid_high = np.isfinite(res_imsd[particle_id].values[iHigh:]) & \
+                         (res_imsd[particle_id].values[iHigh:] > 0)
+            T_high   = T_all[iHigh:][valid_high]
+            MSD_high = res_imsd[particle_id].values[iHigh:][valid_high]
+
+            if len(T_high) >= 6:
+                try:
+                    parms, _ = ufun.fitLineHuber(T_high, MSD_high, with_intercept=False)
+                    row['D_lin_highDt'] = parms[0] / 4
+                except Exception:
+                    row['D_lin_highDt'] = np.nan
+
+                try:
+                    parms, _ = ufun.fitLineHuber(np.log(T_high), np.log(MSD_high), with_intercept=True)
+                    b, a = parms
+                    row['k_highDt'] = a
+                    row['D_highDt'] = np.exp(b) / 4
+                except Exception:
+                    row['k_highDt'], row['D_highDt'] = np.nan, np.nan
+            else:
+                row['D_lin_highDt'] = np.nan
+                row['k_highDt'], row['D_highDt'] = np.nan, np.nan
+
+            # --- Cross-over time ---
+            try:
+                row['tc'] = (row['D_lowDt'] / row['D_highDt']) ** \
+                            (1 / (row['k_highDt'] - row['k_lowDt']))
+            except Exception:
+                row['tc'] = np.nan
+
+            imsd_rows.append(row)
+
+        df_imsd_fits = pd.DataFrame(imsd_rows)
+
+        imsdName     = fN + Dict_fSuf['suf_indivMsd']     + '.csv'
+        imsdFitsName = fN + Dict_fSuf['suf_indivMsdFits'] + '.csv'
+
+        # Save the full imsd table (lag-times × particles) and the per-particle fit results
+        res_imsd.to_csv(os.path.join(Dict_rP['dir_msd'], imsdName),     index=False, sep='\t')
+        df_imsd_fits.to_csv(os.path.join(Dict_rP['dir_msd'], imsdFitsName), index=False, sep='\t')
+            
+            
+# For Claude ! The function below is the one i want to complete
+def NByolk_ro_msd_compute(tifNames, df_films_path, df_res_name,
+                       Dict_fSuf, Dict_rP, Dict_pP):
+    
+    DF_FILMS = pd.read_csv(df_films_path)
+    
+    fileNames = [fN.split('.')[0] for fN in tifNames]
+    # tifPaths = [os.path.join(srcDir, tifName) for tifName in tifNames]
+    
+    for i in range(len(fileNames)):
+        tN, fN = tifNames[i], fileNames[i]
+        # tP = tifPaths[i]
+        print(pm.CYAN + f'\nFile {i+1:.0f}/{len(fileNames):.0f} - {fN}' + pm.NORMAL)
+        
+        try:
+            DF_RES = pd.read_csv(os.path.join(RES_DIR, df_res_name + '.csv')).reset_index(drop=True)
+        except:
+            DF_RES = pd.DataFrame({})
+            
+        if ('tN' not in DF_RES.columns) or (tN not in DF_RES['tN'].to_numpy()):
+            DF_RES.loc[len(DF_RES), 'tN'] = tN
+        
+        idx = DF_FILMS[DF_FILMS['tN'] == tN].index[0]
+        PixPerUm = DF_FILMS.loc[idx, 'PixPerUm']
+        FPS = DF_FILMS.loc[idx, 'FPS']
+        Use_DriftCorrected = DF_FILMS.loc[idx, 'drift_correction']
+        max_Dt_s = DF_FILMS.loc[idx, 'msd_max_Dt_s']
+        lowDt_upper = DF_FILMS.loc[idx, 'msd_lowDt_upper_s']
+        highDt_lower = DF_FILMS.loc[idx, 'msd_highDt_lower_s']     
+            
+        Nx, Ny = DF_FILMS.loc[idx, 'im_width'], DF_FILMS.loc[idx, 'im_height']
+        xC, yC = DF_FILMS.loc[idx, 'x_center'], DF_FILMS.loc[idx, 'y_center']
+        if np.isnan(xC) or np.isnan(yC):
+            xC, yC = Nx//2, Ny//2
+
+        if Use_DriftCorrected:
+            trackName = fN + Dict_fSuf['suf_cleanTracks_DriftCorr'] + '.csv'
+        else:
+            trackName = fN + Dict_fSuf['suf_cleanTracks'] + '.csv'
+            
+        df = pd.read_csv(os.path.join(Dict_rP['dir_cleanTracks'], trackName), sep='\t')
+        msd_N_tracks = len(df['particle'].unique())
+        
+        max_lagtime = int(max_Dt_s * FPS)
+        
+        # For Claude ! COMPLETE CODE HERE
+            # 1. Project each trajectory along radial & orthoradial directions
+            # 2. Compute 1D MSD of both components with msd_fft_1D
+            # 3. Fit same metrics as NByolk_msd_compute (but divide by 2: MSD_1D = 2·D·Δt)
+            # 4. Compute contrast = (parm_r - parm_or) / (parm_r + parm_or) for each metric
+            # 5. Collect everything into one per-particle DataFrame
+
+        ro_rows = []
+
+        def fit_1d_msd(T_axis, MSD_values, iLow, iHigh):
+            """
+            Fit the standard set of MSD metrics on a 1-D MSD curve.
+            Divides by 2 instead of 4 (MSD_1D = 2·D·Δt).
+            Returns a dict of fit results.
+            """
+            res = {}
+            valid = np.isfinite(MSD_values) & (MSD_values > 0)
+            if valid.sum() < 6:
+                for key in ['D_lin', 'k_full', 'D_full',
+                            'k_lowDt', 'D_lowDt',
+                            'D_lin_highDt', 'k_highDt', 'D_highDt', 'tc']:
+                    res[key] = np.nan
+                return res
+
+            T   = T_axis[valid]
+            MSD = MSD_values[valid]
+
+            # Linear fit – full range
+            try:
+                parms, _ = ufun.fitLineHuber(T, MSD, with_intercept=False)
+                res['D_lin'] = parms[0] / 2
+            except Exception:
+                res['D_lin'] = np.nan
+
+            # Log-log fit – full range
+            try:
+                parms, _ = ufun.fitLineHuber(np.log(T), np.log(MSD), with_intercept=True)
+                b, a = parms
+                res['k_full'] = a
+                res['D_full'] = np.exp(b) / 2
+            except Exception:
+                res['k_full'] = res['D_full'] = np.nan
+
+            # Log-log fit – low-Δt range
+            valid_low = np.isfinite(MSD_values[:iLow]) & (MSD_values[:iLow] > 0)
+            T_low, MSD_low = T_axis[:iLow][valid_low], MSD_values[:iLow][valid_low]
+            if len(T_low) >= 3:
+                try:
+                    parms, _ = ufun.fitLineHuber(np.log(T_low), np.log(MSD_low), with_intercept=True)
+                    b, a = parms
+                    res['k_lowDt'] = a
+                    res['D_lowDt'] = np.exp(b) / 2
+                except Exception:
+                    res['k_lowDt'] = res['D_lowDt'] = np.nan
+            else:
+                res['k_lowDt'] = res['D_lowDt'] = np.nan
+
+            # Linear + log-log fits – high-Δt range
+            valid_high = np.isfinite(MSD_values[iHigh:]) & (MSD_values[iHigh:] > 0)
+            T_high, MSD_high = T_axis[iHigh:][valid_high], MSD_values[iHigh:][valid_high]
+            if len(T_high) >= 6:
+                try:
+                    parms, _ = ufun.fitLineHuber(T_high, MSD_high, with_intercept=False)
+                    res['D_lin_highDt'] = parms[0] / 2
+                except Exception:
+                    res['D_lin_highDt'] = np.nan
+                try:
+                    parms, _ = ufun.fitLineHuber(np.log(T_high), np.log(MSD_high), with_intercept=True)
+                    b, a = parms
+                    res['k_highDt'] = a
+                    res['D_highDt'] = np.exp(b) / 2
+                except Exception:
+                    res['k_highDt'] = res['D_highDt'] = np.nan
+            else:
+                res['D_lin_highDt'] = res['k_highDt'] = res['D_highDt'] = np.nan
+
+            # Cross-over time
+            try:
+                res['tc'] = (res['D_lowDt'] / res['D_highDt']) ** \
+                            (1 / (res['k_highDt'] - res['k_lowDt']))
+            except Exception:
+                res['tc'] = np.nan
+
+            return res
+
+        # Metric names for which we compute the contrast
+        contrast_metrics = ['D_lin', 'k_full', 'D_full',
+                             'k_lowDt', 'D_lowDt',
+                             'D_lin_highDt', 'k_highDt', 'D_highDt', 'tc']
+
+        for particle_id, traj in df.groupby('particle'):
+            traj = traj.sort_values('frame').reset_index(drop=True)
+
+            # --- 1. Projection onto radial / orthoradial axes ---
+            # Use median position as the fixed reference point for this trajectory
+            x_med = np.median(traj['x'].values)
+            y_med = np.median(traj['y'].values)
+
+            # Vector from cell centre to median particle position → radial unit vector
+            dx_ref = x_med - xC
+            dy_ref = y_med - yC
+            norm_ref = np.hypot(dx_ref, dy_ref)
+
+            if norm_ref < 1e-9:
+                # Particle sits on the centre: projection is ill-defined, skip
+                continue
+
+            e_r  = np.array([dx_ref, dy_ref]) / norm_ref   # radial unit vector
+            e_or = np.array([-dy_ref, dx_ref]) / norm_ref  # orthoradial unit vector (90° CCW)
+
+            # Project positions (1D scalar arrays, in pixels)
+            pos_r  = traj['x'].values * e_r[0]  + traj['y'].values * e_r[1]
+            pos_or = traj['x'].values * e_or[0] + traj['y'].values * e_or[1]
+
+            # --- 2. Compute 1D MSD for each component using msd_fft_1D ---
+            try:
+                res_r  = msd_fft_1D(pos_r,  mpp=1/PixPerUm, fps=FPS, max_lagtime=max_lagtime)
+                T_r    = res_r['lagt'].values
+                MSD_r  = res_r['msd'].values
+            except Exception:
+                continue
+
+            try:
+                res_or = msd_fft_1D(pos_or, mpp=1/PixPerUm, fps=FPS, max_lagtime=max_lagtime)
+                T_or   = res_or['lagt'].values
+                MSD_or = res_or['msd'].values
+            except Exception:
+                continue
+
+            # iLow / iHigh computed on the actual lag-time axis returned by msd_fft_1D
+            iLow  = ufun.findFirst(lowDt_upper,  T_r) + 1
+            iHigh = ufun.findFirst(highDt_lower, T_r)
+
+            # --- 3. Fit metrics for each component ---
+            fits_r  = fit_1d_msd(T_r,  MSD_r,  iLow, iHigh)
+            fits_or = fit_1d_msd(T_or, MSD_or, iLow, iHigh)
+
+            row = {'particle': particle_id,
+                   'x_med_pix': x_med, 'y_med_pix': y_med,
+                   'r_ref_um': norm_ref / PixPerUm}
+
+            for metric, val in fits_r.items():
+                row[f'{metric}_r'] = val
+            for metric, val in fits_or.items():
+                row[f'{metric}_or'] = val
+
+            # --- 4. Contrast metrics: (r - or) / (r + or) ---
+            for metric in contrast_metrics:
+                v_r  = fits_r.get(metric, np.nan)
+                v_or = fits_or.get(metric, np.nan)
+                denom = v_r + v_or
+                if denom != 0 and np.isfinite(denom):
+                    row[f'contrast_{metric}'] = (v_r - v_or) / denom
+                else:
+                    row[f'contrast_{metric}'] = np.nan
+
+            ro_rows.append(row)
+
+        df_ro_fits = pd.DataFrame(ro_rows)
+
+        roMsdName     = fN + Dict_fSuf['suf_RO_Msd']     + '.csv'
+        roMsdFitsName = fN + Dict_fSuf['suf_RO_MsdFits'] + '.csv'
+
+        df_ro_fits.to_csv(os.path.join(Dict_rP['dir_msd'], roMsdFitsName), index=False, sep='\t')
+        
+        
+        
+# V2
+def NByolk_ro_msd_compute_V2(tifNames, df_films_path, df_res_name,
+                       Dict_fSuf, Dict_rP, Dict_pP):
+    
+    DF_FILMS = pd.read_csv(df_films_path)
+    
+    fileNames = [fN.split('.')[0] for fN in tifNames]
+    # tifPaths = [os.path.join(srcDir, tifName) for tifName in tifNames]
+    
+    for i in range(len(fileNames)):
+        tN, fN = tifNames[i], fileNames[i]
+        # tP = tifPaths[i]
+        print(pm.CYAN + f'\nFile {i+1:.0f}/{len(fileNames):.0f} - {fN}' + pm.NORMAL)
+        
+        try:
+            DF_RES = pd.read_csv(os.path.join(RES_DIR, df_res_name + '.csv')).reset_index(drop=True)
+        except:
+            DF_RES = pd.DataFrame({})
+            
+        if ('tN' not in DF_RES.columns) or (tN not in DF_RES['tN'].to_numpy()):
+            DF_RES.loc[len(DF_RES), 'tN'] = tN
+        
+        idx = DF_FILMS[DF_FILMS['tN'] == tN].index[0]
+        PixPerUm = DF_FILMS.loc[idx, 'PixPerUm']
+        FPS = DF_FILMS.loc[idx, 'FPS']
+        Use_DriftCorrected = DF_FILMS.loc[idx, 'drift_correction']
+        max_Dt_s = DF_FILMS.loc[idx, 'msd_max_Dt_s']
+        lowDt_upper = DF_FILMS.loc[idx, 'msd_lowDt_upper_s']
+        highDt_lower = DF_FILMS.loc[idx, 'msd_highDt_lower_s']     
+            
+        Nx, Ny = DF_FILMS.loc[idx, 'im_width'], DF_FILMS.loc[idx, 'im_height']
+        xC, yC = DF_FILMS.loc[idx, 'x_center'], DF_FILMS.loc[idx, 'y_center']
+        if np.isnan(xC) or np.isnan(yC):
+            xC, yC = Nx//2, Ny//2
+
+        if Use_DriftCorrected:
+            trackName = fN + Dict_fSuf['suf_cleanTracks_DriftCorr'] + '.csv'
+        else:
+            trackName = fN + Dict_fSuf['suf_cleanTracks'] + '.csv'
+            
+        df = pd.read_csv(os.path.join(Dict_rP['dir_cleanTracks'], trackName), sep='\t')
+        msd_N_tracks = len(df['particle'].unique())
+        
+        max_lagtime = int(max_Dt_s * FPS)
+        
+        # For Claude ! COMPLETE CODE HERE
+            # 1. Project all trajectories onto radial & orthoradial axes → df_radial, df_orthoradial
+            # 2. Run tp.motion.imsd on each projected table (1D, pos_columns=['x'])
+            # 3. Fit same metrics as NByolk_msd_compute (divide by 2: MSD_1D = 2·D·Δt)
+            # 4. Compute contrast = (parm_r - parm_or) / (parm_r + parm_or) for each metric
+            # 5. Collect everything into one per-particle DataFrame
+
+        def fit_1d_msd(T_axis, MSD_values, iLow, iHigh):
+            """
+            Fit the standard set of MSD metrics on a 1-D MSD curve.
+            Divides by 2 instead of 4 (MSD_1D = 2·D·Δt).
+            Returns a dict of fit results.
+            """
+            res = {}
+            valid = np.isfinite(MSD_values) & (MSD_values > 0)
+            if valid.sum() < 6:
+                for key in ['D_lin', 'k_full', 'D_full',
+                            'k_lowDt', 'D_lowDt',
+                            'D_lin_highDt', 'k_highDt', 'D_highDt', 'tc']:
+                    res[key] = np.nan
+                return res
+
+            T   = T_axis[valid]
+            MSD = MSD_values[valid]
+
+            # Linear fit – full range
+            try:
+                parms, _ = ufun.fitLineHuber(T, MSD, with_intercept=False)
+                res['D_lin'] = parms[0] / 2
+            except Exception:
+                res['D_lin'] = np.nan
+
+            # Log-log fit – full range
+            try:
+                parms, _ = ufun.fitLineHuber(np.log(T), np.log(MSD), with_intercept=True)
+                b, a = parms
+                res['k_full'] = a
+                res['D_full'] = np.exp(b) / 2
+            except Exception:
+                res['k_full'] = res['D_full'] = np.nan
+
+            # Log-log fit – low-Δt range
+            valid_low = np.isfinite(MSD_values[:iLow]) & (MSD_values[:iLow] > 0)
+            T_low, MSD_low = T_axis[:iLow][valid_low], MSD_values[:iLow][valid_low]
+            if len(T_low) >= 3:
+                try:
+                    parms, _ = ufun.fitLineHuber(np.log(T_low), np.log(MSD_low), with_intercept=True)
+                    b, a = parms
+                    res['k_lowDt'] = a
+                    res['D_lowDt'] = np.exp(b) / 2
+                except Exception:
+                    res['k_lowDt'] = res['D_lowDt'] = np.nan
+            else:
+                res['k_lowDt'] = res['D_lowDt'] = np.nan
+
+            # Linear + log-log fits – high-Δt range
+            valid_high = np.isfinite(MSD_values[iHigh:]) & (MSD_values[iHigh:] > 0)
+            T_high, MSD_high = T_axis[iHigh:][valid_high], MSD_values[iHigh:][valid_high]
+            if len(T_high) >= 6:
+                try:
+                    parms, _ = ufun.fitLineHuber(T_high, MSD_high, with_intercept=False)
+                    res['D_lin_highDt'] = parms[0] / 2
+                except Exception:
+                    res['D_lin_highDt'] = np.nan
+                try:
+                    parms, _ = ufun.fitLineHuber(np.log(T_high), np.log(MSD_high), with_intercept=True)
+                    b, a = parms
+                    res['k_highDt'] = a
+                    res['D_highDt'] = np.exp(b) / 2
+                except Exception:
+                    res['k_highDt'] = res['D_highDt'] = np.nan
+            else:
+                res['D_lin_highDt'] = res['k_highDt'] = res['D_highDt'] = np.nan
+
+            # Cross-over time
+            try:
+                res['tc'] = (res['D_lowDt'] / res['D_highDt']) ** \
+                            (1 / (res['k_highDt'] - res['k_lowDt']))
+            except Exception:
+                res['tc'] = np.nan
+
+            return res
+
+        # Metric names for which we compute the contrast
+        contrast_metrics = ['D_lin', 'k_full', 'D_full',
+                             'k_lowDt', 'D_lowDt',
+                             'D_lin_highDt', 'k_highDt', 'D_highDt', 'tc']
+
+        # --- 1. Build projected trajectory tables ---
+        radial_rows    = []
+        orthoradial_rows = []
+        particle_meta  = {}  # stores per-particle geometry info
+
+        for particle_id, traj in df.groupby('particle'):
+            traj = traj.sort_values('frame').reset_index(drop=True)
+
+            x_med = np.median(traj['x'].values)
+            y_med = np.median(traj['y'].values)
+
+            dx_ref = x_med - xC
+            dy_ref = y_med - yC
+            norm_ref = np.hypot(dx_ref, dy_ref)
+
+            if norm_ref < 1e-9:
+                continue  # particle sits on the centre, skip
+
+            e_r  = np.array([dx_ref, dy_ref]) / norm_ref   # radial unit vector
+            e_or = np.array([-dy_ref, dx_ref]) / norm_ref  # orthoradial unit vector (90° CCW)
+
+            pos_r  = traj['x'].values * e_r[0]  + traj['y'].values * e_r[1]
+            pos_or = traj['x'].values * e_or[0] + traj['y'].values * e_or[1]
+
+            for frame, xr, xor in zip(traj['frame'].values, pos_r, pos_or):
+                radial_rows.append(   {'frame': frame, 'x': xr,  'particle': particle_id})
+                orthoradial_rows.append({'frame': frame, 'x': xor, 'particle': particle_id})
+
+            particle_meta[particle_id] = {
+                'x_med_pix': x_med,
+                'y_med_pix': y_med,
+                'r_ref_um':  norm_ref / PixPerUm,
+            }
+
+        df_radial      = pd.DataFrame(radial_rows)
+        df_orthoradial = pd.DataFrame(orthoradial_rows)
+
+        # --- 2. Run tp.motion.imsd on each projected table ---
+        res_imsd_r  = tp.motion.imsd(df_radial,      1/PixPerUm, FPS,
+                                     max_lagtime=max_lagtime,
+                                     pos_columns=['x']).reset_index()
+
+        res_imsd_or = tp.motion.imsd(df_orthoradial, 1/PixPerUm, FPS,
+                                     max_lagtime=max_lagtime,
+                                     pos_columns=['x']).reset_index()
+
+        # Save the full imsd tables (lag-times × particles) to disk
+        roMsdName = fN + Dict_fSuf['suf_RO_Msd'] + '.csv'
+        ro_imsd_combined = res_imsd_r.copy()
+        ro_imsd_combined.columns = ['lagt'] + [f'{c}_r'  for c in res_imsd_r.columns[1:]]
+        ro_imsd_combined[[f'{c}_or' for c in res_imsd_or.columns[1:]]] = res_imsd_or.iloc[:, 1:].values
+        ro_imsd_combined.to_csv(os.path.join(Dict_rP['dir_msd'], roMsdName), index=False, sep='\t')
+
+        # Common lag-time axis (both tables share the same one)
+        T_axis = res_imsd_r['lagt'].values
+        iLow   = ufun.findFirst(lowDt_upper,  T_axis) + 1
+        iHigh  = ufun.findFirst(highDt_lower, T_axis)
+
+        # --- 3 & 4. Fit metrics and compute contrasts, one row per particle ---
+        ro_rows = []
+
+        for particle_id in particle_meta:
+            if particle_id not in res_imsd_r.columns or particle_id not in res_imsd_or.columns:
+                continue
+
+            MSD_r  = res_imsd_r[particle_id].values
+            MSD_or = res_imsd_or[particle_id].values
+
+            fits_r  = fit_1d_msd(T_axis, MSD_r,  iLow, iHigh)
+            fits_or = fit_1d_msd(T_axis, MSD_or, iLow, iHigh)
+
+            row = {'particle': particle_id, **particle_meta[particle_id]}
+
+            for metric, val in fits_r.items():
+                row[f'{metric}_r'] = val
+            for metric, val in fits_or.items():
+                row[f'{metric}_or'] = val
+
+            for metric in contrast_metrics:
+                v_r  = fits_r.get(metric, np.nan)
+                v_or = fits_or.get(metric, np.nan)
+                denom = v_r + v_or
+                if denom != 0 and np.isfinite(denom):
+                    row[f'contrast_{metric}'] = (v_r - v_or) / denom
+                else:
+                    row[f'contrast_{metric}'] = np.nan
+
+            ro_rows.append(row)
+
+        df_ro_fits = pd.DataFrame(ro_rows)
+
+        roMsdFitsName = fN + Dict_fSuf['suf_RO_MsdFits'] + '.csv'
+        df_ro_fits.to_csv(os.path.join(Dict_rP['dir_msd'], roMsdFitsName), index=False, sep='\t')
+        
+            
 
 
 # %% 1. Tracking and MSD
@@ -2344,7 +2977,7 @@ fig, ax = plt.subplots(1, 1)
 
 metric_T = 'tpf_norm'
 metric_D = 'pmsd_D_highDt'
-normalize = True
+normalize = False
 
 Mid_groups = df_f.groupby('Mid')
 for mid, df_c in Mid_groups:
@@ -2391,6 +3024,165 @@ plt.show()
 
 # %% -----
 # %% Tests
+
+# %%%% Claude written 2D smoother
+
+"""
+Gaussian-weighted spatial smoothing map.
+
+For every point on a regular grid, computes the Gaussian-weighted average
+of the k nearest input points (by Euclidean distance).
+
+Inputs
+------
+data  : Nx3 array  [[x, y, v], ...]
+sigma : float      standard deviation of the Gaussian kernel (same units as x/y)
+k     : int        number of nearest neighbours to consider
+
+Usage
+-----
+Run the script directly for a built-in demo, or import `smooth_map` and call
+it with your own data.
+"""
+
+import numpy as np
+import matplotlib.pyplot as plt
+from scipy.spatial import cKDTree
+
+
+# ---------------------------------------------------------------------------
+# Core function
+# ---------------------------------------------------------------------------
+
+def smooth_map(
+    data: np.ndarray,
+    sigma: float,
+    k: int,
+    grid_resolution: int = 300,
+    x_range: tuple | None = None,
+    y_range: tuple | None = None,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """
+    Compute a Gaussian-weighted average of the k nearest values on a 2-D grid.
+
+    Parameters
+    ----------
+    data            : (N, 3) array — columns are x, y, v.
+    sigma           : Gaussian kernel standard deviation.
+    k               : Number of nearest neighbours to use per grid point.
+    grid_resolution : Number of grid cells along each axis.
+    x_range         : (x_min, x_max) — defaults to data extent + 5 % padding.
+    y_range         : (y_min, y_max) — defaults to data extent + 5 % padding.
+
+    Returns
+    -------
+    gx, gy : 2-D arrays of grid coordinates (output of np.meshgrid).
+    gz     : 2-D array of smoothed values.
+    """
+    data = np.asarray(data, dtype=float)
+    if data.ndim != 2 or data.shape[1] != 3:
+        raise ValueError("data must be an (N, 3) array.")
+
+    xy = data[:, :2]
+    v  = data[:, 2]
+    k  = min(k, len(data))          # can't ask for more neighbours than points
+
+    # --- build grid ---
+    def _padded(arr, pad=0.05):
+        lo, hi = arr.min(), arr.max()
+        margin = (hi - lo) * pad or 1.0   # handle degenerate case
+        return lo - margin, hi + margin
+
+    x_min, x_max = x_range or _padded(xy[:, 0])
+    y_min, y_max = y_range or _padded(xy[:, 1])
+
+    xs = np.linspace(x_min, x_max, grid_resolution)
+    ys = np.linspace(y_min, y_max, grid_resolution)
+    gx, gy = np.meshgrid(xs, ys)
+    grid_pts = np.column_stack([gx.ravel(), gy.ravel()])
+
+    # --- k-nearest-neighbour lookup ---
+    tree = cKDTree(xy)
+    dists, idxs = tree.query(grid_pts, k=k)   # shape (M, k)
+
+    # --- Gaussian weights ---
+    if k == 1:                                 # query returns 1-D arrays
+        dists = dists[:, np.newaxis]
+        idxs  = idxs[:, np.newaxis]
+
+    weights = np.exp(-0.5 * (dists / sigma) ** 2)   # shape (M, k)
+    w_sum   = weights.sum(axis=1, keepdims=True)
+    w_sum   = np.where(w_sum == 0, 1.0, w_sum)       # avoid division by zero
+
+    values  = v[idxs]                                # shape (M, k)
+    gz_flat = (weights * values).sum(axis=1) / w_sum.squeeze()
+    gz      = gz_flat.reshape(gx.shape)
+
+    return gx, gy, gz
+
+
+# ---------------------------------------------------------------------------
+# Plotting helper
+# ---------------------------------------------------------------------------
+
+def plot_smooth_map(
+    data: np.ndarray,
+    gx: np.ndarray,
+    gy: np.ndarray,
+    gz: np.ndarray,
+    sigma: float,
+    k: int,
+    cmap: str = "viridis",
+    show_points: bool = True,
+) -> plt.Figure:
+    """Render the smoothed map with the scatter overlay."""
+    fig, ax = plt.subplots(figsize=(8, 6))
+
+    im = ax.pcolormesh(gx, gy, gz, cmap=cmap, shading="auto")
+    cbar = fig.colorbar(im, ax=ax)
+    cbar.set_label("Smoothed value", fontsize=11)
+
+    if show_points:
+        sc = ax.scatter(
+            data[:, 0], data[:, 1],
+            c=data[:, 2], cmap=cmap,
+            s=40, edgecolors="white", linewidths=0.5,
+            vmin=gz.min(), vmax=gz.max(),
+            zorder=3,
+        )
+
+    ax.set_xlabel("x", fontsize=11)
+    ax.set_ylabel("y", fontsize=11)
+    ax.set_title(f"Gaussian-weighted smooth map  (σ={sigma}, k={k})", fontsize=12)
+    fig.tight_layout()
+    return fig
+
+
+# ---------------------------------------------------------------------------
+# Demo
+# ---------------------------------------------------------------------------
+
+if __name__ == "__main__":
+    rng = np.random.default_rng(40)
+
+    # Three clusters with different mean values
+    n = 60
+    centers = [(1, 3, 10), (3, 3, 50), (2, 4, 90)]
+    parts = []
+    for cx, cy, cv in centers:
+        xy_part = rng.normal(loc=[cx, cy], scale=1.0, size=(n, 2))
+        v_part  = rng.normal(loc=cv, scale=20, size=(n, 1))
+        parts.append(np.hstack([xy_part, v_part]))
+
+    data = np.vstack(parts)
+
+    # Parameters
+    sigma = 1
+    k     = 20
+
+    gx, gy, gz = smooth_map(data, sigma=sigma, k=k, grid_resolution=400)
+    fig = plot_smooth_map(data, gx, gy, gz, sigma=sigma, k=k, cmap="plasma")
+    plt.show()
 
 # %%%% Test Compute pair-MSD
 
