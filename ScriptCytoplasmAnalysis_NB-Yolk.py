@@ -63,6 +63,8 @@ Dict_rP = {
     'dir_cleanTracks': os.path.join(RES_DIR, 'cleanTracks'),
     'dir_msd': os.path.join(RES_DIR, 'MSD'),
     'dir_pairMsd': os.path.join(RES_DIR, 'pairMSD'),
+    'dir_indivMsd': os.path.join(RES_DIR, 'indivMSD'),
+    'dir_ROMsd': os.path.join(RES_DIR, 'RO-MSD'),
     }
 
 Dict_pP = {
@@ -91,8 +93,9 @@ Dict_fSuf = {
     'suf_globalPairMsdFits' : '_GlobalPairMsdFits',
     'suf_indivMsd' : '_IndivMsd',
     'suf_indivMsdFits' : '_IndivMsdFits',
-    'suf_RO_Msd' : '_RO-Msd',
-    'suf_RO_MsdFits' : '_RO-MsdFits',
+    'suf_globalROMsd' : '_GlobalRO-Msd',
+    'suf_indivROMsd' : '_IndivRO-Msd',
+    'suf_indivROMsdFits' : '_IndivRO-MsdFits',
     }
 
 
@@ -939,7 +942,7 @@ def msd_fft_1D(pos, mpp, fps, max_lagtime=100):
 
 
 # For Claude ! The function below is the one i want to complete
-def NByolk_imsd_compute(tifNames, df_films_path, df_res_name,
+def NByolk_imsd_compute(tifNames, df_films_path, 
                        Dict_fSuf, Dict_rP, Dict_pP):
     
     DF_FILMS = pd.read_csv(df_films_path)
@@ -951,14 +954,6 @@ def NByolk_imsd_compute(tifNames, df_films_path, df_res_name,
         tN, fN = tifNames[i], fileNames[i]
         # tP = tifPaths[i]
         print(pm.CYAN + f'\nFile {i+1:.0f}/{len(fileNames):.0f} - {fN}' + pm.NORMAL)
-        
-        try:
-            DF_RES = pd.read_csv(os.path.join(RES_DIR, df_res_name + '.csv')).reset_index(drop=True)
-        except:
-            DF_RES = pd.DataFrame({})
-            
-        if ('tN' not in DF_RES.columns) or (tN not in DF_RES['tN'].to_numpy()):
-            DF_RES.loc[len(DF_RES), 'tN'] = tN
         
         idx = DF_FILMS[DF_FILMS['tN'] == tN].index[0]
         PixPerUm = DF_FILMS.loc[idx, 'PixPerUm']
@@ -980,8 +975,8 @@ def NByolk_imsd_compute(tifNames, df_films_path, df_res_name,
         msd_N_tracks = len(df['particle'].unique())
         
         max_lagtime = int(max_Dt_s * FPS)
-        res_imsd = tp.motion.imsd(df, 1/PixPerUm, FPS, max_lagtime=max_lagtime).reset_index()
-        res_imsd.to_csv(os.path.join(Dict_rP['dir_msd'], msdName), index=False, sep='\t')
+        res_imsd = tp.motion.imsd(df, 1/PixPerUm, FPS, max_lagtime=max_lagtime
+            ).reset_index().rename(columns={'lag time [s]':'lagt'})
         
         # For Claude ! COMPLETE CODE HERE
         # for each particle in the table, I want to fit the same metrics as in the function NByolk_msd_compute, 
@@ -1082,225 +1077,225 @@ def NByolk_imsd_compute(tifNames, df_films_path, df_res_name,
         imsdFitsName = fN + Dict_fSuf['suf_indivMsdFits'] + '.csv'
 
         # Save the full imsd table (lag-times × particles) and the per-particle fit results
-        res_imsd.to_csv(os.path.join(Dict_rP['dir_msd'], imsdName),     index=False, sep='\t')
-        df_imsd_fits.to_csv(os.path.join(Dict_rP['dir_msd'], imsdFitsName), index=False, sep='\t')
+        res_imsd.to_csv(os.path.join(Dict_rP['dir_indivMsd'], imsdName),     index=False, sep='\t')
+        df_imsd_fits.to_csv(os.path.join(Dict_rP['dir_indivMsd'], imsdFitsName), index=False, sep='\t')
             
             
 # For Claude ! The function below is the one i want to complete
-def NByolk_ro_msd_compute(tifNames, df_films_path, df_res_name,
-                       Dict_fSuf, Dict_rP, Dict_pP):
+# def NByolk_ro_msd_compute_V0(tifNames, df_films_path, df_res_name,
+#                        Dict_fSuf, Dict_rP, Dict_pP):
     
-    DF_FILMS = pd.read_csv(df_films_path)
+#     DF_FILMS = pd.read_csv(df_films_path)
     
-    fileNames = [fN.split('.')[0] for fN in tifNames]
-    # tifPaths = [os.path.join(srcDir, tifName) for tifName in tifNames]
+#     fileNames = [fN.split('.')[0] for fN in tifNames]
+#     # tifPaths = [os.path.join(srcDir, tifName) for tifName in tifNames]
     
-    for i in range(len(fileNames)):
-        tN, fN = tifNames[i], fileNames[i]
-        # tP = tifPaths[i]
-        print(pm.CYAN + f'\nFile {i+1:.0f}/{len(fileNames):.0f} - {fN}' + pm.NORMAL)
+#     for i in range(len(fileNames)):
+#         tN, fN = tifNames[i], fileNames[i]
+#         # tP = tifPaths[i]
+#         print(pm.CYAN + f'\nFile {i+1:.0f}/{len(fileNames):.0f} - {fN}' + pm.NORMAL)
         
-        try:
-            DF_RES = pd.read_csv(os.path.join(RES_DIR, df_res_name + '.csv')).reset_index(drop=True)
-        except:
-            DF_RES = pd.DataFrame({})
+#         try:
+#             DF_RES = pd.read_csv(os.path.join(RES_DIR, df_res_name + '.csv')).reset_index(drop=True)
+#         except:
+#             DF_RES = pd.DataFrame({})
             
-        if ('tN' not in DF_RES.columns) or (tN not in DF_RES['tN'].to_numpy()):
-            DF_RES.loc[len(DF_RES), 'tN'] = tN
+#         if ('tN' not in DF_RES.columns) or (tN not in DF_RES['tN'].to_numpy()):
+#             DF_RES.loc[len(DF_RES), 'tN'] = tN
         
-        idx = DF_FILMS[DF_FILMS['tN'] == tN].index[0]
-        PixPerUm = DF_FILMS.loc[idx, 'PixPerUm']
-        FPS = DF_FILMS.loc[idx, 'FPS']
-        Use_DriftCorrected = DF_FILMS.loc[idx, 'drift_correction']
-        max_Dt_s = DF_FILMS.loc[idx, 'msd_max_Dt_s']
-        lowDt_upper = DF_FILMS.loc[idx, 'msd_lowDt_upper_s']
-        highDt_lower = DF_FILMS.loc[idx, 'msd_highDt_lower_s']     
+#         idx = DF_FILMS[DF_FILMS['tN'] == tN].index[0]
+#         PixPerUm = DF_FILMS.loc[idx, 'PixPerUm']
+#         FPS = DF_FILMS.loc[idx, 'FPS']
+#         Use_DriftCorrected = DF_FILMS.loc[idx, 'drift_correction']
+#         max_Dt_s = DF_FILMS.loc[idx, 'msd_max_Dt_s']
+#         lowDt_upper = DF_FILMS.loc[idx, 'msd_lowDt_upper_s']
+#         highDt_lower = DF_FILMS.loc[idx, 'msd_highDt_lower_s']     
             
-        Nx, Ny = DF_FILMS.loc[idx, 'im_width'], DF_FILMS.loc[idx, 'im_height']
-        xC, yC = DF_FILMS.loc[idx, 'x_center'], DF_FILMS.loc[idx, 'y_center']
-        if np.isnan(xC) or np.isnan(yC):
-            xC, yC = Nx//2, Ny//2
+#         Nx, Ny = DF_FILMS.loc[idx, 'im_width'], DF_FILMS.loc[idx, 'im_height']
+#         xC, yC = DF_FILMS.loc[idx, 'x_center'], DF_FILMS.loc[idx, 'y_center']
+#         if np.isnan(xC) or np.isnan(yC):
+#             xC, yC = Nx//2, Ny//2
 
-        if Use_DriftCorrected:
-            trackName = fN + Dict_fSuf['suf_cleanTracks_DriftCorr'] + '.csv'
-        else:
-            trackName = fN + Dict_fSuf['suf_cleanTracks'] + '.csv'
+#         if Use_DriftCorrected:
+#             trackName = fN + Dict_fSuf['suf_cleanTracks_DriftCorr'] + '.csv'
+#         else:
+#             trackName = fN + Dict_fSuf['suf_cleanTracks'] + '.csv'
             
-        df = pd.read_csv(os.path.join(Dict_rP['dir_cleanTracks'], trackName), sep='\t')
-        msd_N_tracks = len(df['particle'].unique())
+#         df = pd.read_csv(os.path.join(Dict_rP['dir_cleanTracks'], trackName), sep='\t')
+#         msd_N_tracks = len(df['particle'].unique())
         
-        max_lagtime = int(max_Dt_s * FPS)
+#         max_lagtime = int(max_Dt_s * FPS)
         
-        # For Claude ! COMPLETE CODE HERE
-            # 1. Project each trajectory along radial & orthoradial directions
-            # 2. Compute 1D MSD of both components with msd_fft_1D
-            # 3. Fit same metrics as NByolk_msd_compute (but divide by 2: MSD_1D = 2·D·Δt)
-            # 4. Compute contrast = (parm_r - parm_or) / (parm_r + parm_or) for each metric
-            # 5. Collect everything into one per-particle DataFrame
+#         # For Claude ! COMPLETE CODE HERE
+#             # 1. Project each trajectory along radial & orthoradial directions
+#             # 2. Compute 1D MSD of both components with msd_fft_1D
+#             # 3. Fit same metrics as NByolk_msd_compute (but divide by 2: MSD_1D = 2·D·Δt)
+#             # 4. Compute contrast = (parm_r - parm_or) / (parm_r + parm_or) for each metric
+#             # 5. Collect everything into one per-particle DataFrame
 
-        ro_rows = []
+#         ro_rows = []
 
-        def fit_1d_msd(T_axis, MSD_values, iLow, iHigh):
-            """
-            Fit the standard set of MSD metrics on a 1-D MSD curve.
-            Divides by 2 instead of 4 (MSD_1D = 2·D·Δt).
-            Returns a dict of fit results.
-            """
-            res = {}
-            valid = np.isfinite(MSD_values) & (MSD_values > 0)
-            if valid.sum() < 6:
-                for key in ['D_lin', 'k_full', 'D_full',
-                            'k_lowDt', 'D_lowDt',
-                            'D_lin_highDt', 'k_highDt', 'D_highDt', 'tc']:
-                    res[key] = np.nan
-                return res
+#         def fit_1d_msd(T_axis, MSD_values, iLow, iHigh):
+#             """
+#             Fit the standard set of MSD metrics on a 1-D MSD curve.
+#             Divides by 2 instead of 4 (MSD_1D = 2·D·Δt).
+#             Returns a dict of fit results.
+#             """
+#             res = {}
+#             valid = np.isfinite(MSD_values) & (MSD_values > 0)
+#             if valid.sum() < 6:
+#                 for key in ['D_lin', 'k_full', 'D_full',
+#                             'k_lowDt', 'D_lowDt',
+#                             'D_lin_highDt', 'k_highDt', 'D_highDt', 'tc']:
+#                     res[key] = np.nan
+#                 return res
 
-            T   = T_axis[valid]
-            MSD = MSD_values[valid]
+#             T   = T_axis[valid]
+#             MSD = MSD_values[valid]
 
-            # Linear fit – full range
-            try:
-                parms, _ = ufun.fitLineHuber(T, MSD, with_intercept=False)
-                res['D_lin'] = parms[0] / 2
-            except Exception:
-                res['D_lin'] = np.nan
+#             # Linear fit – full range
+#             try:
+#                 parms, _ = ufun.fitLineHuber(T, MSD, with_intercept=False)
+#                 res['D_lin'] = parms[0] / 2
+#             except Exception:
+#                 res['D_lin'] = np.nan
 
-            # Log-log fit – full range
-            try:
-                parms, _ = ufun.fitLineHuber(np.log(T), np.log(MSD), with_intercept=True)
-                b, a = parms
-                res['k_full'] = a
-                res['D_full'] = np.exp(b) / 2
-            except Exception:
-                res['k_full'] = res['D_full'] = np.nan
+#             # Log-log fit – full range
+#             try:
+#                 parms, _ = ufun.fitLineHuber(np.log(T), np.log(MSD), with_intercept=True)
+#                 b, a = parms
+#                 res['k_full'] = a
+#                 res['D_full'] = np.exp(b) / 2
+#             except Exception:
+#                 res['k_full'] = res['D_full'] = np.nan
 
-            # Log-log fit – low-Δt range
-            valid_low = np.isfinite(MSD_values[:iLow]) & (MSD_values[:iLow] > 0)
-            T_low, MSD_low = T_axis[:iLow][valid_low], MSD_values[:iLow][valid_low]
-            if len(T_low) >= 3:
-                try:
-                    parms, _ = ufun.fitLineHuber(np.log(T_low), np.log(MSD_low), with_intercept=True)
-                    b, a = parms
-                    res['k_lowDt'] = a
-                    res['D_lowDt'] = np.exp(b) / 2
-                except Exception:
-                    res['k_lowDt'] = res['D_lowDt'] = np.nan
-            else:
-                res['k_lowDt'] = res['D_lowDt'] = np.nan
+#             # Log-log fit – low-Δt range
+#             valid_low = np.isfinite(MSD_values[:iLow]) & (MSD_values[:iLow] > 0)
+#             T_low, MSD_low = T_axis[:iLow][valid_low], MSD_values[:iLow][valid_low]
+#             if len(T_low) >= 3:
+#                 try:
+#                     parms, _ = ufun.fitLineHuber(np.log(T_low), np.log(MSD_low), with_intercept=True)
+#                     b, a = parms
+#                     res['k_lowDt'] = a
+#                     res['D_lowDt'] = np.exp(b) / 2
+#                 except Exception:
+#                     res['k_lowDt'] = res['D_lowDt'] = np.nan
+#             else:
+#                 res['k_lowDt'] = res['D_lowDt'] = np.nan
 
-            # Linear + log-log fits – high-Δt range
-            valid_high = np.isfinite(MSD_values[iHigh:]) & (MSD_values[iHigh:] > 0)
-            T_high, MSD_high = T_axis[iHigh:][valid_high], MSD_values[iHigh:][valid_high]
-            if len(T_high) >= 6:
-                try:
-                    parms, _ = ufun.fitLineHuber(T_high, MSD_high, with_intercept=False)
-                    res['D_lin_highDt'] = parms[0] / 2
-                except Exception:
-                    res['D_lin_highDt'] = np.nan
-                try:
-                    parms, _ = ufun.fitLineHuber(np.log(T_high), np.log(MSD_high), with_intercept=True)
-                    b, a = parms
-                    res['k_highDt'] = a
-                    res['D_highDt'] = np.exp(b) / 2
-                except Exception:
-                    res['k_highDt'] = res['D_highDt'] = np.nan
-            else:
-                res['D_lin_highDt'] = res['k_highDt'] = res['D_highDt'] = np.nan
+#             # Linear + log-log fits – high-Δt range
+#             valid_high = np.isfinite(MSD_values[iHigh:]) & (MSD_values[iHigh:] > 0)
+#             T_high, MSD_high = T_axis[iHigh:][valid_high], MSD_values[iHigh:][valid_high]
+#             if len(T_high) >= 6:
+#                 try:
+#                     parms, _ = ufun.fitLineHuber(T_high, MSD_high, with_intercept=False)
+#                     res['D_lin_highDt'] = parms[0] / 2
+#                 except Exception:
+#                     res['D_lin_highDt'] = np.nan
+#                 try:
+#                     parms, _ = ufun.fitLineHuber(np.log(T_high), np.log(MSD_high), with_intercept=True)
+#                     b, a = parms
+#                     res['k_highDt'] = a
+#                     res['D_highDt'] = np.exp(b) / 2
+#                 except Exception:
+#                     res['k_highDt'] = res['D_highDt'] = np.nan
+#             else:
+#                 res['D_lin_highDt'] = res['k_highDt'] = res['D_highDt'] = np.nan
 
-            # Cross-over time
-            try:
-                res['tc'] = (res['D_lowDt'] / res['D_highDt']) ** \
-                            (1 / (res['k_highDt'] - res['k_lowDt']))
-            except Exception:
-                res['tc'] = np.nan
+#             # Cross-over time
+#             try:
+#                 res['tc'] = (res['D_lowDt'] / res['D_highDt']) ** \
+#                             (1 / (res['k_highDt'] - res['k_lowDt']))
+#             except Exception:
+#                 res['tc'] = np.nan
 
-            return res
+#             return res
 
-        # Metric names for which we compute the contrast
-        contrast_metrics = ['D_lin', 'k_full', 'D_full',
-                             'k_lowDt', 'D_lowDt',
-                             'D_lin_highDt', 'k_highDt', 'D_highDt', 'tc']
+#         # Metric names for which we compute the contrast
+#         contrast_metrics = ['D_lin', 'k_full', 'D_full',
+#                              'k_lowDt', 'D_lowDt',
+#                              'D_lin_highDt', 'k_highDt', 'D_highDt', 'tc']
 
-        for particle_id, traj in df.groupby('particle'):
-            traj = traj.sort_values('frame').reset_index(drop=True)
+#         for particle_id, traj in df.groupby('particle'):
+#             traj = traj.sort_values('frame').reset_index(drop=True)
 
-            # --- 1. Projection onto radial / orthoradial axes ---
-            # Use median position as the fixed reference point for this trajectory
-            x_med = np.median(traj['x'].values)
-            y_med = np.median(traj['y'].values)
+#             # --- 1. Projection onto radial / orthoradial axes ---
+#             # Use median position as the fixed reference point for this trajectory
+#             x_med = np.median(traj['x'].values)
+#             y_med = np.median(traj['y'].values)
 
-            # Vector from cell centre to median particle position → radial unit vector
-            dx_ref = x_med - xC
-            dy_ref = y_med - yC
-            norm_ref = np.hypot(dx_ref, dy_ref)
+#             # Vector from cell centre to median particle position → radial unit vector
+#             dx_ref = x_med - xC
+#             dy_ref = y_med - yC
+#             norm_ref = np.hypot(dx_ref, dy_ref)
 
-            if norm_ref < 1e-9:
-                # Particle sits on the centre: projection is ill-defined, skip
-                continue
+#             if norm_ref < 1e-9:
+#                 # Particle sits on the centre: projection is ill-defined, skip
+#                 continue
 
-            e_r  = np.array([dx_ref, dy_ref]) / norm_ref   # radial unit vector
-            e_or = np.array([-dy_ref, dx_ref]) / norm_ref  # orthoradial unit vector (90° CCW)
+#             e_r  = np.array([dx_ref, dy_ref]) / norm_ref   # radial unit vector
+#             e_or = np.array([-dy_ref, dx_ref]) / norm_ref  # orthoradial unit vector (90° CCW)
 
-            # Project positions (1D scalar arrays, in pixels)
-            pos_r  = traj['x'].values * e_r[0]  + traj['y'].values * e_r[1]
-            pos_or = traj['x'].values * e_or[0] + traj['y'].values * e_or[1]
+#             # Project positions (1D scalar arrays, in pixels)
+#             pos_r  = traj['x'].values * e_r[0]  + traj['y'].values * e_r[1]
+#             pos_or = traj['x'].values * e_or[0] + traj['y'].values * e_or[1]
 
-            # --- 2. Compute 1D MSD for each component using msd_fft_1D ---
-            try:
-                res_r  = msd_fft_1D(pos_r,  mpp=1/PixPerUm, fps=FPS, max_lagtime=max_lagtime)
-                T_r    = res_r['lagt'].values
-                MSD_r  = res_r['msd'].values
-            except Exception:
-                continue
+#             # --- 2. Compute 1D MSD for each component using msd_fft_1D ---
+#             try:
+#                 res_r  = msd_fft_1D(pos_r,  mpp=1/PixPerUm, fps=FPS, max_lagtime=max_lagtime)
+#                 T_r    = res_r['lagt'].values
+#                 MSD_r  = res_r['msd'].values
+#             except Exception:
+#                 continue
 
-            try:
-                res_or = msd_fft_1D(pos_or, mpp=1/PixPerUm, fps=FPS, max_lagtime=max_lagtime)
-                T_or   = res_or['lagt'].values
-                MSD_or = res_or['msd'].values
-            except Exception:
-                continue
+#             try:
+#                 res_or = msd_fft_1D(pos_or, mpp=1/PixPerUm, fps=FPS, max_lagtime=max_lagtime)
+#                 T_or   = res_or['lagt'].values
+#                 MSD_or = res_or['msd'].values
+#             except Exception:
+#                 continue
 
-            # iLow / iHigh computed on the actual lag-time axis returned by msd_fft_1D
-            iLow  = ufun.findFirst(lowDt_upper,  T_r) + 1
-            iHigh = ufun.findFirst(highDt_lower, T_r)
+#             # iLow / iHigh computed on the actual lag-time axis returned by msd_fft_1D
+#             iLow  = ufun.findFirst(lowDt_upper,  T_r) + 1
+#             iHigh = ufun.findFirst(highDt_lower, T_r)
 
-            # --- 3. Fit metrics for each component ---
-            fits_r  = fit_1d_msd(T_r,  MSD_r,  iLow, iHigh)
-            fits_or = fit_1d_msd(T_or, MSD_or, iLow, iHigh)
+#             # --- 3. Fit metrics for each component ---
+#             fits_r  = fit_1d_msd(T_r,  MSD_r,  iLow, iHigh)
+#             fits_or = fit_1d_msd(T_or, MSD_or, iLow, iHigh)
 
-            row = {'particle': particle_id,
-                   'x_med_pix': x_med, 'y_med_pix': y_med,
-                   'r_ref_um': norm_ref / PixPerUm}
+#             row = {'particle': particle_id,
+#                    'x_med_pix': x_med, 'y_med_pix': y_med,
+#                    'r_ref_um': norm_ref / PixPerUm}
 
-            for metric, val in fits_r.items():
-                row[f'{metric}_r'] = val
-            for metric, val in fits_or.items():
-                row[f'{metric}_or'] = val
+#             for metric, val in fits_r.items():
+#                 row[f'{metric}_r'] = val
+#             for metric, val in fits_or.items():
+#                 row[f'{metric}_or'] = val
 
-            # --- 4. Contrast metrics: (r - or) / (r + or) ---
-            for metric in contrast_metrics:
-                v_r  = fits_r.get(metric, np.nan)
-                v_or = fits_or.get(metric, np.nan)
-                denom = v_r + v_or
-                if denom != 0 and np.isfinite(denom):
-                    row[f'contrast_{metric}'] = (v_r - v_or) / denom
-                else:
-                    row[f'contrast_{metric}'] = np.nan
+#             # --- 4. Contrast metrics: (r - or) / (r + or) ---
+#             for metric in contrast_metrics:
+#                 v_r  = fits_r.get(metric, np.nan)
+#                 v_or = fits_or.get(metric, np.nan)
+#                 denom = v_r + v_or
+#                 if denom != 0 and np.isfinite(denom):
+#                     row[f'contrast_{metric}'] = (v_r - v_or) / denom
+#                 else:
+#                     row[f'contrast_{metric}'] = np.nan
 
-            ro_rows.append(row)
+#             ro_rows.append(row)
 
-        df_ro_fits = pd.DataFrame(ro_rows)
+#         df_ro_fits = pd.DataFrame(ro_rows)
 
-        roMsdName     = fN + Dict_fSuf['suf_RO_Msd']     + '.csv'
-        roMsdFitsName = fN + Dict_fSuf['suf_RO_MsdFits'] + '.csv'
+#         roMsdName     = fN + Dict_fSuf['suf_RO_Msd']     + '.csv'
+#         roMsdFitsName = fN + Dict_fSuf['suf_RO_MsdFits'] + '.csv'
 
-        df_ro_fits.to_csv(os.path.join(Dict_rP['dir_msd'], roMsdFitsName), index=False, sep='\t')
+#         df_ro_fits.to_csv(os.path.join(Dict_rP['dir_msd'], roMsdFitsName), index=False, sep='\t')
         
         
         
 # V2
-def NByolk_ro_msd_compute_V2(tifNames, df_films_path, df_res_name,
-                       Dict_fSuf, Dict_rP, Dict_pP):
+def NByolk_ro_msd_compute(tifNames, df_films_path, df_res_name,
+                          Dict_fSuf, Dict_rP, Dict_pP):
     
     DF_FILMS = pd.read_csv(df_films_path)
     
@@ -1431,10 +1426,11 @@ def NByolk_ro_msd_compute_V2(tifNames, df_films_path, df_res_name,
                              'k_lowDt', 'D_lowDt',
                              'D_lin_highDt', 'k_highDt', 'D_highDt', 'tc']
 
-        # --- 1. Build projected trajectory tables ---
-        radial_rows    = []
+        # A. Build projected trajectory tables
+        print(pm.BRIGHTORANGE + 'A. Build projected trajectory tables' + pm.NORMAL)
+        radial_rows      = []
         orthoradial_rows = []
-        particle_meta  = {}  # stores per-particle geometry info
+        particle_meta    = {}  # stores per-particle geometry info
 
         for particle_id, traj in df.groupby('particle'):
             traj = traj.sort_values('frame').reset_index(drop=True)
@@ -1445,6 +1441,7 @@ def NByolk_ro_msd_compute_V2(tifNames, df_films_path, df_res_name,
             dx_ref = x_med - xC
             dy_ref = y_med - yC
             norm_ref = np.hypot(dx_ref, dy_ref)
+            angle_ref = np.atan2(dy_ref, dx_ref)
 
             if norm_ref < 1e-9:
                 continue  # particle sits on the centre, skip
@@ -1456,40 +1453,94 @@ def NByolk_ro_msd_compute_V2(tifNames, df_films_path, df_res_name,
             pos_or = traj['x'].values * e_or[0] + traj['y'].values * e_or[1]
 
             for frame, xr, xor in zip(traj['frame'].values, pos_r, pos_or):
-                radial_rows.append(   {'frame': frame, 'x': xr,  'particle': particle_id})
+                radial_rows.append({'frame': frame, 'x': xr,  'particle': particle_id})
                 orthoradial_rows.append({'frame': frame, 'x': xor, 'particle': particle_id})
 
             particle_meta[particle_id] = {
                 'x_med_pix': x_med,
                 'y_med_pix': y_med,
-                'r_ref_um':  norm_ref / PixPerUm,
+                'r_ref_pix':  norm_ref,
+                'angle_ref_rad':  angle_ref,
             }
 
         df_radial      = pd.DataFrame(radial_rows)
         df_orthoradial = pd.DataFrame(orthoradial_rows)
+        
+        #### B. Ensemble MSD R & OR
+        print(pm.BRIGHTORANGE + 'B. Ensemble MSD R & OR' + pm.NORMAL)
+        # --- 1. Run tp.motion.emsd on each projected table ---
+        res_emsd_r  = tp.motion.emsd(df_radial, 1/PixPerUm, FPS,
+                              max_lagtime=max_lagtime,
+                              pos_columns=['x']).reset_index()
 
-        # --- 2. Run tp.motion.imsd on each projected table ---
-        res_imsd_r  = tp.motion.imsd(df_radial,      1/PixPerUm, FPS,
+        res_emsd_or = tp.motion.emsd(df_orthoradial, 1/PixPerUm, FPS,
+                                      max_lagtime=max_lagtime,
+                                      pos_columns=['x']).reset_index()
+        
+        # Common lag-time axis (both tables share the same one)
+        T_axis = res_emsd_r['lagt'].values
+        iLow   = ufun.findFirst(lowDt_upper,  T_axis) + 1
+        iHigh  = ufun.findFirst(highDt_lower, T_axis)
+        
+        # --- 2 & 3. Fit metrics and compute contrasts, one row per particle ---
+        MSD_r  = res_emsd_r['msd'].values
+        MSD_or = res_emsd_or['msd'].values
+        
+        roMsdName = fN + Dict_fSuf['suf_globalROMsd'] + '.csv'
+        ro_emsd_combined = res_emsd_r.copy()
+        ro_emsd_combined.columns = ['lagt'] + [f'{c}_r'  for c in res_emsd_r.columns[1:]]
+        ro_emsd_combined[[f'{c}_or' for c in res_emsd_or.columns[1:]]] = res_emsd_or.iloc[:, 1:].values
+        ro_emsd_combined.to_csv(os.path.join(Dict_rP['dir_ROMsd'], roMsdName), index=False, sep='\t')
+
+        fits_r  = fit_1d_msd(T_axis, MSD_r,  iLow, iHigh)
+        fits_or = fit_1d_msd(T_axis, MSD_or, iLow, iHigh)
+
+        df_res_row = {}
+
+        for metric, val in fits_r.items():
+            df_res_row[f'{metric}_r'] = val
+        for metric, val in fits_or.items():
+            df_res_row[f'{metric}_or'] = val
+
+        for metric in contrast_metrics:
+            v_r  = fits_r.get(metric, np.nan)
+            v_or = fits_or.get(metric, np.nan)
+            denom = v_r + v_or
+            if denom != 0 and np.isfinite(denom):
+                df_res_row[f'contrast_{metric}'] = (v_r - v_or) / denom
+            else:
+                df_res_row[f'contrast_{metric}'] = np.nan
+                
+        for k, v in df_res_row.items():
+            DF_RES.loc[(DF_RES['tN'] == tN), k] = v
+    
+        #### -> Save the dataframe DF_RES
+        DF_RES.to_csv(os.path.join(RES_DIR, df_res_name + '.csv'), index=False)
+
+        #### C. Individual MSD R & OR
+        print(pm.BRIGHTORANGE + 'C. Individual MSD R & OR' + pm.NORMAL)
+        # --- 1. Run tp.motion.imsd on each projected table ---
+        res_imsd_r  = tp.motion.imsd(df_radial, 1/PixPerUm, FPS,
                                      max_lagtime=max_lagtime,
-                                     pos_columns=['x']).reset_index()
+                                     pos_columns=['x']).reset_index().rename(columns={'lag time [s]':'lagt'})
 
         res_imsd_or = tp.motion.imsd(df_orthoradial, 1/PixPerUm, FPS,
                                      max_lagtime=max_lagtime,
-                                     pos_columns=['x']).reset_index()
+                                     pos_columns=['x']).reset_index().rename(columns={'lag time [s]':'lagt'})
 
         # Save the full imsd tables (lag-times × particles) to disk
-        roMsdName = fN + Dict_fSuf['suf_RO_Msd'] + '.csv'
+        roMsdName = fN + Dict_fSuf['suf_indivROMsd'] + '.csv'
         ro_imsd_combined = res_imsd_r.copy()
         ro_imsd_combined.columns = ['lagt'] + [f'{c}_r'  for c in res_imsd_r.columns[1:]]
         ro_imsd_combined[[f'{c}_or' for c in res_imsd_or.columns[1:]]] = res_imsd_or.iloc[:, 1:].values
-        ro_imsd_combined.to_csv(os.path.join(Dict_rP['dir_msd'], roMsdName), index=False, sep='\t')
+        ro_imsd_combined.to_csv(os.path.join(Dict_rP['dir_ROMsd'], roMsdName), index=False, sep='\t')
 
         # Common lag-time axis (both tables share the same one)
         T_axis = res_imsd_r['lagt'].values
         iLow   = ufun.findFirst(lowDt_upper,  T_axis) + 1
         iHigh  = ufun.findFirst(highDt_lower, T_axis)
 
-        # --- 3 & 4. Fit metrics and compute contrasts, one row per particle ---
+        # --- 2 & 3. Fit metrics and compute contrasts, one row per particle ---
         ro_rows = []
 
         for particle_id in particle_meta:
@@ -1522,10 +1573,8 @@ def NByolk_ro_msd_compute_V2(tifNames, df_films_path, df_res_name,
 
         df_ro_fits = pd.DataFrame(ro_rows)
 
-        roMsdFitsName = fN + Dict_fSuf['suf_RO_MsdFits'] + '.csv'
-        df_ro_fits.to_csv(os.path.join(Dict_rP['dir_msd'], roMsdFitsName), index=False, sep='\t')
-        
-            
+        roMsdFitsName = fN + Dict_fSuf['suf_indivROMsdFits'] + '.csv'
+        df_ro_fits.to_csv(os.path.join(Dict_rP['dir_ROMsd'], roMsdFitsName), index=False, sep='\t')
 
 
 # %% 1. Tracking and MSD
@@ -2197,6 +2246,14 @@ NByolk_msd_compute(tifNames, df_films_PATH, df_res_name,
                     Dict_fSuf, Dict_rP, Dict_pP, 
                     Do_MSD = True, Do_PairMSD = True)
 
+# %%%% Run iMSD and R-OR MSD
+
+NByolk_imsd_compute(tifNames, df_films_PATH,
+                       Dict_fSuf, Dict_rP, Dict_pP)
+
+df_res_name = 'SPT_Results_01'
+NByolk_ro_msd_compute(tifNames, df_films_PATH, df_res_name,
+                          Dict_fSuf, Dict_rP, Dict_pP)
 
 # %%%% Import MSD & plot / Import pairMSD & plot
 
@@ -2599,6 +2656,14 @@ NByolk_msd_compute(tifNames, df_films_PATH, df_res_name,
                     Dict_fSuf, Dict_rP, Dict_pP, 
                     Do_MSD = True, Do_PairMSD = True)
 
+# %%%% Run iMSD and R-OR MSD
+
+NByolk_imsd_compute(tifNames, df_films_PATH,
+                       Dict_fSuf, Dict_rP, Dict_pP)
+
+df_res_name = 'SPT_Results_01'
+NByolk_ro_msd_compute(tifNames, df_films_PATH, df_res_name,
+                          Dict_fSuf, Dict_rP, Dict_pP)
 
 # %%%% Import MSD & plot / Import pairMSD & plot
 
