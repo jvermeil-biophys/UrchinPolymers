@@ -1079,12 +1079,72 @@ def NByolk_imsd_compute(tifNames, df_films_path,
             imsd_rows.append(row)
 
         df_imsd_fits = pd.DataFrame(imsd_rows)
+        print(f'{time.time()-top:.2f} s')
+        
+        #### C. Complete with postion info
+        print(pm.BRIGHTORANGE + 'C. Complete with postion info... ' + pm.NORMAL, end='')
+        top = time.time()
+        
+        valid_particles = df_imsd_fits['particle'].to_numpy()
+        for p, df_p in df.groupby('particle'):
+            if p in valid_particles:
+                xm = np.median(df_p['x'])
+                ym = np.median(df_p['y'])
+                df_imsd_fits.loc[df_imsd_fits['particle']==p, 'x_med_pix'] = xm
+                df_imsd_fits.loc[df_imsd_fits['particle']==p, 'y_med_pix'] = ym
 
         # Save the full imsd table (lag-times × particles) and the per-particle fit results
         imsdFitsName = fN + Dict_fSuf['suf_indivMsdFits'] + '.csv'
         df_imsd_fits.to_csv(os.path.join(Dict_rP['dir_indivMsd'], imsdFitsName), index=False, sep='\t')
         print(f'{time.time()-top:.2f} s')
+
+
+
+def NByolk_imsd_complete_pos(tifNames, df_films_path, 
+                             Dict_fSuf, Dict_rP, Dict_pP):
+    
+    DF_FILMS = pd.read_csv(df_films_path)
+    
+    fileNames = [fN.split('.')[0] for fN in tifNames]
+    # tifPaths = [os.path.join(srcDir, tifName) for tifName in tifNames]
+    
+    for i in range(len(fileNames)):
+        tN, fN = tifNames[i], fileNames[i]
+        # tP = tifPaths[i]
+        print(pm.CYAN + f'\nFile {i+1:.0f}/{len(fileNames):.0f} - {fN}' + pm.NORMAL)
         
+        idx = DF_FILMS[DF_FILMS['tN'] == tN].index[0]
+        PixPerUm = DF_FILMS.loc[idx, 'PixPerUm']
+        FPS = DF_FILMS.loc[idx, 'FPS']
+        Use_DriftCorrected = DF_FILMS.loc[idx, 'drift_correction']
+    
+        #### Import tracks & df_imsd_fits
+        # rawTrackName = fN + Dict_fSuf['suf_rawTracks'] + '.xml'
+        if Use_DriftCorrected:
+            trackName = fN + Dict_fSuf['suf_cleanTracks_DriftCorr'] + '.csv'
+        else:
+            trackName = fN + Dict_fSuf['suf_cleanTracks'] + '.csv'
+            
+        df = pd.read_csv(os.path.join(Dict_rP['dir_cleanTracks'], trackName), sep='\t')
+        
+        imsdFitsName = fN + Dict_fSuf['suf_indivMsdFits'] + '.csv'
+        df_imsd_fits = pd.read_csv(os.path.join(Dict_rP['dir_indivMsd'], imsdFitsName), sep='\t')
+        
+        #### C. Complete with postion info
+        print(pm.BRIGHTORANGE + 'C. Complete with postion info... ' + pm.NORMAL, end='')
+        top = time.time()
+        
+        valid_particles = df_imsd_fits['particle'].to_numpy()
+        for p, df_p in df.groupby('particle'):
+            if p in valid_particles:
+                xm = np.median(df_p['x'])
+                ym = np.median(df_p['y'])
+                df_imsd_fits.loc[df_imsd_fits['particle']==p, 'x_med_pix'] = xm
+                df_imsd_fits.loc[df_imsd_fits['particle']==p, 'y_med_pix'] = ym
+
+        # Save the full imsd table (lag-times × particles) and the per-particle fit results
+        df_imsd_fits.to_csv(os.path.join(Dict_rP['dir_indivMsd'], imsdFitsName), index=False, sep='\t')
+        print(f'{time.time()-top:.2f} s')
         
 # V2
 def NByolk_ro_msd_compute(tifNames, df_films_path, df_res_name,
@@ -1507,6 +1567,11 @@ NByolk_imsd_compute(tifNames, df_films_PATH,
 df_res_name = 'SPT_Results_01'
 NByolk_ro_msd_compute(tifNames, df_films_PATH, df_res_name,
                           Dict_fSuf, Dict_rP, Dict_pP)
+
+# %%%% Complete pos in iMSD
+
+NByolk_imsd_complete_pos(tifNames, df_films_PATH, 
+                             Dict_fSuf, Dict_rP, Dict_pP)
 
 # %%%% Import MSD & plot / Import pairMSD & plot
 
@@ -2006,7 +2071,7 @@ dateDir = os.path.join(up.Path_IntraCellTracking, '26-09-30_FastAcq-Channel_Fec_
 srcDir = os.path.join(dateDir, 'D1')
 
 tifNames = [
-    '26-09-30_D1_PreF_C1_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
+    # '26-09-30_D1_PreF_C1_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
     '26-09-30_D1_PreF_C2_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
     '26-09-30_D1_PreF_C3_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
     '26-09-30_D1_PostF_4min_C4_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
@@ -2064,6 +2129,11 @@ NByolk_imsd_compute(tifNames, df_films_PATH,
 df_res_name = 'SPT_Results_01'
 NByolk_ro_msd_compute(tifNames, df_films_PATH, df_res_name,
                           Dict_fSuf, Dict_rP, Dict_pP)
+
+# %%%% Complete pos in iMSD
+
+NByolk_imsd_complete_pos(tifNames, df_films_PATH, 
+                             Dict_fSuf, Dict_rP, Dict_pP)
 
 # %%%% Import MSD & plot / Import pairMSD & plot
 
@@ -2474,6 +2544,11 @@ NByolk_imsd_compute(tifNames, df_films_PATH,
 df_res_name = 'SPT_Results_01'
 NByolk_ro_msd_compute(tifNames, df_films_PATH, df_res_name,
                           Dict_fSuf, Dict_rP, Dict_pP)
+
+# %%%% Complete pos in iMSD
+
+NByolk_imsd_complete_pos(tifNames, df_films_PATH, 
+                             Dict_fSuf, Dict_rP, Dict_pP)
 
 # %%%% Import MSD & plot / Import pairMSD & plot
 
@@ -3037,27 +3112,647 @@ def plot_smooth_map(
 # Demo
 # ---------------------------------------------------------------------------
 
+# if __name__ == "__main__":
+#     rng = np.random.default_rng(40)
+
+#     # Three clusters with different mean values
+#     n = 60
+#     centers = [(1, 1, 10), (3, 4, 50), (1, 5, 90)]
+#     parts = []
+#     for cx, cy, cv in centers:
+#         xy_part = rng.normal(loc=[cx, cy], scale=1.0, size=(n, 2))
+#         v_part  = rng.normal(loc=cv, scale=20, size=(n, 1))
+#         parts.append(np.hstack([xy_part, v_part]))
+
+#     data = np.vstack(parts)
+
+#     # Parameters
+#     sigma = 1
+#     k     = 50
+
+#     gx, gy, gz = smooth_map(data, sigma=sigma, k=k, grid_resolution=400)
+#     fig = plot_smooth_map(data, gx, gy, gz, sigma=sigma, k=k, cmap="plasma")
+#     plt.show()
+
+# %%%% Another one
+
+"""
+Gaussian-weighted spatial smoothing map.
+
+For every point on a regular grid, computes the Gaussian-weighted average
+of the k nearest input points (by Euclidean distance).
+
+Inputs
+------
+data    : (N, 3) array  [[x, y, v], ...]
+sigma   : float  Gaussian kernel std (same units as x/y)
+k       : int    number of nearest neighbours to consider
+
+Region selection (pick one — both encode the same region):
+  mask    : (Ny, Nx) bool array in pixel/image coordinates, assumed to span
+            x_range × y_range.  Mapped to the smoothing grid via
+            nearest-neighbour lookup.
+  contour : (M, 2) float array of (x, y) polygon vertices.  Tested with
+            matplotlib.path.Path.contains_points — works at any resolution
+            with no resampling.  Prefer this when you have it; it is cheaper.
+
+Usage
+-----
+Run directly for a built-in demo, or import smooth_map / plot_smooth_map.
+"""
+
+import numpy as np
+import matplotlib.pyplot as plt
+from matplotlib.path import Path
+from scipy.spatial import cKDTree
+
+
+# ---------------------------------------------------------------------------
+# Helper: resolve mask OR contour → boolean grid
+# ---------------------------------------------------------------------------
+
+def _active_from_region(
+    gx: np.ndarray,
+    gy: np.ndarray,
+    mask: np.ndarray | None,
+    contour: np.ndarray | None,
+    x_range: tuple,
+    y_range: tuple,
+) -> np.ndarray:
+    """
+    Return a bool array (shape = gx.shape) that is True inside the region.
+
+    Priority: contour > mask > None (all True).
+    """
+    if contour is not None:
+        contour = np.asarray(contour, dtype=float)
+        if contour.ndim != 2 or contour.shape[1] != 2:
+            raise ValueError("contour must be an (M, 2) array of (x, y) points.")
+        grid_pts = np.column_stack([gx.ravel(), gy.ravel()])
+        return Path(contour).contains_points(grid_pts).reshape(gx.shape)
+
+    if mask is not None:
+        mask = np.asarray(mask, dtype=bool)
+        Ny_px, Nx_px = mask.shape
+        x_min, x_max = x_range
+        y_min, y_max = y_range
+        col_i = np.clip(
+            np.round((gx - x_min) / (x_max - x_min) * (Nx_px - 1)).astype(int),
+            0, Nx_px - 1,
+        )
+        row_i = np.clip(
+            np.round((gy - y_min) / (y_max - y_min) * (Ny_px - 1)).astype(int),
+            0, Ny_px - 1,
+        )
+        return mask[row_i, col_i]
+
+    return np.ones(gx.shape, dtype=bool)
+
+
+# ---------------------------------------------------------------------------
+# Core function
+# ---------------------------------------------------------------------------
+
+def smooth_map(
+    data: np.ndarray,
+    sigma: float,
+    k: int,
+    grid_resolution: int = 300,
+    x_range: tuple | None = None,
+    y_range: tuple | None = None,
+    mask: np.ndarray | None = None,
+    contour: np.ndarray | None = None,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """
+    Gaussian-weighted spatial smoothing on a regular grid.
+
+    Parameters
+    ----------
+    data            : (N, 3) array — columns x, y, v.
+    sigma           : Gaussian kernel standard deviation.
+    k               : Number of nearest neighbours per grid point.
+    grid_resolution : Grid cells along each axis.
+    x_range         : (x_min, x_max) — defaults to data extent + 5 % padding.
+    y_range         : (y_min, y_max) — defaults to data extent + 5 % padding.
+    mask            : (Ny, Nx) bool pixel array spanning x_range × y_range.
+    contour         : (M, 2) polygon vertices in data coordinates.
+                      Preferred over mask when both are supplied.
+
+    Returns
+    -------
+    gx, gy : 2-D grid coordinate arrays.
+    gz     : 2-D smoothed-value array (NaN outside the region).
+    """
+    data = np.asarray(data, dtype=float)
+    if data.ndim != 2 or data.shape[1] != 3:
+        raise ValueError("data must be an (N, 3) array.")
+
+    xy = data[:, :2]
+    v  = data[:, 2]
+    k  = min(k, len(data))
+
+    # --- grid ---
+    def _padded(arr, pad=0.05):
+        lo, hi = arr.min(), arr.max()
+        return lo - (hi - lo) * pad or 1.0, hi + (hi - lo) * pad or 1.0
+
+    x_min, x_max = x_range or _padded(xy[:, 0])
+    y_min, y_max = y_range or _padded(xy[:, 1])
+
+    xs = np.linspace(x_min, x_max, grid_resolution)
+    ys = np.linspace(y_min, y_max, grid_resolution)
+    gx, gy = np.meshgrid(xs, ys)
+
+    # --- active region ---
+    active      = _active_from_region(gx, gy, mask, contour,
+                                      (x_min, x_max), (y_min, y_max))
+    active_flat = active.ravel()
+    active_pts  = np.column_stack([gx.ravel(), gy.ravel()])[active_flat]
+
+    # --- Gaussian-weighted average ---
+    tree = cKDTree(xy)
+    dists, idxs = tree.query(active_pts, k=k)
+
+    if k == 1:
+        dists = dists[:, np.newaxis]
+        idxs  = idxs[:, np.newaxis]
+
+    weights = np.exp(-0.5 * (dists / sigma) ** 2)
+    w_sum   = weights.sum(axis=1, keepdims=True)
+    w_sum   = np.where(w_sum == 0, 1.0, w_sum)
+
+    gz_active = (weights * v[idxs]).sum(axis=1) / w_sum.squeeze()
+
+    gz_flat              = np.full(gx.size, np.nan)
+    gz_flat[active_flat] = gz_active
+    gz                   = gz_flat.reshape(gx.shape)
+
+    return gx, gy, gz
+
+
+# ---------------------------------------------------------------------------
+# Plotting helper
+# ---------------------------------------------------------------------------
+
+def plot_smooth_map(
+    data: np.ndarray,
+    gx: np.ndarray,
+    gy: np.ndarray,
+    gz: np.ndarray,
+    sigma: float,
+    k: int,
+    contour: np.ndarray | None = None,
+    cmap: str = "viridis",
+    show_points: bool = True,
+) -> plt.Figure:
+    """Render the smoothed map; NaN cells are transparent."""
+    
+    fig, ax = plt.subplots(figsize=(8, 8))
+    ax.set_aspect('equal', adjustable='box')
+
+    valid = gz[np.isfinite(gz)]
+    vmin, vmax = (valid.min(), valid.max()) if valid.size else (0, 1)
+
+    ax.pcolormesh(gx, gy, gz, cmap=cmap, shading="auto", vmin=vmin, vmax=vmax)
+    fig.colorbar(
+        plt.cm.ScalarMappable(
+            norm=plt.Normalize(vmin, vmax), cmap=cmap
+        ), ax=ax
+    ).set_label("Smoothed value", fontsize=11)
+
+    if contour is not None:
+        c = np.asarray(contour)
+        ax.plot(np.append(c[:, 0], c[0, 0]),
+                np.append(c[:, 1], c[0, 1]),
+                color="k", lw=2, ls="-", zorder=4)
+
+    if show_points:
+        ax.scatter(data[:, 0], data[:, 1], c=data[:, 2], cmap=cmap,
+                   s=40, edgecolors="white", linewidths=0.5,
+                   vmin=vmin, vmax=vmax, zorder=3)
+
+    ax.set_xlabel("x", fontsize=11)
+    ax.set_ylabel("y", fontsize=11)
+    ax.set_title(f"Gaussian-weighted smooth map  (σ={sigma}, k={k})", fontsize=12)
+    fig.tight_layout()
+    return fig
+
+
+# ---------------------------------------------------------------------------
+# Demo
+# ---------------------------------------------------------------------------
+
+# if __name__ == "__main__":
+#     rng  = np.random.default_rng(42)
+#     Nx, Ny = 200, 160
+
+#     n = 60
+#     parts = []
+#     for cx, cy, cv in [(40, 30, 10), (140, 80, 50), (100, 130, 90)]:
+#         xy_p = rng.normal(loc=[cx, cy], scale=15, size=(n, 2))
+#         v_p  = rng.normal(loc=cv, scale=5, size=(n, 1))
+#         parts.append(np.hstack([xy_p, v_p]))
+#     data  = np.vstack(parts)
+#     sigma, k = 15.0, 15
+
+#     # Irregular hexagon contour
+#     angles  = np.linspace(0, 2 * np.pi, 7)[:-1]
+#     radii   = np.array([80, 60, 75, 65, 70, 55])
+#     contour = np.column_stack([
+#         Nx / 2 + radii * np.cos(angles),
+#         Ny / 2 + radii * np.sin(angles),
+#     ])
+
+#     # Equivalent pixel mask (rasterise the contour)
+#     from matplotlib.path import Path as MplPath
+#     xs_px = np.arange(Nx)
+#     ys_px = np.arange(Ny)
+#     gx_px, gy_px = np.meshgrid(xs_px, ys_px)
+#     pixel_pts    = np.column_stack([gx_px.ravel(), gy_px.ravel()])
+#     pixel_mask   = MplPath(contour).contains_points(pixel_pts).reshape(Ny, Nx)
+
+#     fig, axes = plt.subplots(1, 2, figsize=(14, 6))
+#     for ax, kwargs, title in [
+#         (axes[0], dict(contour=contour), "contour"),
+#         (axes[1], dict(mask=pixel_mask), "pixel mask"),
+#     ]:
+#         gx, gy, gz = smooth_map(
+#             data, sigma=sigma, k=k,
+#             grid_resolution=300,
+#             x_range=(0, Nx), y_range=(0, Ny),
+#             **kwargs,
+#         )
+#         valid  = gz[np.isfinite(gz)]
+#         vmin, vmax = valid.min(), valid.max()
+#         ax.pcolormesh(gx, gy, gz, cmap="plasma", shading="auto",
+#                       vmin=vmin, vmax=vmax)
+#         ax.scatter(data[:, 0], data[:, 1], c=data[:, 2], cmap="plasma",
+#                    s=30, edgecolors="white", lw=0.4, vmin=vmin, vmax=vmax, zorder=3)
+#         if "contour" in kwargs:
+#             c = contour
+#             ax.plot(np.append(c[:, 0], c[0, 0]), np.append(c[:, 1], c[0, 1]),
+#                     color="white", lw=1.2, ls="--", zorder=4)
+#         ax.set_title(f"Via {title}  (σ={sigma}, k={k})", fontsize=11)
+#         ax.set_xlabel("x"); ax.set_ylabel("y")
+
+#     fig.suptitle("Both inputs encode the same region — results are identical",
+#                  fontsize=12)
+#     fig.tight_layout()
+#     plt.show()
+
+# %%%% A third one
+
+"""
+Gaussian-weighted spatial smoothing map.
+
+For every point on a regular grid, computes the Gaussian-weighted average
+of the k nearest input points (by Euclidean distance).
+
+Inputs
+------
+data    : (N, 3) array  [[x, y, v], ...]
+sigma   : float  Gaussian kernel std (same units as x/y)
+k       : int    number of nearest neighbours to consider
+
+Region selection (pick one — both encode the same region):
+  mask    : (Ny, Nx) bool array in pixel/image coordinates, assumed to span
+            x_range × y_range.  Mapped to the smoothing grid via
+            nearest-neighbour lookup.
+  contour : (M, 2) float array of (x, y) polygon vertices.  Tested with
+            matplotlib.path.Path.contains_points — works at any resolution
+            with no resampling.  Prefer this when you have it; it is cheaper.
+
+Usage
+-----
+Run directly for a built-in demo, or import smooth_map / plot_smooth_map.
+"""
+
+import numpy as np
+import matplotlib.pyplot as plt
+from matplotlib.path import Path
+from scipy.spatial import cKDTree
+
+
+# ---------------------------------------------------------------------------
+# Helper: resolve mask OR contour → boolean grid
+# ---------------------------------------------------------------------------
+
+def _active_from_region(
+    gx: np.ndarray,
+    gy: np.ndarray,
+    mask: np.ndarray | None,
+    contour: np.ndarray | None,
+    x_range: tuple,
+    y_range: tuple,
+) -> np.ndarray:
+    """
+    Return a bool array (shape = gx.shape) that is True inside the region.
+
+    Priority: contour > mask > None (all True).
+    """
+    if contour is not None:
+        contour = np.asarray(contour, dtype=float)
+        if contour.ndim != 2 or contour.shape[1] != 2:
+            raise ValueError("contour must be an (M, 2) array of (x, y) points.")
+        grid_pts = np.column_stack([gx.ravel(), gy.ravel()])
+        return Path(contour).contains_points(grid_pts).reshape(gx.shape)
+
+    if mask is not None:
+        mask = np.asarray(mask, dtype=bool)
+        Ny_px, Nx_px = mask.shape
+        x_min, x_max = x_range
+        y_min, y_max = y_range
+        col_i = np.clip(
+            np.round((gx - x_min) / (x_max - x_min) * (Nx_px - 1)).astype(int),
+            0, Nx_px - 1,
+        )
+        row_i = np.clip(
+            np.round((gy - y_min) / (y_max - y_min) * (Ny_px - 1)).astype(int),
+            0, Ny_px - 1,
+        )
+        return mask[row_i, col_i]
+
+    return np.ones(gx.shape, dtype=bool)
+
+
+# ---------------------------------------------------------------------------
+# Core function
+# ---------------------------------------------------------------------------
+
+def smooth_map(
+    data: np.ndarray,
+    sigma: float,
+    k: int,
+    grid_resolution: int = 300,
+    x_range: tuple | None = None,
+    y_range: tuple | None = None,
+    mask: np.ndarray | None = None,
+    contour: np.ndarray | None = None,
+    weight_threshold: float = 0.0,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """
+    Gaussian-weighted spatial smoothing on a regular grid.
+
+    Parameters
+    ----------
+    data             : (N, 3) array — columns x, y, v.
+    sigma            : Gaussian kernel standard deviation.
+    k                : Number of nearest neighbours per grid point.
+    grid_resolution  : Grid cells along each axis.
+    x_range          : (x_min, x_max) — defaults to data extent + 5 % padding.
+    y_range          : (y_min, y_max) — defaults to data extent + 5 % padding.
+    mask             : (Ny, Nx) bool pixel array spanning x_range × y_range.
+    contour          : (M, 2) polygon vertices in data coordinates.
+                       Preferred over mask when both are supplied.
+    weight_threshold : Fraction of the maximum weight sum in [0, 1).
+                       Grid cells whose Gaussian weight sum falls below
+                       weight_threshold * max(w_sum) are set to NaN.
+                       0.0 (default) disables the threshold.
+                       A value around 0.05–0.2 is a good starting point.
+
+    Returns
+    -------
+    gx, gy : 2-D grid coordinate arrays.
+    gz     : 2-D smoothed-value array (NaN outside the region or below the
+             density threshold).
+    """
+    data = np.asarray(data, dtype=float)
+    if data.ndim != 2 or data.shape[1] != 3:
+        raise ValueError("data must be an (N, 3) array.")
+
+    xy = data[:, :2]
+    v  = data[:, 2]
+    k  = min(k, len(data))
+
+    # --- grid ---
+    def _padded(arr, pad=0.05):
+        lo, hi = arr.min(), arr.max()
+        return lo - (hi - lo) * pad or 1.0, hi + (hi - lo) * pad or 1.0
+
+    x_min, x_max = x_range or _padded(xy[:, 0])
+    y_min, y_max = y_range or _padded(xy[:, 1])
+
+    xs = np.linspace(x_min, x_max, grid_resolution)
+    ys = np.linspace(y_min, y_max, grid_resolution)
+    gx, gy = np.meshgrid(xs, ys)
+
+    # --- active region ---
+    active      = _active_from_region(gx, gy, mask, contour,
+                                      (x_min, x_max), (y_min, y_max))
+    active_flat = active.ravel()
+    active_pts  = np.column_stack([gx.ravel(), gy.ravel()])[active_flat]
+
+    # --- Gaussian-weighted average ---
+    tree = cKDTree(xy)
+    dists, idxs = tree.query(active_pts, k=k)
+
+    if k == 1:
+        dists = dists[:, np.newaxis]
+        idxs  = idxs[:, np.newaxis]
+
+    weights   = np.exp(-0.5 * (dists / sigma) ** 2)
+    w_sum_col = weights.sum(axis=1)                      # shape (M_active,)
+    # abs_weight_threshold = weight_threshold * w_sum_col.max()
+    abs_weight_threshold = weight_threshold * np.percentile(w_sum_col, 90)
+
+    # --- density threshold ---
+    if weight_threshold > 0.0:
+        dense_enough = w_sum_col >= abs_weight_threshold
+    else:
+        dense_enough = np.ones(len(w_sum_col), dtype=bool)
+
+    w_sum_col = np.where(w_sum_col == 0, 1.0, w_sum_col)  # avoid division by zero
+    gz_active = np.where(
+        dense_enough,
+        (weights * v[idxs]).sum(axis=1) / w_sum_col,
+        np.nan,
+    )
+
+    gz_flat              = np.full(gx.size, np.nan)
+    gz_flat[active_flat] = gz_active
+    gz                   = gz_flat.reshape(gx.shape)
+
+    return gx, gy, gz
+
+
+# ---------------------------------------------------------------------------
+# Plotting helper
+# ---------------------------------------------------------------------------
+
+def plot_smooth_map(
+    data: np.ndarray,
+    gx: np.ndarray,
+    gy: np.ndarray,
+    gz: np.ndarray,
+    sigma: float,
+    k: int,
+    contour: np.ndarray | None = None,
+    cmap: str = "viridis",
+    show_points: bool = True,
+) -> plt.Figure:
+    """Render the smoothed map; NaN cells are transparent."""
+    fig, ax = plt.subplots(figsize=(8, 6))
+
+    valid = gz[np.isfinite(gz)]
+    vmin, vmax = (valid.min(), valid.max()) if valid.size else (0, 1)
+
+    ax.pcolormesh(gx, gy, gz, cmap=cmap, shading="auto", vmin=vmin, vmax=vmax)
+    fig.colorbar(
+        plt.cm.ScalarMappable(
+            norm=plt.Normalize(vmin, vmax), cmap=cmap
+        ), ax=ax
+    ).set_label("Smoothed value", fontsize=11)
+
+    if contour is not None:
+        c = np.asarray(contour)
+        ax.plot(np.append(c[:, 0], c[0, 0]),
+                np.append(c[:, 1], c[0, 1]),
+                color="k", lw=2, ls="-", zorder=4)
+
+    if show_points:
+        ax.scatter(data[:, 0], data[:, 1], c=data[:, 2], cmap=cmap,
+                   s=10, edgecolors="white", linewidths=0.2,
+                   vmin=vmin, vmax=vmax, zorder=3)
+
+    ax.set_xlabel("x", fontsize=11)
+    ax.set_ylabel("y", fontsize=11)
+    ax.set_title(f"Gaussian-weighted smooth map  (σ={sigma}, k={k})", fontsize=12)
+    fig.tight_layout()
+    return fig
+
+
+# ---------------------------------------------------------------------------
+# Demo
+# ---------------------------------------------------------------------------
+
 if __name__ == "__main__":
-    rng = np.random.default_rng(40)
+    rng    = np.random.default_rng(42)
+    Nx, Ny = 200, 160
+    sigma, k = 15.0, 15
 
-    # Three clusters with different mean values
-    n = 60
-    centers = [(1, 3, 10), (3, 3, 50), (2, 4, 90)]
+    # Three dense clusters — deliberately leaving large empty areas inside the
+    # contour so the threshold effect is clearly visible.
     parts = []
-    for cx, cy, cv in centers:
-        xy_part = rng.normal(loc=[cx, cy], scale=1.0, size=(n, 2))
-        v_part  = rng.normal(loc=cv, scale=20, size=(n, 1))
-        parts.append(np.hstack([xy_part, v_part]))
-
+    for cx, cy, cv in [(40, 30, 10), (140, 80, 50), (100, 130, 90)]:
+        xy_p = rng.normal(loc=[cx, cy], scale=12, size=(50, 2))
+        v_p  = rng.normal(loc=cv, scale=5,  size=(50, 1))
+        parts.append(np.hstack([xy_p, v_p]))
     data = np.vstack(parts)
 
-    # Parameters
-    sigma = 1
-    k     = 20
+    # Irregular hexagon contour that encloses all three clusters plus empty space
+    angles  = np.linspace(0, 2 * np.pi, 7)[:-1]
+    radii   = np.array([80, 60, 75, 65, 70, 55])
+    contour = np.column_stack([
+        Nx / 2 + radii * np.cos(angles),
+        Ny / 2 + radii * np.sin(angles),
+    ])
 
-    gx, gy, gz = smooth_map(data, sigma=sigma, k=k, grid_resolution=400)
-    fig = plot_smooth_map(data, gx, gy, gz, sigma=sigma, k=k, cmap="plasma")
+    thresholds = [0.0, 0.05, 0.15]
+    titles     = [f"weight_threshold={t}" for t in thresholds]
+
+    fig, axes = plt.subplots(1, 3, figsize=(18, 6))
+    for ax, t, title in zip(axes, thresholds, titles):
+        gx, gy, gz = smooth_map(
+            data, sigma=sigma, k=k,
+            grid_resolution=300,
+            x_range=(0, Nx), y_range=(0, Ny),
+            contour=contour,
+            weight_threshold=t,
+        )
+        valid = gz[np.isfinite(gz)]
+        vmin, vmax = valid.min(), valid.max()
+        ax.pcolormesh(gx, gy, gz, cmap="plasma", shading="auto",
+                      vmin=vmin, vmax=vmax)
+        c = contour
+        ax.plot(np.append(c[:, 0], c[0, 0]), np.append(c[:, 1], c[0, 1]),
+                color="white", lw=1.2, ls="--", zorder=4)
+        ax.scatter(data[:, 0], data[:, 1], c=data[:, 2], cmap="plasma",
+                   s=30, edgecolors="white", lw=0.4, vmin=vmin, vmax=vmax, zorder=3)
+        ax.set_title(title, fontsize=11)
+        ax.set_xlabel("x"); ax.set_ylabel("y")
+
+    fig.suptitle(f"Effect of weight_threshold  (σ={sigma}, k={k})", fontsize=13)
+    fig.tight_layout()
     plt.show()
+
+# %%%% Test on real data
+
+indivMSD_path = Dict_rP['dir_indivMsd']
+segmentation_path = Dict_rP['dir_segmentation']
+
+tifNames = [
+    '26-09-30_D1_PreF_C1_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
+    '26-09-30_D1_PreF_C2_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
+    '26-09-30_D1_PreF_C3_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
+    '26-09-30_D1_PostF_4min_C4_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
+    '26-09-30_D1_PostF_6min_C4_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
+    '26-09-30_D1_PostF_10min_C4_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
+    '26-09-30_D1_PostF_13min_C4_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
+    '26-09-30_D1_PostF_18min_C4_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
+    '26-09-30_D1_PostF_25min_C4_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
+    '26-09-30_D1_PostF_30min_C4_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
+    '26-09-30_D1_PostF_35min_C4_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
+    '26-09-30_D1_PostF_40min_C4_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
+    '26-09-30_D1_PostF_45min_C4_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
+    '26-09-30_D1_PostF_52min_C4_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
+    '26-09-30_D1_PostF_60min_C4_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
+    '26-09-30_D1_PostF_65min_C4_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
+    '26-09-30_D1_PostF_70min_C4_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
+    ]
+
+#### ----
+i = 2
+
+tN = tifNames[i]
+fN = tN.split('.')[0]
+file_iMSDfits = fN + Dict_fSuf['suf_indivMsdFits'] + '.csv'
+df_iMSDfits = pd.read_csv(os.path.join(indivMSD_path, file_iMSDfits), sep='\t')
+print(df_iMSDfits.columns)
+
+file_contour = fN + Dict_fSuf['suf_contour'] + '.npy'
+contourCell = np.load(os.path.join(segmentation_path, file_contour))[:, ::-1]
+
+# DF_FILMS = pd.read_csv(df_films_PATH)
+Nx = DF_FILMS.loc[DF_FILMS['tN'] == tN, 'im_width']
+Ny = DF_FILMS.loc[DF_FILMS['tN'] == tN, 'im_height']
+im_shape = [Ny, Nx]
+
+#### ----
+
+# data = np.vstack(parts)
+parm = 'D_highDt'
+
+FILTER = (df_iMSDfits[parm] < 100)
+df_iMSDfits = df_iMSDfits[FILTER]
+
+data = np.array([
+        df_iMSDfits['x_med_pix'].to_numpy(),
+        df_iMSDfits['y_med_pix'].to_numpy(),
+        df_iMSDfits[parm].to_numpy(),
+        ]).T
+
+# Parameters
+sigma = 40
+k     = 400
+
+# gx, gy, gz = smooth_map(data, sigma=sigma, k=k, grid_resolution=400,
+#                         x_range=(0, Nx), y_range=(0, Ny),)
+# fig = plot_smooth_map(data, gx, gy, gz, sigma=sigma, k=k, cmap="plasma", show_points=False)
+
+gx, gy, gz = smooth_map(
+    data, sigma=sigma, k=k,
+    grid_resolution=100,
+    x_range=(0, Nx), y_range=(0, Ny),
+    contour = contourCell,
+    weight_threshold = 0.5,
+)
+
+
+plot_smooth_map(data, gx, gy, gz, sigma=sigma, k=k, contour = contourCell,
+                cmap="plasma", show_points=False)
+
+plt.show()
+
 
 # %%%% Test Compute pair-MSD
 
