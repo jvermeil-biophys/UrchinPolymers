@@ -1442,9 +1442,9 @@ dateDir = os.path.join(up.Path_IntraCellTracking, '26-10-07_FastAcq-Channel_Fec_
 srcDir = os.path.join(dateDir, 'D1-L')
 
 tifNames = [
-    '26-10-07_D1-L_PreF_0min_C1_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
-    '26-10-07_D1-L_PreF_0min_C2_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
-    '26-10-07_D1-L_PreF_0min_C3_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
+    # '26-10-07_D1-L_PreF_0min_C1_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
+    # '26-10-07_D1-L_PreF_0min_C2_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
+    # '26-10-07_D1-L_PreF_0min_C3_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
     '26-10-07_D1-L_PostF_3min_C4_20fps_Texp50ms_L20p1_CSU642.ome.tif',
     '26-10-07_D1-L_PostF_7min_C4_20fps_Texp50ms_L30p1_CSU642.ome.tf2',
     '26-10-07_D1-L_PostF_12min_C4_20fps_Texp50ms_L30p1_CSU642.ome.tf2',
@@ -1501,8 +1501,8 @@ NByolk_msd_compute(tifNames, df_films_PATH, df_res_name,
 
 # %%%% Run iMSD and R-OR MSD
 
-NByolk_imsd_compute(tifNames, df_films_PATH,
-                       Dict_fSuf, Dict_rP, Dict_pP)
+# NByolk_imsd_compute(tifNames, df_films_PATH,
+#                        Dict_fSuf, Dict_rP, Dict_pP)
 
 df_res_name = 'SPT_Results_01'
 NByolk_ro_msd_compute(tifNames, df_films_PATH, df_res_name,
