@@ -973,7 +973,7 @@ def NByolk_imsd_compute(tifNames, df_films_path,
             
         df = pd.read_csv(os.path.join(Dict_rP['dir_cleanTracks'], trackName), sep='\t')
         
-        #### A. Compute individual MSD 
+        #### A. Compute individual MSD and save the imsd table
         print(pm.BRIGHTORANGE + 'A. Compute individual MSD... ' + pm.NORMAL, end='')
         top = time.time()
         
@@ -1092,11 +1092,12 @@ def NByolk_imsd_compute(tifNames, df_films_path,
                 ym = np.median(df_p['y'])
                 df_imsd_fits.loc[df_imsd_fits['particle']==p, 'x_med_pix'] = xm
                 df_imsd_fits.loc[df_imsd_fits['particle']==p, 'y_med_pix'] = ym
+        print(f'{time.time()-top:.2f} s')
 
-        # Save the full imsd table (lag-times × particles) and the per-particle fit results
+        #### D. Save the per-particle fit results
         imsdFitsName = fN + Dict_fSuf['suf_indivMsdFits'] + '.csv'
         df_imsd_fits.to_csv(os.path.join(Dict_rP['dir_indivMsd'], imsdFitsName), index=False, sep='\t')
-        print(f'{time.time()-top:.2f} s')
+        
 
 
 
@@ -1493,6 +1494,9 @@ NByolk_msd_compute(tifNames, df_films_PATH, df_res_name,
                     Dict_fSuf, Dict_rP, Dict_pP, 
                     Do_MSD = True, Do_PairMSD = True)
 
+
+
+
 # %%% 26-10-07_D1-L - Noco
 
 # %%%% Settings
@@ -1849,6 +1853,15 @@ df_res_name = 'SPT_Results_01'
 NByolk_msd_compute(tifNames, df_films_PATH, df_res_name,
                     Dict_fSuf, Dict_rP, Dict_pP, 
                     Do_MSD = True, Do_PairMSD = True)
+
+# %%%% Run iMSD and R-OR MSD
+
+NByolk_imsd_compute(tifNames, df_films_PATH,
+                       Dict_fSuf, Dict_rP, Dict_pP)
+
+df_res_name = 'SPT_Results_01'
+NByolk_ro_msd_compute(tifNames, df_films_PATH, df_res_name,
+                          Dict_fSuf, Dict_rP, Dict_pP)
 
 
 # %%%% Import MSD & plot / Import pairMSD & plot
@@ -2813,6 +2826,15 @@ df_res_name = 'SPT_Results_01'
 NByolk_msd_compute(tifNames, df_films_PATH, df_res_name,
                     Dict_fSuf, Dict_rP, Dict_pP, 
                     Do_MSD = True, Do_PairMSD = True)
+
+# %%%% Run iMSD and R-OR MSD
+
+NByolk_imsd_compute(tifNames, df_films_PATH,
+                       Dict_fSuf, Dict_rP, Dict_pP)
+
+df_res_name = 'SPT_Results_01'
+NByolk_ro_msd_compute(tifNames, df_films_PATH, df_res_name,
+                          Dict_fSuf, Dict_rP, Dict_pP)
 
 
 # -----------------------------------------------------------------------------
