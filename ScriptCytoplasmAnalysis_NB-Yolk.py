@@ -73,6 +73,7 @@ Dict_pP = {
     'dir_trackFig': os.path.join(FIG_DIR, 'Tracking'),
     'dir_segmentFig': os.path.join(FIG_DIR, 'Segmentation'),
     'dir_driftFig': os.path.join(FIG_DIR, 'Drift correction'),
+    'dir_diverseFig': os.path.join(FIG_DIR, 'Diverse'),
     }
 
 df_cells_PATH = os.path.join(RES_DIR, 'SPT_Data_Cells.csv')
@@ -1580,57 +1581,231 @@ def plot_smooth_map(
 # Demo
 # ---------------------------------------------------------------------------
 
-if __name__ == "__main__":
-    rng    = np.random.default_rng(42)
-    Nx, Ny = 200, 160
-    sigma, k = 15.0, 15
+# if __name__ == "__main__":
+#     rng    = np.random.default_rng(42)
+#     Nx, Ny = 200, 160
+#     sigma, k = 15.0, 15
 
-    # Three dense clusters — deliberately leaving large empty areas inside the
-    # contour so the threshold effect is clearly visible.
-    parts = []
-    for cx, cy, cv in [(40, 30, 10), (140, 80, 50), (100, 130, 90)]:
-        xy_p = rng.normal(loc=[cx, cy], scale=12, size=(50, 2))
-        v_p  = rng.normal(loc=cv, scale=5,  size=(50, 1))
-        parts.append(np.hstack([xy_p, v_p]))
-    data = np.vstack(parts)
+#     # Three dense clusters — deliberately leaving large empty areas inside the
+#     # contour so the threshold effect is clearly visible.
+#     parts = []
+#     for cx, cy, cv in [(40, 30, 10), (140, 80, 50), (100, 130, 90)]:
+#         xy_p = rng.normal(loc=[cx, cy], scale=12, size=(50, 2))
+#         v_p  = rng.normal(loc=cv, scale=5,  size=(50, 1))
+#         parts.append(np.hstack([xy_p, v_p]))
+#     data = np.vstack(parts)
 
-    # Irregular hexagon contour that encloses all three clusters plus empty space
-    angles  = np.linspace(0, 2 * np.pi, 7)[:-1]
-    radii   = np.array([80, 60, 75, 65, 70, 55])
-    contour = np.column_stack([
-        Nx / 2 + radii * np.cos(angles),
-        Ny / 2 + radii * np.sin(angles),
-    ])
+#     # Irregular hexagon contour that encloses all three clusters plus empty space
+#     angles  = np.linspace(0, 2 * np.pi, 7)[:-1]
+#     radii   = np.array([80, 60, 75, 65, 70, 55])
+#     contour = np.column_stack([
+#         Nx / 2 + radii * np.cos(angles),
+#         Ny / 2 + radii * np.sin(angles),
+#     ])
 
-    thresholds = [0.0, 0.05, 0.15]
-    titles     = [f"weight_threshold={t}" for t in thresholds]
+#     thresholds = [0.0, 0.05, 0.15]
+#     titles     = [f"weight_threshold={t}" for t in thresholds]
 
-    fig, axes = plt.subplots(1, 3, figsize=(18, 6))
-    for ax, t, title in zip(axes, thresholds, titles):
-        gx, gy, gz = smooth_map(
-            data, sigma=sigma, k=k,
-            grid_resolution=300,
-            x_range=(0, Nx), y_range=(0, Ny),
-            contour=contour,
-            weight_threshold=t,
-        )
-        valid = gz[np.isfinite(gz)]
-        vmin, vmax = valid.min(), valid.max()
-        ax.pcolormesh(gx, gy, gz, cmap="plasma", shading="auto",
-                      vmin=vmin, vmax=vmax)
-        c = contour
-        ax.plot(np.append(c[:, 0], c[0, 0]), np.append(c[:, 1], c[0, 1]),
-                color="white", lw=1.2, ls="--", zorder=4)
-        ax.scatter(data[:, 0], data[:, 1], c=data[:, 2], cmap="plasma",
-                   s=30, edgecolors="white", lw=0.4, vmin=vmin, vmax=vmax, zorder=3)
-        ax.set_title(title, fontsize=11)
-        ax.set_xlabel("x"); ax.set_ylabel("y")
+#     fig, axes = plt.subplots(1, 3, figsize=(18, 6))
+#     for ax, t, title in zip(axes, thresholds, titles):
+#         gx, gy, gz = smooth_map(
+#             data, sigma=sigma, k=k,
+#             grid_resolution=300,
+#             x_range=(0, Nx), y_range=(0, Ny),
+#             contour=contour,
+#             weight_threshold=t,
+#         )
+#         valid = gz[np.isfinite(gz)]
+#         vmin, vmax = valid.min(), valid.max()
+#         ax.pcolormesh(gx, gy, gz, cmap="plasma", shading="auto",
+#                       vmin=vmin, vmax=vmax)
+#         c = contour
+#         ax.plot(np.append(c[:, 0], c[0, 0]), np.append(c[:, 1], c[0, 1]),
+#                 color="white", lw=1.2, ls="--", zorder=4)
+#         ax.scatter(data[:, 0], data[:, 1], c=data[:, 2], cmap="plasma",
+#                    s=30, edgecolors="white", lw=0.4, vmin=vmin, vmax=vmax, zorder=3)
+#         ax.set_title(title, fontsize=11)
+#         ax.set_xlabel("x"); ax.set_ylabel("y")
 
-    fig.suptitle(f"Effect of weight_threshold  (σ={sigma}, k={k})", fontsize=13)
-    fig.tight_layout()
-    plt.show()
+#     fig.suptitle(f"Effect of weight_threshold  (σ={sigma}, k={k})", fontsize=13)
+#     fig.tight_layout()
+#     plt.show()
+
+# %%% Other plots
+
+def NByolk_explore_zone_shape_compute(tifNames, Dict_rP, df_films_path,
+                                      Dict_fSuf, AR_threshold=1.5):
+    """
+    For each film in tifNames:
+      - loads the cleaned particle trajectories
+      - computes the convex hull of each trajectory and fits an ellipse on it
+      - computes theta (angle from MT centre to ellipse centre)
+        and phi (ellipse orientation angle), aligned so that |phi - theta| <= pi/2
+      - filters by aspect ratio and collects results
+
+    Returns
+    -------
+    List_Df_Geom : list of DataFrames (one per film, unfiltered)
+    Dict_AngleDiffs  : dict with keys 'label' and 'AngleDiffs'
+    """
+
+    DF_FILMS = pd.read_csv(df_films_path)
+    fileNames = [tN.split('.')[0] for tN in tifNames]
+    
+    Dict_AngleDiffs  = {'label': [], 'AngleDiffs': []}
+    List_Df_Geom = []
+
+    for i in range(len(tifNames)):
+        # tP = tifPaths[i]
+        fN, tN = fileNames[i], tifNames[i]
+        print(pm.CYAN + f'  Geometry {i+1}/{len(tifNames)} - {fN}' + pm.NORMAL)
+        
+        Use_DriftCorrected = DF_FILMS.loc[DF_FILMS['tN'] == tN, 'drift_correction'].to_numpy()[0]
+        X_MTcenter = DF_FILMS.loc[DF_FILMS['tN'] == tN, 'x_center'].to_numpy()[0]
+        Y_MTcenter = DF_FILMS.loc[DF_FILMS['tN'] == tN, 'y_center'].to_numpy()[0]
+        if np.isnan(X_MTcenter) or np.isnan(Y_MTcenter):
+            contourName = fN + Dict_fSuf['suf_contour'] + '.npy'
+            contourCell = np.load(os.path.join(Dict_rP['dir_segmentation'], contourName))
+            poly = Polygon(contourCell)
+            xc_poly, yc_poly = poly.centroid.xy
+            X_MTcenter, Y_MTcenter = int(xc_poly[0]), int(yc_poly[0])
+
+        trackName = fN + (Dict_fSuf['suf_cleanTracks_DriftCorr'] if Use_DriftCorrected
+                          else Dict_fSuf['suf_cleanTracks']) + '.csv'
+        df = pd.read_csv(os.path.join(Dict_rP['dir_cleanTracks'], trackName), sep='\t')
+
+        dict_geom = {k: [] for k in ['particle', 'np', 'xc', 'yc',
+                                      'theta', 'a', 'b', 'L', 'l', 'AR', 'phi']}
+
+        for p, df_p in df.groupby('particle'):
+            points = df_p[['x', 'y']].to_numpy()
+            MPoints = MultiPoint(points)
+            Hull = MPoints.convex_hull
+            xy_ch = np.array([xy for xy in Hull.exterior.coords[1:]])
+            xc, yc = Hull.centroid.coords[0]
+
+            _, _, a, b, phi = ufun.fit_ellipse_fixedCenter(
+                xy_ch[:, 0], xy_ch[:, 1], xc, yc, mode='cartesian')
+
+            theta = np.atan2(yc - Y_MTcenter, xc - X_MTcenter)
+            dotprod = np.cos(theta) * np.cos(phi) + np.sin(theta) * np.sin(phi)
+            if dotprod < 0:
+                phi = phi - np.sign(phi) * np.pi
+
+            L, l = max(a, b), min(a, b)
+
+            dict_geom['particle'].append(p)
+            dict_geom['np'].append(len(df_p))
+            dict_geom['xc'].append(xc)
+            dict_geom['yc'].append(yc)
+            dict_geom['theta'].append(theta)
+            dict_geom['a'].append(a)
+            dict_geom['b'].append(b)
+            dict_geom['L'].append(L)
+            dict_geom['l'].append(l)
+            dict_geom['AR'].append(L / l)
+            dict_geom['phi'].append(phi)
+
+        df_geom_raw = pd.DataFrame(dict_geom)
+        List_Df_Geom.append(df_geom_raw)
+
+        df_geom_f = df_geom_raw[df_geom_raw['AR'] > AR_threshold]
+        C  = (np.cos(df_geom_f['theta'].values) * np.cos(df_geom_f['phi'].values) +
+              np.sin(df_geom_f['theta'].values) * np.sin(df_geom_f['phi'].values))
+        DA = np.acos(np.clip(C, -1, 1))
+
+        title = '_'.join(fN.split('_')[1:3])
+        Dict_AngleDiffs['label'].append(title)
+        Dict_AngleDiffs['AngleDiffs'].append(DA)
+
+    return List_Df_Geom, Dict_AngleDiffs
 
 
+def NByolk_explore_zone_shape_plot(tifNames, Dict_rP, Dict_pP, df_films_path,
+                                    Dict_fSuf, List_Df_Geom, Dict_AngleDiffs, AR_threshold=1.5, 
+                                    SHOWPLOT=False, SAVEPLOT = False, figTitle = 'Ellipses'):
+    """
+    Produces the two-row figure for the explore-zone-shape analysis:
+      - top row:    ellipses of explored zones overlaid (one panel per film)
+      - bottom row: histogram of |theta - phi| (one panel per film)
+
+    Parameters
+    ----------
+    List_Df_Geom : list of DataFrames as returned by NByolk_explore_zone_shape_compute
+    Dict_AngleDiffs  : dict as returned by NByolk_explore_zone_shape_compute
+
+    Returns
+    -------
+    fig : matplotlib Figure
+    """
+
+    fileNames = [tN.split('.')[0] for tN in tifNames]
+    DF_FILMS = pd.read_csv(df_films_path)
+    
+    pm.setGraphicOptions(mode='screen')
+    colors = pm.cL_Set21
+    fig, axes = plt.subplots(2, len(tifNames),
+                             figsize=(len(tifNames) * 3, 6),
+                             layout='compressed')
+    if len(tifNames) == 1:
+        axes = axes[:, np.newaxis]
+
+    for i in range(len(tifNames)):
+        fN, tN = fileNames[i], tifNames[i]
+        title  = '_'.join(fN.split('_')[1:4])
+
+        X_MTcenter = DF_FILMS.loc[DF_FILMS['tN'] == tN, 'x_center'].to_numpy()[0]
+        Y_MTcenter = DF_FILMS.loc[DF_FILMS['tN'] == tN, 'y_center'].to_numpy()[0]
+        if np.isnan(X_MTcenter) or np.isnan(Y_MTcenter):
+            contourName = fN + Dict_fSuf['suf_contour'] + '.npy'
+            contourCell = np.load(os.path.join(Dict_rP['dir_segmentation'], contourName))
+            poly = Polygon(contourCell)
+            xc_poly, yc_poly = poly.centroid.xy
+            X_MTcenter, Y_MTcenter = int(xc_poly[0]), int(yc_poly[0])
+
+        df_geom   = List_Df_Geom[i]
+        df_geom_f = df_geom[df_geom['AR'] > AR_threshold]
+
+        # --- top row: ellipses ---
+        ax = axes[0, i]
+        ax.set_aspect('equal', adjustable='box')
+        ax.set_title(title)
+
+        for p, df_gp in df_geom_f.groupby('particle'):
+            xc  = df_gp['xc'].to_numpy()[0]
+            yc  = df_gp['yc'].to_numpy()[0]
+            a   = df_gp['a'].to_numpy()[0]
+            b   = df_gp['b'].to_numpy()[0]
+            phi = df_gp['phi'].to_numpy()[0]
+            c   = colors[p % len(colors)]
+            if p % 5 == 0:
+                aa = np.linspace(0, 2 * np.pi, 360)
+                xp, yp = ufun.get_ellipse_xy(xc, yc, a, b, phi, aa=aa)
+                ax.plot(xp, yp, c=c, ls='-', lw=0.5)
+
+        # --- bottom row: angle difference histogram ---
+        C  = (np.cos(df_geom_f['theta'].values) * np.cos(df_geom_f['phi'].values) +
+              np.sin(df_geom_f['theta'].values) * np.sin(df_geom_f['phi'].values))
+        DA = np.acos(np.clip(C, -1, 1))
+
+        ax = axes[1, i]
+        ax.hist(DA, bins=20)
+        ax.set_ylabel('N trajectories')
+        ax.set_xlabel(r'$|\theta - \phi|$ (rad)')
+        ax.set_xticks([0, np.pi/8, np.pi/4, 3*np.pi/8, np.pi/2])
+        ax.set_xticklabels(['0', r'$\pi/8$', r'$\pi/4$', r'$3\pi/8$', r'$\pi/2$'])
+        ax.grid()
+
+    if SHOWPLOT:
+        plt.show()
+        
+    if SAVEPLOT:
+        if not figTitle.endswith('.png'):
+            figTitle += '.png'
+        figPath = os.path.join(Dict_pP['dir_diverseFig'], figTitle)
+        fig.savefig(figPath, dpi=300, )
+
+    return fig
 
 
 # %% 1. Tracking and MSD
@@ -1812,170 +1987,18 @@ tifNames = [
     # '26-10-07_D1-L_PostF_124min_nocoWashed3_C4_20fps_Texp50ms_L30p1_CSU642.ome.tf2',
     ]
 
-tifPaths = [os.path.join(srcDir, tifName) for tifName in tifNames]
 fileNames = [fN.split('.')[0] for fN in tifNames]
 
-dict_res = {'label':[],
-            'AngleDiffs':[]}
+List_Df_Geom, Dict_AngleDiffs = NByolk_explore_zone_shape_compute(
+    tifNames, Dict_rP, df_films_PATH,
+    Dict_fSuf, AR_threshold=1.5
+)
 
-GEOM_DATA = []
-
-df_g = pd.read_csv(os.path.join(srcDir, 'Cell_geometry.csv'), sep=',')
-
-
-for i in range(len(tifNames)):
-    print(i)
-    tP, fN = tifPaths[i], fileNames[i]
-    _, tN = os.path.split(tP)
-    shape, dtype = ufun.tiff_inspect(tP)
-    
-    X_MTcenter = df_g.loc[df_g['tN']==tN, 'xc'].to_numpy()[0]
-    Y_MTcenter = df_g.loc[df_g['tN']==tN, 'yc'].to_numpy()[0]
-
-    title = '_'.join(fN.split('_')[1:3])
-    rawTrackName = fN + Dict_fSuf['suf_rawTracks'] + '.xml'
-    if Use_DriftCorrected:
-        trackName = fN + Dict_fSuf['suf_driftCorrTracks'] + '.csv'
-    else:
-        trackName = fN + Dict_fSuf['suf_cleanTracks'] + '.csv'
-        
-    # msdName = fN + Dict_fSuf['suf_globalMsd'] + '.csv'
-    # msdFitsName = fN + Dict_fSuf['suf_globalMsdFits']
-    if np.isnan(X_MTcenter) or np.isnan(Y_MTcenter):
-        contourName = fN + Dict_fSuf['suf_contour'] + '.npy'
-        contourCell = np.load(os.path.join(srcDir, contourName))
-        poly = Polygon(contourCell)
-        xc, yc = poly.centroid.xy
-        X_MTcenter, Y_MTcenter = int(xc[0]), int(yc[0])
-    
-    df = pd.read_csv(os.path.join(dstDir, trackName), sep='\t')
-    
-    # Lp = df['particle'].unique().astype(int)
-    dict_geom = {'particle':[],
-                 'np':[],
-                 'xc':[],
-                 'yc':[],
-                 'theta':[],
-                 'a':[],
-                 'b':[],
-                 'L':[],
-                 'l':[],
-                 'AR':[],
-                 'phi':[],}
-    
-    grouped = df.groupby('particle')
-    
-    for p, df_p in grouped:
-        points = np.array([[x, y] for (x, y) in zip(df_p.x, df_p.y)])
-        
-        MPoints = MultiPoint(points)
-        Hull = MPoints.convex_hull
-        xy_ch = np.array([xy for xy in Hull.exterior.coords[1:]])
-        xc, yc = Hull.centroid.coords[0]
-        
-        out = ufun.fit_ellipse_fixedCenter(xy_ch[:, 0], xy_ch[:, 1], 
-                                           xc, yc, mode='cartesian')
-        _, _, a, b, phi = out
-        theta = np.atan2(yc - Y_MTcenter, xc - X_MTcenter)
-        theta_deg = theta * 180/np.pi
-        dotprod = np.cos(theta)*np.cos(phi) + np.sin(theta)*np.sin(phi)
-        if dotprod < 0:
-            phi = phi - np.sign(phi) * np.pi
-        phi_deg = phi * 180/np.pi
-        L, l = max(a, b), min(a, b)
-        AR = L/l
-        
-        dict_geom['particle'].append(p)
-        dict_geom['np'].append(len(df_p))
-        dict_geom['xc'].append(xc)
-        dict_geom['yc'].append(yc)
-        dict_geom['theta'].append(theta)
-        dict_geom['a'].append(a)
-        dict_geom['b'].append(b)
-        dict_geom['L'].append(L)
-        dict_geom['l'].append(l)
-        dict_geom['AR'].append(AR)
-        dict_geom['phi'].append(phi)
-    
-    df_geom_raw = pd.DataFrame(dict_geom)
-    GEOM_DATA.append(df_geom_raw)
-    
-    df_geom = df_geom_raw[df_geom_raw['AR'] > 1.5]    
-    df_geom['theta_bin'] = (df_geom['theta'].values * 18/np.pi).astype(int) * 10 + 5
-    C = np.cos(df_geom['theta'].values) * np.cos(df_geom['phi'].values) + \
-        np.sin(df_geom['theta'].values) * np.sin(df_geom['phi'].values)
-    DA = np.acos(C)   
-    
-    dict_res['label'].append(title)
-    dict_res['AngleDiffs'].append(DA)
-
-
-
-pm.setGraphicOptions(mode='screen')
-fig, axes = plt.subplots(2, len(tifNames), figsize=(len(tifNames)*3, 6),
-                         layout='compressed')
-colors = pm.cL_Set21
-
-for i in range(len(tifNames)):
-    print(i)
-    tP, fN = tifPaths[i], fileNames[i]
-    _, tN = os.path.split(tP)
-    shape, dtype = ufun.tiff_inspect(tP)
-    
-    X_MTcenter = df_g.loc[df_g['tN']==tN, 'xc'].to_numpy()[0]
-    Y_MTcenter = df_g.loc[df_g['tN']==tN, 'yc'].to_numpy()[0]
-    # print(X_MTcenter, Y_MTcenter)
-
-    title = '_'.join(fN.split('_')[1:4])
-    rawTrackName = fN + Dict_fSuf['suf_rawTracks'] + '.xml'
-    if Use_DriftCorrected:
-        trackName = fN + Dict_fSuf['suf_driftCorrTracks'] + '.csv'
-    else:
-        trackName = fN + Dict_fSuf['suf_cleanTracks'] + '.csv'
-        
-    # msdName = fN + Dict_fSuf['suf_globalMsd'] + '.csv'
-    # msdFitsName = fN + Dict_fSuf['suf_globalMsdFits']
-    if np.isnan(X_MTcenter) or np.isnan(Y_MTcenter):
-        contourName = fN + Dict_fSuf['suf_contour'] + '.npy'
-        contourCell = np.load(os.path.join(srcDir, contourName))
-        poly = Polygon(contourCell)
-        xc, yc = poly.centroid.xy
-        X_MTcenter, Y_MTcenter = int(xc[0]), int(yc[0])
-    
-    # df = pd.read_csv(os.path.join(dstDir, trackName), sep='\t')
-    df_geom = GEOM_DATA[i]
-    df_geom = df_geom[df_geom['AR'] > 1.5]
-    grouped = df_geom.groupby('particle')
-    
-    ax = axes[0, i]
-    ax.set_aspect('equal', adjustable='box')
-    ax.set_title(title)
-    
-    for p, df_gp in grouped:      
-        xc, yc = df_gp['xc'].to_numpy()[0], df_gp['yc'].to_numpy()[0]
-        a, b = df_gp['a'].to_numpy()[0], df_gp['b'].to_numpy()[0]
-        phi = df_gp['phi'].to_numpy()[0]
-        c = colors[p%len(colors)]       
-        if p%10 == 0:
-            aa = np.linspace(0, 2*np.pi, 360)
-            xp, yp = ufun.get_ellipse_xy(xc, yc, a, b, phi, aa=aa)
-            ax.plot(xp, yp, c=c, ls='-', lw=0.5)
-    plt.show()
-    
-    C = np.cos(df_geom['theta'].values) * np.cos(df_geom['phi'].values) + \
-        np.sin(df_geom['theta'].values) * np.sin(df_geom['phi'].values)
-    DA = np.acos(C)
-    
-    ax = axes[1, i]
-    ax.hist(DA, bins=20)
-    ax.set_ylabel('N trajectories')
-    ax.set_xlabel(r'$|\theta - \phi|$ (rad)')
-    ax.set_xticks([0, np.pi/8, np.pi/4, 3*np.pi/8, np.pi/2])
-    ax.set_xticklabels(['0', r'$\pi/8$', r'$\pi/4$', r'$3\pi/8$', r'$\pi/2$'])
-    ax.grid()
-
-plt.show()
-
+fig = NByolk_explore_zone_shape_plot(
+    tifNames, Dict_rP, Dict_pP, df_films_PATH,
+    Dict_fSuf, List_Df_Geom, Dict_AngleDiffs, AR_threshold=1.5, 
+    SHOWPLOT=False, SAVEPLOT = True, figTitle = '26-10-07_D1-L_Noco_Ellipses_1'
+)
 
 
 # -----------------------------------------------------------------------------
@@ -2095,169 +2118,19 @@ tifNames = [
     # '26-10-07_D1-s_PostF_83min_C4_20fps_Texp50ms_L30p1_CSU642.ome.tf2',
     ]
 
-tifPaths = [os.path.join(srcDir, tifName) for tifName in tifNames]
 fileNames = [fN.split('.')[0] for fN in tifNames]
 
-dict_res = {'label':[],
-            'AngleDiffs':[]}
+List_Df_Geom, Dict_AngleDiffs = NByolk_explore_zone_shape_compute(
+    tifNames, Dict_rP, df_films_PATH,
+    Dict_fSuf, AR_threshold=1.5
+)
 
-GEOM_DATA = []
+fig = NByolk_explore_zone_shape_plot(
+    tifNames, Dict_rP, Dict_pP, df_films_PATH,
+    Dict_fSuf, List_Df_Geom, Dict_AngleDiffs, AR_threshold=1.5, 
+    SHOWPLOT=False, SAVEPLOT = True, figTitle = '26-10-07_D1-s_Ellipses_1'
+)
 
-df_g = pd.read_csv(os.path.join(srcDir, 'Cell_geometry.csv'), sep=',')
-
-
-for i in range(len(tifNames)):
-    print(i)
-    tP, fN = tifPaths[i], fileNames[i]
-    _, tN = os.path.split(tP)
-    shape, dtype = ufun.tiff_inspect(tP)
-    
-    X_MTcenter = df_g.loc[df_g['tN']==tN, 'xc'].to_numpy()[0]
-    Y_MTcenter = df_g.loc[df_g['tN']==tN, 'yc'].to_numpy()[0]
-
-    title = '_'.join(fN.split('_')[1:3])
-    rawTrackName = fN + Dict_fSuf['suf_rawTracks'] + '.xml'
-    if Use_DriftCorrected:
-        trackName = fN + Dict_fSuf['suf_driftCorrTracks'] + '.csv'
-    else:
-        trackName = fN + Dict_fSuf['suf_cleanTracks'] + '.csv'
-        
-    # msdName = fN + Dict_fSuf['suf_globalMsd'] + '.csv'
-    # msdFitsName = fN + Dict_fSuf['suf_globalMsdFits']
-    if np.isnan(X_MTcenter) or np.isnan(Y_MTcenter):
-        contourName = fN + Dict_fSuf['suf_contour'] + '.npy'
-        contourCell = np.load(os.path.join(srcDir, contourName))
-        poly = Polygon(contourCell)
-        xc, yc = poly.centroid.xy
-        X_MTcenter, Y_MTcenter = int(xc[0]), int(yc[0])
-    
-    df = pd.read_csv(os.path.join(dstDir, trackName), sep='\t')
-    
-    # Lp = df['particle'].unique().astype(int)
-    dict_geom = {'particle':[],
-                 'np':[],
-                 'xc':[],
-                 'yc':[],
-                 'theta':[],
-                 'a':[],
-                 'b':[],
-                 'L':[],
-                 'l':[],
-                 'AR':[],
-                 'phi':[],}
-    
-    grouped = df.groupby('particle')
-    
-    for p, df_p in grouped:
-        points = np.array([[x, y] for (x, y) in zip(df_p.x, df_p.y)])
-        
-        MPoints = MultiPoint(points)
-        Hull = MPoints.convex_hull
-        xy_ch = np.array([xy for xy in Hull.exterior.coords[1:]])
-        xc, yc = Hull.centroid.coords[0]
-        
-        out = ufun.fit_ellipse_fixedCenter(xy_ch[:, 0], xy_ch[:, 1], 
-                                           xc, yc, mode='cartesian')
-        _, _, a, b, phi = out
-        theta = np.atan2(yc - Y_MTcenter, xc - X_MTcenter)
-        theta_deg = theta * 180/np.pi
-        dotprod = np.cos(theta)*np.cos(phi) + np.sin(theta)*np.sin(phi)
-        if dotprod < 0:
-            phi = phi - np.sign(phi) * np.pi
-        phi_deg = phi * 180/np.pi
-        L, l = max(a, b), min(a, b)
-        AR = L/l
-        
-        dict_geom['particle'].append(p)
-        dict_geom['np'].append(len(df_p))
-        dict_geom['xc'].append(xc)
-        dict_geom['yc'].append(yc)
-        dict_geom['theta'].append(theta)
-        dict_geom['a'].append(a)
-        dict_geom['b'].append(b)
-        dict_geom['L'].append(L)
-        dict_geom['l'].append(l)
-        dict_geom['AR'].append(AR)
-        dict_geom['phi'].append(phi)
-    
-    df_geom_raw = pd.DataFrame(dict_geom)
-    GEOM_DATA.append(df_geom_raw)
-    
-    df_geom = df_geom_raw[df_geom_raw['AR'] > 1.5]    
-    df_geom['theta_bin'] = (df_geom['theta'].values * 18/np.pi).astype(int) * 10 + 5
-    C = np.cos(df_geom['theta'].values) * np.cos(df_geom['phi'].values) + \
-        np.sin(df_geom['theta'].values) * np.sin(df_geom['phi'].values)
-    DA = np.acos(C)   
-    
-    dict_res['label'].append(title)
-    dict_res['AngleDiffs'].append(DA)
-
-
-
-pm.setGraphicOptions(mode='screen')
-fig, axes = plt.subplots(2, len(tifNames), figsize=(len(tifNames)*3, 6),
-                         layout='compressed')
-colors = pm.cL_Set21
-
-for i in range(len(tifNames)):
-    print(i)
-    tP, fN = tifPaths[i], fileNames[i]
-    _, tN = os.path.split(tP)
-    shape, dtype = ufun.tiff_inspect(tP)
-    
-    X_MTcenter = df_g.loc[df_g['tN']==tN, 'xc'].to_numpy()[0]
-    Y_MTcenter = df_g.loc[df_g['tN']==tN, 'yc'].to_numpy()[0]
-    # print(X_MTcenter, Y_MTcenter)
-
-    title = '_'.join(fN.split('_')[1:4])
-    rawTrackName = fN + Dict_fSuf['suf_rawTracks'] + '.xml'
-    if Use_DriftCorrected:
-        trackName = fN + Dict_fSuf['suf_driftCorrTracks'] + '.csv'
-    else:
-        trackName = fN + Dict_fSuf['suf_cleanTracks'] + '.csv'
-        
-    # msdName = fN + Dict_fSuf['suf_globalMsd'] + '.csv'
-    # msdFitsName = fN + Dict_fSuf['suf_globalMsdFits']
-    if np.isnan(X_MTcenter) or np.isnan(Y_MTcenter):
-        contourName = fN + Dict_fSuf['suf_contour'] + '.npy'
-        contourCell = np.load(os.path.join(srcDir, contourName))
-        poly = Polygon(contourCell)
-        xc, yc = poly.centroid.xy
-        X_MTcenter, Y_MTcenter = int(xc[0]), int(yc[0])
-    
-    # df = pd.read_csv(os.path.join(dstDir, trackName), sep='\t')
-    df_geom = GEOM_DATA[i]
-    df_geom = df_geom[df_geom['AR'] > 1.5]
-    grouped = df_geom.groupby('particle')
-    
-    ax = axes[0, i]
-    ax.set_aspect('equal', adjustable='box')
-    ax.set_title(title)
-    
-    for p, df_gp in grouped:      
-        xc, yc = df_gp['xc'].to_numpy()[0], df_gp['yc'].to_numpy()[0]
-        a, b = df_gp['a'].to_numpy()[0], df_gp['b'].to_numpy()[0]
-        phi = df_gp['phi'].to_numpy()[0]
-        c = colors[p%len(colors)]       
-        if p%10 == 0:
-            aa = np.linspace(0, 2*np.pi, 360)
-            xp, yp = ufun.get_ellipse_xy(xc, yc, a, b, phi, aa=aa)
-            ax.plot(xp, yp, c=c, ls='-', lw=0.5)
-    plt.show()
-    
-    C = np.cos(df_geom['theta'].values) * np.cos(df_geom['phi'].values) + \
-        np.sin(df_geom['theta'].values) * np.sin(df_geom['phi'].values)
-    DA = np.acos(C)
-    
-    ax = axes[1, i]
-    ax.hist(DA, bins=20)
-    ax.set_ylabel('N trajectories')
-    ax.set_xlabel(r'$|\theta - \phi|$ (rad)')
-    ax.set_xticks([0, np.pi/8, np.pi/4, 3*np.pi/8, np.pi/2])
-    ax.set_xticklabels(['0', r'$\pi/8$', r'$\pi/4$', r'$3\pi/8$', r'$\pi/2$'])
-    ax.grid()
-
-plt.show()
     
     
 
@@ -2344,12 +2217,6 @@ for i in plt.get_fignums():
 
 # %%%% Import tracks & analyse shape of explored zone
 
-Use_DriftCorrected = False
-
-mainDir = os.path.join(up.Path_IntraCellTracking, '26-09-30_FastAcq-Channel_Fec_NB-Yolk')
-srcDir = os.path.join(mainDir, 'D1')
-dstDir = os.path.join(mainDir, 'SPT_results')
-
 tifNames = [
     # '26-09-30_D1_PreF_C1_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
     # '26-09-30_D1_PreF_C2_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
@@ -2370,306 +2237,18 @@ tifNames = [
     # '26-09-30_D1_PostF_70min_C4_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
     ]
 
-tifPaths = [os.path.join(srcDir, tifName) for tifName in tifNames]
 fileNames = [fN.split('.')[0] for fN in tifNames]
 
-dict_res = {'label':[],
-            'AngleDiffs':[]}
+List_Df_Geom, Dict_AngleDiffs = NByolk_explore_zone_shape_compute(
+    tifNames, Dict_rP, df_films_PATH,
+    Dict_fSuf, AR_threshold=1.5
+)
 
-GEOM_DATA = []
-
-df_g = pd.read_csv(os.path.join(srcDir, 'Cell_geometry.csv'), sep=',')
-
-
-for i in range(len(tifNames)):
-    print(i)
-    tP, fN = tifPaths[i], fileNames[i]
-    _, tN = os.path.split(tP)
-    shape, dtype = ufun.tiff_inspect(tP)
-    
-    X_MTcenter = df_g.loc[df_g['tN']==tN, 'xc'].to_numpy()[0]
-    Y_MTcenter = df_g.loc[df_g['tN']==tN, 'yc'].to_numpy()[0]
-
-    title = '_'.join(fN.split('_')[1:3])
-    rawTrackName = fN + Dict_fSuf['suf_rawTracks'] + '.xml'
-    if Use_DriftCorrected:
-        trackName = fN + Dict_fSuf['suf_driftCorrTracks'] + '.csv'
-    else:
-        trackName = fN + Dict_fSuf['suf_cleanTracks'] + '.csv'
-        
-    # msdName = fN + Dict_fSuf['suf_globalMsd'] + '.csv'
-    # msdFitsName = fN + Dict_fSuf['suf_globalMsdFits']
-    if np.isnan(X_MTcenter) or np.isnan(Y_MTcenter):
-        contourName = fN + Dict_fSuf['suf_contour'] + '.npy'
-        contourCell = np.load(os.path.join(srcDir, contourName))
-        poly = Polygon(contourCell)
-        xc, yc = poly.centroid.xy
-        X_MTcenter, Y_MTcenter = int(xc[0]), int(yc[0])
-    
-    df = pd.read_csv(os.path.join(dstDir, trackName), sep='\t')
-    
-    # Lp = df['particle'].unique().astype(int)
-    dict_geom = {'particle':[],
-                 'np':[],
-                 'xc':[],
-                 'yc':[],
-                 'theta':[],
-                 'a':[],
-                 'b':[],
-                 'L':[],
-                 'l':[],
-                 'AR':[],
-                 'phi':[],}
-    
-    grouped = df.groupby('particle')
-    
-    for p, df_p in grouped:
-        points = np.array([[x, y] for (x, y) in zip(df_p.x, df_p.y)])
-        
-        MPoints = MultiPoint(points)
-        Hull = MPoints.convex_hull
-        xy_ch = np.array([xy for xy in Hull.exterior.coords[1:]])
-        xc, yc = Hull.centroid.coords[0]
-        
-        out = ufun.fit_ellipse_fixedCenter(xy_ch[:, 0], xy_ch[:, 1], 
-                                           xc, yc, mode='cartesian')
-        _, _, a, b, phi = out
-        theta = np.atan2(yc - Y_MTcenter, xc - X_MTcenter)
-        theta_deg = theta * 180/np.pi
-        dotprod = np.cos(theta)*np.cos(phi) + np.sin(theta)*np.sin(phi)
-        if dotprod < 0:
-            phi = phi - np.sign(phi) * np.pi
-        phi_deg = phi * 180/np.pi
-        L, l = max(a, b), min(a, b)
-        AR = L/l
-        
-        dict_geom['particle'].append(p)
-        dict_geom['np'].append(len(df_p))
-        dict_geom['xc'].append(xc)
-        dict_geom['yc'].append(yc)
-        dict_geom['theta'].append(theta)
-        dict_geom['a'].append(a)
-        dict_geom['b'].append(b)
-        dict_geom['L'].append(L)
-        dict_geom['l'].append(l)
-        dict_geom['AR'].append(AR)
-        dict_geom['phi'].append(phi)
-    
-    df_geom_raw = pd.DataFrame(dict_geom)
-    GEOM_DATA.append(df_geom_raw)
-    
-    df_geom = df_geom_raw[df_geom_raw['AR'] > 1.5]    
-    df_geom['theta_bin'] = (df_geom['theta'].values * 18/np.pi).astype(int) * 10 + 5
-    C = np.cos(df_geom['theta'].values) * np.cos(df_geom['phi'].values) + \
-        np.sin(df_geom['theta'].values) * np.sin(df_geom['phi'].values)
-    DA = np.acos(C)   
-    
-    dict_res['label'].append(title)
-    dict_res['AngleDiffs'].append(DA)
-
-
-
-pm.setGraphicOptions(mode='screen')
-fig, axes = plt.subplots(2, len(tifNames), figsize=(len(tifNames)*3, 6),
-                         layout='compressed')
-colors = pm.cL_Set21
-
-for i in range(len(tifNames)):
-    print(i)
-    tP, fN = tifPaths[i], fileNames[i]
-    _, tN = os.path.split(tP)
-    shape, dtype = ufun.tiff_inspect(tP)
-    
-    X_MTcenter = df_g.loc[df_g['tN']==tN, 'xc'].to_numpy()[0]
-    Y_MTcenter = df_g.loc[df_g['tN']==tN, 'yc'].to_numpy()[0]
-    # print(X_MTcenter, Y_MTcenter)
-
-    title = '_'.join(fN.split('_')[1:4])
-    rawTrackName = fN + Dict_fSuf['suf_rawTracks'] + '.xml'
-    if Use_DriftCorrected:
-        trackName = fN + Dict_fSuf['suf_driftCorrTracks'] + '.csv'
-    else:
-        trackName = fN + Dict_fSuf['suf_cleanTracks'] + '.csv'
-        
-    # msdName = fN + Dict_fSuf['suf_globalMsd'] + '.csv'
-    # msdFitsName = fN + Dict_fSuf['suf_globalMsdFits']
-    if np.isnan(X_MTcenter) or np.isnan(Y_MTcenter):
-        contourName = fN + Dict_fSuf['suf_contour'] + '.npy'
-        contourCell = np.load(os.path.join(srcDir, contourName))
-        poly = Polygon(contourCell)
-        xc, yc = poly.centroid.xy
-        X_MTcenter, Y_MTcenter = int(xc[0]), int(yc[0])
-    
-    # df = pd.read_csv(os.path.join(dstDir, trackName), sep='\t')
-    df_geom = GEOM_DATA[i]
-    df_geom = df_geom[df_geom['AR'] > 1.5]
-    grouped = df_geom.groupby('particle')
-    
-    ax = axes[0, i]
-    ax.set_aspect('equal', adjustable='box')
-    ax.set_title(title)
-    
-    for p, df_gp in grouped:      
-        xc, yc = df_gp['xc'].to_numpy()[0], df_gp['yc'].to_numpy()[0]
-        a, b = df_gp['a'].to_numpy()[0], df_gp['b'].to_numpy()[0]
-        phi = df_gp['phi'].to_numpy()[0]
-        c = colors[p%len(colors)]       
-        if p%10 == 0:
-            aa = np.linspace(0, 2*np.pi, 360)
-            xp, yp = ufun.get_ellipse_xy(xc, yc, a, b, phi, aa=aa)
-            ax.plot(xp, yp, c=c, ls='-', lw=0.5)
-    plt.show()
-    
-    C = np.cos(df_geom['theta'].values) * np.cos(df_geom['phi'].values) + \
-        np.sin(df_geom['theta'].values) * np.sin(df_geom['phi'].values)
-    DA = np.acos(C)
-    
-    ax = axes[1, i]
-    ax.hist(DA, bins=20)
-    ax.set_ylabel('N trajectories')
-    ax.set_xlabel(r'$|\theta - \phi|$ (rad)')
-    ax.set_xticks([0, np.pi/8, np.pi/4, 3*np.pi/8, np.pi/2])
-    ax.set_xticklabels(['0', r'$\pi/8$', r'$\pi/4$', r'$3\pi/8$', r'$\pi/2$'])
-    ax.grid()
-
-plt.show()
-
-# %%%% DEV FUNCTION ! Import tracks & analyse shape of explored zone
-
-Use_DriftCorrected = False
-
-mainDir = os.path.join(up.Path_IntraCellTracking, '26-09-30_FastAcq-Channel_Fec_NB-Yolk')
-srcDir = os.path.join(mainDir, 'D1')
-dstDir = os.path.join(mainDir, 'SPT_results')
-
-tifNames = [
-    '26-09-30_D1_PostF_18min_C4_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
-    ]
-
-tifPaths = [os.path.join(srcDir, tifName) for tifName in tifNames]
-fileNames = [fN.split('.')[0] for fN in tifNames]
-
-dict_res = {'label':[],
-            'AngleDiffs':[]}
-
-GEOM_DATA = []
-
-df_cellGeom = pd.read_csv(os.path.join(srcDir, 'Cell_geometry.csv'), sep=',')
-
-i = 0
-print(i)
-
-tifPath, fileName = tifPaths[i], fileNames[i]
-
-def getEllipses(fileName, tifPath, df_cellGeom, 
-                Use_DriftCorrected, Dict_Files_Suffix):
-    fN = fileName
-    tP = tifPath
-    _, tN = os.path.split(tP)
-    # shape, dtype = ufun.tiff_inspect(tP)
-    
-    df_g = df_cellGeom
-    X_MTcenter = df_g.loc[df_g['tN']==tN, 'xc'].to_numpy()[0]
-    Y_MTcenter = df_g.loc[df_g['tN']==tN, 'yc'].to_numpy()[0]
-    
-    title = '_'.join(fN.split('_')[1:3])
-    if Use_DriftCorrected:
-        trackName = fN + Dict_Files_Suffix['suffix_driftCorrTracks'] + '.csv'
-    else:
-        trackName = fN + Dict_Files_Suffix['suffix_cleanTracks'] + '.csv'
-        
-    if np.isnan(X_MTcenter) or np.isnan(Y_MTcenter):
-        contourName = fN + Dict_Files_Suffix['suffix_contour'] + '.npy'
-        contourCell = np.load(os.path.join(srcDir, contourName))
-        poly = Polygon(contourCell)
-        xc, yc = poly.centroid.xy
-        X_MTcenter, Y_MTcenter = int(xc[0]), int(yc[0])
-    
-    df = pd.read_csv(os.path.join(dstDir, trackName), sep='\t')
-    
-    dict_geom = {'particle':[], 'np':[],
-                 'xc':[], 'yc':[],
-                 'theta':[],
-                 'a':[], 'b':[],
-                 'L':[], 'l':[], 'AR':[],
-                 'phi':[],}
-    
-    grouped = df.groupby('particle')
-    
-    for p, df_p in grouped:
-        points = np.array([[x, y] for (x, y) in zip(df_p.x, df_p.y)])
-        
-        MPoints = MultiPoint(points)
-        Hull = MPoints.convex_hull
-        xy_ch = np.array([xy for xy in Hull.exterior.coords[1:]])
-        xc, yc = Hull.centroid.coords[0]
-        
-        out = ufun.fit_ellipse_fixedCenter(xy_ch[:, 0], xy_ch[:, 1], 
-                                           xc, yc, mode='cartesian')
-        _, _, a, b, phi = out
-        theta = np.atan2(yc - Y_MTcenter, xc - X_MTcenter)
-        # theta_deg = theta * 180/np.pi
-        dotprod = np.cos(theta)*np.cos(phi) + np.sin(theta)*np.sin(phi)
-        if dotprod < 0:
-            phi = phi - np.sign(phi) * np.pi
-        # phi_deg = phi * 180/np.pi
-        L, l = max(a, b), min(a, b)
-        AR = L/l
-        
-        dict_geom['particle'].append(p)
-        dict_geom['np'].append(len(df_p))
-        dict_geom['xc'].append(xc)
-        dict_geom['yc'].append(yc)
-        dict_geom['theta'].append(theta)
-        dict_geom['a'].append(a)
-        dict_geom['b'].append(b)
-        dict_geom['L'].append(L)
-        dict_geom['l'].append(l)
-        dict_geom['AR'].append(AR)
-        dict_geom['phi'].append(phi)
-    
-    df_geom = pd.DataFrame(dict_geom)
-    df_geom_f = df_geom[df_geom['AR'] > 1.5]    
-    df_geom_f['theta_bin'] = (df_geom_f['theta'].values * 18/np.pi).astype(int) * 10 + 5
-    
-    C = np.cos(df_geom_f['theta'].values) * np.cos(df_geom_f['phi'].values) + \
-        np.sin(df_geom_f['theta'].values) * np.sin(df_geom_f['phi'].values)
-    DA = np.acos(C)   
-    
-    
-    pm.setGraphicOptions(mode='screen')
-    fig, axes = plt.subplots(2, 1, figsize=(3.5, 7),
-                             layout='compressed')
-    colors = pm.cL_Set21
-    ax = axes[0]
-    ax.set_aspect('equal', adjustable='box')
-    ax.set_title(title)
-    grouped = df_geom_f.groupby('particle')
-    ax.plot([X_MTcenter], [Y_MTcenter], 'ko')
-    for p, df_gp in grouped:
-        xc, yc = df_gp['xc'].to_numpy()[0], df_gp['yc'].to_numpy()[0]
-        a, b = df_gp['a'].to_numpy()[0], df_gp['b'].to_numpy()[0]
-        phi = df_gp['phi'].to_numpy()[0]
-        c = colors[p%len(colors)]       
-        if p%10 == 0:
-            aa = np.linspace(0, 2*np.pi, 360)
-            xp, yp = ufun.get_ellipse_xy(xc, yc, a, b, phi, aa=aa)
-            ax.plot(xp, yp, c=c, ls='-', lw=0.5)
-            
-    ax = axes[1]
-    ax.hist(DA, bins=20)
-    ax.set_ylabel('N trajectories')
-    ax.set_xlabel(r'$|\theta - \phi|$ (rad)')
-    ax.set_xticks([0, np.pi/8, np.pi/4, 3*np.pi/8, np.pi/2])
-    ax.set_xticklabels(['0', r'$\pi/8$', r'$\pi/4$', r'$3\pi/8$', r'$\pi/2$'])
-    ax.grid()
-    plt.show()
-    
-    return(df_geom, DA, fig, axes)
-
-
-df_geom, DA, fig, axes = getEllipses(fileName, tifPath, df_cellGeom, 
-                                     Use_DriftCorrected, Dict_fSuf)
+fig = NByolk_explore_zone_shape_plot(
+    tifNames, Dict_rP, Dict_pP, df_films_PATH,
+    Dict_fSuf, List_Df_Geom, Dict_AngleDiffs, AR_threshold=1.5, 
+    SHOWPLOT=False, SAVEPLOT = True, figTitle = '26-09-30_D1_Ellipses_1'
+)
 
 
 # -----------------------------------------------------------------------------
@@ -2783,170 +2362,18 @@ tifNames = [
     # '26-09-30_D2-R_PostF_65min_C5_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
     ]
 
-tifPaths = [os.path.join(srcDir, tifName) for tifName in tifNames]
 fileNames = [fN.split('.')[0] for fN in tifNames]
 
-dict_res = {'label':[],
-            'AngleDiffs':[]}
+List_Df_Geom, Dict_AngleDiffs = NByolk_explore_zone_shape_compute(
+    tifNames, Dict_rP, df_films_PATH,
+    Dict_fSuf, AR_threshold=1.5
+)
 
-GEOM_DATA = []
-
-df_g = pd.read_csv(os.path.join(srcDir, 'Cell_geometry.csv'), sep=',')
-
-
-for i in range(len(tifNames)):
-    print(i)
-    tP, fN = tifPaths[i], fileNames[i]
-    _, tN = os.path.split(tP)
-    shape, dtype = ufun.tiff_inspect(tP)
-    
-    X_MTcenter = df_g.loc[df_g['tN']==tN, 'xc'].to_numpy()[0]
-    Y_MTcenter = df_g.loc[df_g['tN']==tN, 'yc'].to_numpy()[0]
-
-    title = '_'.join(fN.split('_')[1:3])
-    rawTrackName = fN + Dict_fSuf['suf_rawTracks'] + '.xml'
-    if Use_DriftCorrected:
-        trackName = fN + Dict_fSuf['suf_driftCorrTracks'] + '.csv'
-    else:
-        trackName = fN + Dict_fSuf['suf_cleanTracks'] + '.csv'
-        
-    # msdName = fN + Dict_fSuf['suf_globalMsd'] + '.csv'
-    # msdFitsName = fN + Dict_fSuf['suf_globalMsdFits']
-    if np.isnan(X_MTcenter) or np.isnan(Y_MTcenter):
-        contourName = fN + Dict_fSuf['suf_contour'] + '.npy'
-        contourCell = np.load(os.path.join(srcDir, contourName))
-        poly = Polygon(contourCell)
-        xc, yc = poly.centroid.xy
-        X_MTcenter, Y_MTcenter = int(xc[0]), int(yc[0])
-    
-    df = pd.read_csv(os.path.join(dstDir, trackName), sep='\t')
-    
-    # Lp = df['particle'].unique().astype(int)
-    dict_geom = {'particle':[],
-                 'np':[],
-                 'xc':[],
-                 'yc':[],
-                 'theta':[],
-                 'a':[],
-                 'b':[],
-                 'L':[],
-                 'l':[],
-                 'AR':[],
-                 'phi':[],}
-    
-    grouped = df.groupby('particle')
-    
-    for p, df_p in grouped:
-        points = np.array([[x, y] for (x, y) in zip(df_p.x, df_p.y)])
-        
-        MPoints = MultiPoint(points)
-        Hull = MPoints.convex_hull
-        xy_ch = np.array([xy for xy in Hull.exterior.coords[1:]])
-        xc, yc = Hull.centroid.coords[0]
-        
-        out = ufun.fit_ellipse_fixedCenter(xy_ch[:, 0], xy_ch[:, 1], 
-                                           xc, yc, mode='cartesian')
-        _, _, a, b, phi = out
-        theta = np.atan2(yc - Y_MTcenter, xc - X_MTcenter)
-        theta_deg = theta * 180/np.pi
-        dotprod = np.cos(theta)*np.cos(phi) + np.sin(theta)*np.sin(phi)
-        if dotprod < 0:
-            phi = phi - np.sign(phi) * np.pi
-        phi_deg = phi * 180/np.pi
-        L, l = max(a, b), min(a, b)
-        AR = L/l
-        
-        dict_geom['particle'].append(p)
-        dict_geom['np'].append(len(df_p))
-        dict_geom['xc'].append(xc)
-        dict_geom['yc'].append(yc)
-        dict_geom['theta'].append(theta)
-        dict_geom['a'].append(a)
-        dict_geom['b'].append(b)
-        dict_geom['L'].append(L)
-        dict_geom['l'].append(l)
-        dict_geom['AR'].append(AR)
-        dict_geom['phi'].append(phi)
-    
-    df_geom_raw = pd.DataFrame(dict_geom)
-    GEOM_DATA.append(df_geom_raw)
-    
-    df_geom = df_geom_raw[df_geom_raw['AR'] > 1.5]    
-    df_geom['theta_bin'] = (df_geom['theta'].values * 18/np.pi).astype(int) * 10 + 5
-    C = np.cos(df_geom['theta'].values) * np.cos(df_geom['phi'].values) + \
-        np.sin(df_geom['theta'].values) * np.sin(df_geom['phi'].values)
-    DA = np.acos(C)   
-    
-    dict_res['label'].append(title)
-    dict_res['AngleDiffs'].append(DA)
-
-
-
-pm.setGraphicOptions(mode='screen')
-fig, axes = plt.subplots(2, len(tifNames), figsize=(len(tifNames)*3, 6),
-                         layout='compressed')
-colors = pm.cL_Set21
-
-for i in range(len(tifNames)):
-    print(i)
-    tP, fN = tifPaths[i], fileNames[i]
-    _, tN = os.path.split(tP)
-    shape, dtype = ufun.tiff_inspect(tP)
-    
-    X_MTcenter = df_g.loc[df_g['tN']==tN, 'xc'].to_numpy()[0]
-    Y_MTcenter = df_g.loc[df_g['tN']==tN, 'yc'].to_numpy()[0]
-    # print(X_MTcenter, Y_MTcenter)
-
-    title = '_'.join(fN.split('_')[1:4])
-    rawTrackName = fN + Dict_fSuf['suf_rawTracks'] + '.xml'
-    if Use_DriftCorrected:
-        trackName = fN + Dict_fSuf['suf_driftCorrTracks'] + '.csv'
-    else:
-        trackName = fN + Dict_fSuf['suf_cleanTracks'] + '.csv'
-        
-    # msdName = fN + Dict_fSuf['suf_globalMsd'] + '.csv'
-    # msdFitsName = fN + Dict_fSuf['suf_globalMsdFits']
-    if np.isnan(X_MTcenter) or np.isnan(Y_MTcenter):
-        contourName = fN + Dict_fSuf['suf_contour'] + '.npy'
-        contourCell = np.load(os.path.join(srcDir, contourName))
-        poly = Polygon(contourCell)
-        xc, yc = poly.centroid.xy
-        X_MTcenter, Y_MTcenter = int(xc[0]), int(yc[0])
-    
-    # df = pd.read_csv(os.path.join(dstDir, trackName), sep='\t')
-    df_geom = GEOM_DATA[i]
-    df_geom = df_geom[df_geom['AR'] > 1.5]
-    grouped = df_geom.groupby('particle')
-    
-    ax = axes[0, i]
-    ax.set_aspect('equal', adjustable='box')
-    ax.set_title(title)
-    
-    for p, df_gp in grouped:      
-        xc, yc = df_gp['xc'].to_numpy()[0], df_gp['yc'].to_numpy()[0]
-        a, b = df_gp['a'].to_numpy()[0], df_gp['b'].to_numpy()[0]
-        phi = df_gp['phi'].to_numpy()[0]
-        c = colors[p%len(colors)]       
-        if p%10 == 0:
-            aa = np.linspace(0, 2*np.pi, 360)
-            xp, yp = ufun.get_ellipse_xy(xc, yc, a, b, phi, aa=aa)
-            ax.plot(xp, yp, c=c, ls='-', lw=0.5)
-    plt.show()
-    
-    C = np.cos(df_geom['theta'].values) * np.cos(df_geom['phi'].values) + \
-        np.sin(df_geom['theta'].values) * np.sin(df_geom['phi'].values)
-    DA = np.acos(C)
-    
-    ax = axes[1, i]
-    ax.hist(DA, bins=20)
-    ax.set_ylabel('N trajectories')
-    ax.set_xlabel(r'$|\theta - \phi|$ (rad)')
-    ax.set_xticks([0, np.pi/8, np.pi/4, 3*np.pi/8, np.pi/2])
-    ax.set_xticklabels(['0', r'$\pi/8$', r'$\pi/4$', r'$3\pi/8$', r'$\pi/2$'])
-    ax.grid()
-
-plt.show()
-
+fig = NByolk_explore_zone_shape_plot(
+    tifNames, Dict_rP, Dict_pP, df_films_PATH,
+    Dict_fSuf, List_Df_Geom, Dict_AngleDiffs, AR_threshold=1.5, 
+    SHOWPLOT=False, SAVEPLOT = True, figTitle = '26-09-30_D2-R_Ellipses_1'
+)
 
 
 
