@@ -43,6 +43,8 @@ import matplotlib.pyplot as plt
 from shapely.geometry import MultiPoint, Polygon
 # from scipy.spatial import Delaunay # ConvexHull
 # from scipy.signal import savgol_filter
+from matplotlib.path import Path
+from scipy.spatial import cKDTree
 
 import Libs.PlotMaker as pm
 import Libs.UrchinPaths as up
@@ -446,502 +448,7 @@ def NByolk_msd_compute(tifNames, df_films_path, df_res_name,
     pass
     
 
-# %% Plotting functions
 
-def Tpf_str2num(tpf_str):
-    L = tpf_str.split('min')
-    try:
-        tpf_num = int(L[0])*60
-        if len(L) > 1 and len(L[1]) > 0:
-            tpf_num += int(L[1])
-    except:
-        tpf_num = 0
-    return(tpf_num)
-
-
-def Tpf_label2num(fileName_str):
-    if 'min' in fileName_str:
-        L = fileName_str.split('_')
-        for s in L:
-            if 'min' in s:
-                tpf_num = Tpf_str2num(s)
-                break
-    else:
-        tpf_num = 0
-    return(tpf_num)
-
-
-def import_and_plot_MSD(fileNames, #tifPaths,
-                        Dict_fSuf, Dict_rP, Dict_pP,
-                        fig_title = '',
-                        # Use_DriftCorrected = False,
-                        ):    
-    fig, ax = plt.subplots(1, 1, figsize=(7, 5))
-    ax.set_xscale('log')
-    ax.set_yscale('log')
-    
-    dict_res = {
-        'label'  : [],
-        'D_linear': [],
-        'D_full' : [],
-        'k_full' : [],
-        'D_lowDt': [],
-        'k_lowDt': [],
-        'D_highDt':[],
-        'k_highDt':[],
-        'Tc':[],
-        }
-    
-    ColorList = list(sns.color_palette("husl", len(fileNames)))
-    
-    for i in range(len(fileNames)):
-        fN = fileNames[i]
-        # tP = tifPaths[i]
-        
-        msdName = fN + Dict_fSuf['suf_globalMsd'] + '.csv'
-        msdFitsName = fN + Dict_fSuf['suf_globalMsdFits'] + '.json'
-        # if not Use_DriftCorrected:
-        #     trackName = fN + Dict_fSuf['suf_cleanTracks'] + '.csv'
-        # else:
-        #     trackName = fN + Dict_fSuf['suf_cleanTracks_DriftCorr'] + '.csv'
-        # df = pd.read_csv(os.path.join(dstDir, trackName), sep='\t')
-        
-        res_emsd = pd.read_csv(os.path.join(dstDir, msdName), sep='\t')
-        T, MSD = res_emsd['lagt'], res_emsd['msd']
-    
-        long_label = '_'.join(fN.split('_')[:-1])
-        short_label = '_'.join(fN.split('_')[2:4])
-    
-        ax.plot(T, MSD, label=short_label, color=ColorList[i], 
-                marker='o', markersize=3, alpha=0.85)
-        
-        dict_MSDfits = ufun.json2dict(dstDir, msdFitsName)
-        D_linear = dict_MSDfits['D_linear']
-        k_full = dict_MSDfits['k_full']
-        D_full = dict_MSDfits['D_full']
-        k_lowDt = dict_MSDfits['k_lowDt']
-        D_lowDt = dict_MSDfits['D_lowDt']
-        k_highDt = dict_MSDfits['k_highDt']
-        D_highDt = dict_MSDfits['D_highDt']
-        
-        Tc = (D_lowDt/D_highDt)**(1/(k_highDt-k_lowDt))
-        
-        dict_res['label'].append(long_label)
-        dict_res['D_linear'].append(D_linear)
-        dict_res['D_full'].append(D_full)
-        dict_res['k_full'].append(k_full)
-        dict_res['D_lowDt'].append(D_lowDt)
-        dict_res['k_lowDt'].append(k_lowDt)
-        dict_res['D_highDt'].append(D_highDt)
-        dict_res['k_highDt'].append(k_highDt)
-        dict_res['Tc'].append(Tc)
-        
-    Xp1 = np.array([1e-1, 5e-1])
-    Xp2 = np.array([1, 2])
-    ax.plot(Xp1, 12e-3*Xp1**0.5, color = 'gray', ls=':', label=r'$y \propto x^{1/2}$')
-    ax.plot(Xp2, 0.15e-1*Xp2**1, color = 'gray', ls='--', label=r'$y \propto x^{1}$')
-    ncols = 1 + (len(fileNames)//18)
-    ax.legend(loc='center left', bbox_to_anchor=(1, 0.5), 
-              fontsize=8, ncols=ncols)
-    ax.grid()
-    ax.set_ylabel('MSD (µm²)')
-    ax.set_xlabel(r'$\Delta t$ (s)')
-    # ax.set_xlim([0.4e-1, 0.6e1])
-    # ax.set_ylim([2e-3, 0.5e0])
-    if len(fig_title)>0:
-        fig.suptitle(fig_title)
-    
-    df_Diffusion = pd.DataFrame(dict_res)
-    df_Diffusion['Tpf_s'] = df_Diffusion['label'].apply(lambda x : Tpf_label2num(x))
-    df_Diffusion['Tpf_min'] = df_Diffusion['Tpf_s']/60
-    
-    fig, axes = plt.subplots(2, 1, figsize=(7, 6), 
-                             sharex = True, layout='compressed')
-    ax = axes[0]
-    ax.plot(df_Diffusion.Tpf_min, df_Diffusion.D_full, ls='-', marker='o', label=r'All $\Delta t$')
-    ax.plot(df_Diffusion.Tpf_min, df_Diffusion.D_lowDt, ls='-', marker='o', label=r'$\Delta t \leq 0.5s$')
-    ax.plot(df_Diffusion.Tpf_min, df_Diffusion.D_highDt, ls='-', marker='o', label=r'$\Delta t \geq 1s$')
-    ax.plot(df_Diffusion.Tpf_min, df_Diffusion.D_linear, ls='-', marker='o', label=r'Linear fit')
-    ax.set_ylabel(r'$D_{eff}\ (\mu m^2/s^\alpha)$')
-    ym, yM = ax.get_ylim()
-    ax.set_ylim([0, yM])
-    ax.legend(loc='center left', bbox_to_anchor=(1, 0.5))
-    ax.grid()
-    
-    ax = axes[1]
-    ax.plot(df_Diffusion.Tpf_min, df_Diffusion.k_full, ls='-', marker='o', label=r'All $\Delta t$')
-    ax.plot(df_Diffusion.Tpf_min, df_Diffusion.k_lowDt, ls='-', marker='o', label=r'$\Delta t \leq 0.5s$')
-    ax.plot(df_Diffusion.Tpf_min, df_Diffusion.k_highDt, ls='-', marker='o', label=r'$\Delta t \geq 1s$')
-    ax.set_ylabel(r'$\alpha$')
-    ax.set_xticks(df_Diffusion['Tpf_min'].values)
-    ax.set_xticklabels(df_Diffusion['Tpf_min'].values.astype(int), rotation = 30)
-    ax.set_xlabel('Tpf (min)')
-    ym, yM = ax.get_ylim()
-    ax.set_ylim([0, yM])
-    ax.legend(loc='center left', bbox_to_anchor=(1, 0.5))
-    ax.grid()
-    if len(fig_title)>0:
-        fig.suptitle(fig_title)
-    
-    plt.show()
-    
-    return(df_Diffusion)
-
-
-
-def import_and_plot_pairMSD(fileNames, Dict_fSuf, fig_title=''):
-    fig, axes = plt.subplots(1, 2, figsize=(11, 5), sharey=True)
-    for ax in axes:
-        ax.set_xscale('log')
-        ax.set_yscale('log')
-    
-    dict_res_MSD = {
-        'label'  : [], 'D_linear' : [],
-        'D_full' : [], 'k_full' : [],
-        'D_lowDt': [], 'k_lowDt': [],
-        'D_highDt':[], 'k_highDt':[],
-        'Tc' : [],
-        }
-    
-    dict_res_pMSD = {
-        'label'  : [], 'D_linear' : [],
-        'D_full' : [], 'k_full' : [],
-        'D_lowDt': [], 'k_lowDt': [],
-        'D_highDt':[], 'k_highDt':[],
-        'Tc' : [],
-        }
-    
-    ColorList = list(sns.color_palette("husl", len(fileNames)))
-    
-    for i in range(len(fileNames)):
-        fN = fileNames[i]
-        msdName = fN + Dict_fSuf['suf_globalMsd'] + '.csv'
-        msdFitsName = fN + Dict_fSuf['suf_globalMsdFits']
-        pairMsdName = fN + Dict_fSuf['suf_globalPairMsd'] + '.csv'
-        pairMsdFitsName = fN + Dict_fSuf['suf_globalPairMsdFits']
-        
-        # cleanTrackName = fN + Dict_fSuf['suf_cleanTracks'] + '.csv'
-        # df = pd.read_csv(os.path.join(dstDir, cleanTrackName), sep='\t')
-        
-        # "Normal" MSD
-        res_emsd = pd.read_csv(os.path.join(dstDir, msdName), sep='\t')
-        T, MSD = res_emsd['lagt'], res_emsd['msd']
-        dict_MSDfits = ufun.json2dict(dstDir, msdFitsName)
-        long_label = '_'.join(fN.split('_')[:6])
-        short_label = '_'.join(fN.split('_')[2:4])
-        
-        ax = axes[0]
-        ax.plot(T, MSD, label=short_label, color=ColorList[i], 
-                marker='o', markersize=3, alpha=0.85)
-                
-        D_linear = dict_MSDfits['D_linear']
-        k_full = dict_MSDfits['k_full']
-        D_full = dict_MSDfits['D_full']
-        k_lowDt = dict_MSDfits['k_lowDt']
-        D_lowDt = dict_MSDfits['D_lowDt']
-        k_highDt = dict_MSDfits['k_highDt']
-        D_highDt = dict_MSDfits['D_highDt']
-        
-        Tc = (D_lowDt/D_highDt)**(1/(k_highDt-k_lowDt))
-        
-        dict_res_MSD['label'].append(long_label)
-        dict_res_MSD['Tc'].append(Tc)
-        dict_res_MSD['D_linear'].append(D_linear)
-        dict_res_MSD['D_full'].append(D_full)
-        dict_res_MSD['k_full'].append(k_full)
-        dict_res_MSD['D_lowDt'].append(D_lowDt)
-        dict_res_MSD['k_lowDt'].append(k_lowDt)
-        dict_res_MSD['D_highDt'].append(D_highDt)
-        dict_res_MSD['k_highDt'].append(k_highDt)
-        
-        # Pair-MSD
-        res_pair_emsd = pd.read_csv(os.path.join(dstDir, pairMsdName), sep='\t')
-        pT, pMSD = res_pair_emsd['lagt'], res_pair_emsd['msd_median']
-        dict_pairMSDfits = ufun.json2dict(dstDir, pairMsdFitsName)
-        long_label = '_'.join(fN.split('_')[:6])
-        short_label = '_'.join(fN.split('_')[2:4])
-        
-        ax = axes[1]
-        ax.plot(pT, pMSD, label=short_label, color=ColorList[i], 
-                marker='o', markersize=3, alpha=0.85)
-        
-        D_linear = dict_pairMSDfits['D_linear']
-        k_full = dict_pairMSDfits['k_full']
-        D_full = dict_pairMSDfits['D_full']
-        k_lowDt = dict_pairMSDfits['k_lowDt']
-        D_lowDt = dict_pairMSDfits['D_lowDt']
-        k_highDt = dict_pairMSDfits['k_highDt']
-        D_highDt = dict_pairMSDfits['D_highDt']
-        
-        Tc = (D_lowDt/D_highDt)**(1/(k_highDt-k_lowDt))
-
-        dict_res_pMSD['label'].append(long_label)
-        dict_res_pMSD['Tc'].append(Tc)
-        dict_res_pMSD['D_linear'].append(D_linear)
-        dict_res_pMSD['D_full'].append(D_full)
-        dict_res_pMSD['k_full'].append(k_full)
-        dict_res_pMSD['D_lowDt'].append(D_lowDt)
-        dict_res_pMSD['k_lowDt'].append(k_lowDt)
-        dict_res_pMSD['D_highDt'].append(D_highDt)
-        dict_res_pMSD['k_highDt'].append(k_highDt)
-        
-    for ax in axes:
-        Xp1 = np.array([1e-1, 5e-1])
-        Xp2 = np.array([1, 2])
-        ax.plot(Xp1, 12e-3*Xp1**0.5, color = 'gray', ls=':', label=r'$y \propto x^{1/2}$')
-        ax.plot(Xp2, 0.15e-1*Xp2**1, color = 'gray', ls='--', label=r'$y \propto x^{1}$')
-        ax.grid()
-        # ax.set_xlim([0.4e-1, 0.6e1])
-        # ax.set_ylim([2e-3, 0.5e0])
-        ax.set_ylabel('MSD (µm²)')
-        ax.set_xlabel(r'$\Delta t$ (s)')
-    
-    ax = axes[0]
-    ax.set_ylabel('MSD (µm²)')
-    
-    ax = axes[1]
-    ax.set_ylabel('pair-MSD (µm²)')
-    ncols = 1 + (len(fileNames)//18)
-    ax.legend(loc='center left', bbox_to_anchor=(1, 0.5), 
-              fontsize=8, ncols = ncols)
-    if len(fig_title)>0:
-        fig.suptitle(fig_title)
-    
-    
-    # Time - D - alpha
-    df_Diffusion = pd.DataFrame(dict_res_MSD)
-    df_Diffusion['Tpf_s'] = df_Diffusion['label'].apply(lambda x : Tpf_label2num(x))
-    df_Diffusion['Tpf_min'] = df_Diffusion['Tpf_s']/60
-    
-    df_pairDiffusion = pd.DataFrame(dict_res_pMSD)
-    df_pairDiffusion['Tpf_s'] = df_Diffusion['label'].apply(lambda x : Tpf_label2num(x))
-    df_pairDiffusion['Tpf_min'] = df_Diffusion['Tpf_s']/60
-    
-    fig, axes = plt.subplots(2, 2, figsize=(12, 7), 
-                             sharey='row', sharex = True, layout='compressed')
-    
-    # "Normal" MSD
-    df = df_Diffusion
-    ax = axes[0, 0]
-    ax.set_title('Individual MSD')
-    ax.plot(df.Tpf_min, df.D_full, ls='-', marker='o', label=r'All $\Delta t$')
-    ax.plot(df.Tpf_min, df.D_lowDt, ls='-', marker='o', label=r'$\Delta t \leq 0.5s$')
-    ax.plot(df.Tpf_min, df.D_highDt, ls='-', marker='o', label=r'$\Delta t \geq 1s$')
-    ax.plot(df.Tpf_min, df.D_linear, ls='-', marker='o', label=r'Linear fit')
-    ax.set_ylabel(r'$D_{eff}\ (\mu m^2/s^\alpha)$')
-    # ax.legend(loc='center left', bbox_to_anchor=(1, 0.5))
-    ax.grid()
-    
-    ax = axes[1, 0]
-    ax.plot(df.Tpf_min, df.k_full, ls='-', marker='o', label=r'All $\Delta t$')
-    ax.plot(df.Tpf_min, df.k_lowDt, ls='-', marker='o', label=r'$\Delta t \leq 0.5s$')
-    ax.plot(df.Tpf_min, df.k_highDt, ls='-', marker='o', label=r'$\Delta t \geq 1s$')
-    ax.set_ylabel(r'$\alpha$')
-    ax.set_xticks(df_Diffusion['Tpf_min'].values)
-    ax.set_xticklabels(df_Diffusion['Tpf_min'].values.astype(int), rotation = 30)
-    ax.set_xlabel('Tpf (min)')
-    # ax.legend(loc='center left', bbox_to_anchor=(1, 0.5))
-    ax.grid()
-    
-    # Pair MSD
-    df = df_pairDiffusion
-    ax = axes[0, 1]
-    ax.set_title('Pair-MSD')
-    ax.plot(df.Tpf_min, df.D_full, ls='-', marker='o', label=r'All $\Delta t$')
-    ax.plot(df.Tpf_min, df.D_lowDt, ls='-', marker='o', label=r'$\Delta t \leq 0.5s$')
-    ax.plot(df.Tpf_min, df.D_highDt, ls='-', marker='o', label=r'$\Delta t \geq 1s$')
-    ax.plot(df.Tpf_min, df.D_linear, ls='-', marker='o', label=r'Linear fit')
-    ax.set_ylabel(r'$D_{eff}\ (\mu m^2/s^\alpha)$')
-    ym, yM = ax.get_ylim()
-    ax.set_ylim([0, yM])
-    ax.legend(loc='center left', bbox_to_anchor=(1, 0.5))
-    ax.grid()
-    
-    ax = axes[1, 1]
-    ax.plot(df.Tpf_min, df.k_full, ls='-', marker='o', label=r'All $\Delta t$')
-    ax.plot(df.Tpf_min, df.k_lowDt, ls='-', marker='o', label=r'$\Delta t \leq 0.5s$')
-    ax.plot(df.Tpf_min, df.k_highDt, ls='-', marker='o', label=r'$\Delta t \geq 1s$')
-    ax.set_ylabel(r'$\alpha$')
-    ax.set_xticks(df_Diffusion['Tpf_min'].values)
-    ax.set_xticklabels(df_Diffusion['Tpf_min'].values.astype(int), rotation = 30)
-    ax.set_xlabel('Tpf (min)')
-    ym, yM = ax.get_ylim()
-    ax.set_ylim([0, yM])
-    ax.legend(loc='center left', bbox_to_anchor=(1, 0.5))
-    ax.grid()
-    if len(fig_title)>0:
-        fig.suptitle(fig_title)
-    
-    plt.show()
-
-    return(df_Diffusion, df_pairDiffusion)
-
-
-
-
-def df_grid_2_matrix(df_grid, Nx, Ny, xy_col = 'Bxy', parm_col = 'k_full'):
-    V = df_grid[xy_col].values
-    L = [[*tup] for tup in V]
-    XY_g = np.array(L)
-    df_grid['X_g'] = XY_g[:, 0]
-    df_grid['Y_g'] = XY_g[:, 1]
-    if max(XY_g[:, 0]) > (Nx-1):
-        Nx = max(XY_g[:, 0])+1
-    if max(XY_g[:, 1]) > (Ny-1):
-        Ny = max(XY_g[:, 1])+1
-        
-    Hm = np.zeros((Nx, Ny))
-    Hm.fill(np.nan)
-    for xy in XY_g:
-        [x, y] = xy
-        Hm[y, x] = df_grid.loc[(df_grid['X_g'] == x) & (df_grid['Y_g'] == y), parm_col].values[0]
-        
-    return(Hm)
-
-
-def plot_MSD_HeatMap(df_grid, M_boxes, xy_col, parm_col,
-                axtitle = '', cbarlabel = '',
-                cmap='viridis', norm_type = 'lin',
-                c_vmin=None, c_vmax=None,
-                fig=None, ax=None):
-    
-    if ax is None:
-        fig, ax = plt.subplots(1, 1)
-        
-    parm = parm_col
-    if axtitle=='':
-        axtitle=parm
-    ax.set_title(axtitle)
-    
-    HeatMap = df_grid_2_matrix(df_grid_MSD, M_boxes, M_boxes, 
-                               xy_col = xy_col, 
-                               parm_col = parm_col)
-
-    # mpl.colors.Normalize() # mpl.colors.LogNorm()
-    # norm = mpl.colors.Normalize()
-    if norm_type == 'lin':
-        norm = mpl.colors.Normalize(vmin=c_vmin, vmax=c_vmax)
-    elif norm_type == 'log':
-        norm = mpl.colors.LogNorm(vmin=c_vmin, vmax=c_vmax)
-    else:
-        norm = None
-        
-    axim = ax.imshow(HeatMap, aspect='equal',
-                     cmap=cmap, norm=norm, )
-    ax.invert_yaxis()
-
-    # Create colorbar
-    cbar = fig.colorbar(axim, ax=ax, label=cbarlabel)
-    cbar.ax.set_ylabel(cbarlabel, rotation=-90, va="bottom")#, va="bottom")
-
-    xt = np.linspace(0, M_boxes, 3, endpoint=True)
-    yt = np.linspace(0, M_boxes, 3, endpoint=True)
-    xticks = xt - 0.5
-    yticks = yt - 0.5
-    #### HAVE TO BE REDONE FOR NON SQUARE ROIs !!
-    # xlabels = [f'{x*(N_pix)/M_boxes:.0f}' for x in xt]
-    # ylabels = [f'{y*(N_pix)/M_boxes:.0f}' for y in yt]
-    # xlabels = ['' for x in xt]
-    # ylabels = ['' for y in yt]
-    # ax.tick_params(axis='both', length=0,)
-
-    # ax.set_xticks(xticks, labels=xlabels,) # rotation=-30, rotation_mode="xtick")
-    # ax.set_yticks(yticks, labels=ylabels)
-    # ax.spines[:].set_visible(False)
-    ax.grid(which="minor", color="w", linestyle='-', linewidth=0.5)
-    ax.tick_params(which="minor", bottom=False, left=False)
-    return(fig, ax)
-
-# %% Other functions
-
-def autocorr_fft(x):
-    N = len(x)
-    F = np.fft.fft(x, n = 2*N)  # 2*N because of zero-padding
-    PSD = F * F.conjugate()
-    res = np.fft.ifft(PSD)
-    res = (res[:N]).real  # now we have the autocorrelation in convention B
-    n = N * np.ones(N) - np.arange(0, N) # divide res(m) by (N-m)
-    return(res / n)  # this is the autocorrelation in convention A
-
-
-def msd_fft_trackpyStyle(traj, mpp, fps, max_lagtime=100, pos_columns=['x', 'y']):
-    """
-    https://github.com/hadim/Public-Notebooks/blob/master/Code/Quick_MSD/notebook.ipynb
-    """
-    
-    r = traj[pos_columns].values
-    r *= mpp
-
-    t = traj['frame']
-
-    max_lagtime = min(max_lagtime, len(t))  # checking to be safe
-    lagtimes = 1 + np.arange(max_lagtime - 1)    
-
-    N = len(r)
-
-    D = np.square(r).sum(axis=1) 
-    D = np.append(D, 0)
-    S2 = sum([autocorr_fft(r[:, i]) for i in range(len(pos_columns))])
-
-    Q = 2 * D.sum()
-    S1 = np.zeros(max_lagtime)
-
-    for m in range(max_lagtime):
-        Q = Q - D[m - 1] - D[N - m]
-        S1[m] = Q / (N - m)
-
-    msd = S1 - 2 * S2[:max_lagtime]
-    msd = msd[1:]
-
-    lagt = lagtimes / fps
-
-    results = pd.DataFrame(np.array([msd, lagt]).T, columns=['msd', 'lagt'])
-    results.index = 1 + np.arange(max_lagtime - 1)
-    results.index.name = 'lagt'
-    
-    return(results)
-
-
-def msd_fft_1D(pos, mpp, fps, max_lagtime=100):
-    """
-    https://stackoverflow.com/questions/34222272/computing-mean-square-displacement-using-python-and-fft/34222273#34222273
-    """
-    
-    r = pos
-    r *= mpp
-
-    t = np.arange(len(pos))
-
-    max_lagtime = min(max_lagtime, len(t))  # checking to be safe
-    lagtimes = 1 + np.arange(max_lagtime)    
-
-    N = len(r)
-
-    D = np.square(r)
-    D = np.append(D, 0)
-    S2 = sum([autocorr_fft(r[:])])
-
-    Q = 2 * D.sum()
-    S1 = np.zeros(max_lagtime+1)
-
-    for m in range(max_lagtime+1):
-        Q = Q - D[m - 1] - D[N - m]
-        S1[m] = Q / (N - m)
-
-    msd = S1 - 2 * S2[:max_lagtime+1]
-    msd = msd[1:]
-
-    lagt = lagtimes / fps
-
-    results = pd.DataFrame(np.array([msd, lagt]).T, columns=['msd', 'lagt'])
-    results.index = 1 + np.arange(max_lagtime)
-    results.index.name = 'lagt'
-    
-    return(results)
-
-
-
-# For Claude ! The function below is the one i want to complete
 def NByolk_imsd_compute(tifNames, df_films_path, 
                        Dict_fSuf, Dict_rP, Dict_pP):
     
@@ -1440,6 +947,692 @@ def NByolk_ro_msd_compute(tifNames, df_films_path, df_res_name,
         print(f'{time.time()-top:.2f} s')
         
 
+
+# %% Data functions
+
+def Tpf_str2num(tpf_str):
+    L = tpf_str.split('min')
+    try:
+        tpf_num = int(L[0])*60
+        if len(L) > 1 and len(L[1]) > 0:
+            tpf_num += int(L[1])
+    except:
+        tpf_num = 0
+    return(tpf_num)
+
+
+def Tpf_label2num(fileName_str):
+    if 'min' in fileName_str:
+        L = fileName_str.split('_')
+        for s in L:
+            if 'min' in s:
+                tpf_num = Tpf_str2num(s)
+                break
+    else:
+        tpf_num = 0
+    return(tpf_num)
+
+# %% Plotting functions
+
+# %%% Plot in time
+
+def import_and_plot_MSD(fileNames, #tifPaths,
+                        Dict_fSuf, Dict_rP, Dict_pP,
+                        fig_title = '',
+                        # Use_DriftCorrected = False,
+                        ):    
+    fig, ax = plt.subplots(1, 1, figsize=(7, 5))
+    ax.set_xscale('log')
+    ax.set_yscale('log')
+    
+    dict_res = {
+        'label'  : [],
+        'D_linear': [],
+        'D_full' : [],
+        'k_full' : [],
+        'D_lowDt': [],
+        'k_lowDt': [],
+        'D_highDt':[],
+        'k_highDt':[],
+        'Tc':[],
+        }
+    
+    ColorList = list(sns.color_palette("husl", len(fileNames)))
+    
+    for i in range(len(fileNames)):
+        fN = fileNames[i]
+        # tP = tifPaths[i]
+        
+        msdName = fN + Dict_fSuf['suf_globalMsd'] + '.csv'
+        msdFitsName = fN + Dict_fSuf['suf_globalMsdFits'] + '.json'
+        # if not Use_DriftCorrected:
+        #     trackName = fN + Dict_fSuf['suf_cleanTracks'] + '.csv'
+        # else:
+        #     trackName = fN + Dict_fSuf['suf_cleanTracks_DriftCorr'] + '.csv'
+        # df = pd.read_csv(os.path.join(dstDir, trackName), sep='\t')
+        
+        res_emsd = pd.read_csv(os.path.join(dstDir, msdName), sep='\t')
+        T, MSD = res_emsd['lagt'], res_emsd['msd']
+    
+        long_label = '_'.join(fN.split('_')[:-1])
+        short_label = '_'.join(fN.split('_')[2:4])
+    
+        ax.plot(T, MSD, label=short_label, color=ColorList[i], 
+                marker='o', markersize=3, alpha=0.85)
+        
+        dict_MSDfits = ufun.json2dict(dstDir, msdFitsName)
+        D_linear = dict_MSDfits['D_linear']
+        k_full = dict_MSDfits['k_full']
+        D_full = dict_MSDfits['D_full']
+        k_lowDt = dict_MSDfits['k_lowDt']
+        D_lowDt = dict_MSDfits['D_lowDt']
+        k_highDt = dict_MSDfits['k_highDt']
+        D_highDt = dict_MSDfits['D_highDt']
+        
+        Tc = (D_lowDt/D_highDt)**(1/(k_highDt-k_lowDt))
+        
+        dict_res['label'].append(long_label)
+        dict_res['D_linear'].append(D_linear)
+        dict_res['D_full'].append(D_full)
+        dict_res['k_full'].append(k_full)
+        dict_res['D_lowDt'].append(D_lowDt)
+        dict_res['k_lowDt'].append(k_lowDt)
+        dict_res['D_highDt'].append(D_highDt)
+        dict_res['k_highDt'].append(k_highDt)
+        dict_res['Tc'].append(Tc)
+        
+    Xp1 = np.array([1e-1, 5e-1])
+    Xp2 = np.array([1, 2])
+    ax.plot(Xp1, 12e-3*Xp1**0.5, color = 'gray', ls=':', label=r'$y \propto x^{1/2}$')
+    ax.plot(Xp2, 0.15e-1*Xp2**1, color = 'gray', ls='--', label=r'$y \propto x^{1}$')
+    ncols = 1 + (len(fileNames)//18)
+    ax.legend(loc='center left', bbox_to_anchor=(1, 0.5), 
+              fontsize=8, ncols=ncols)
+    ax.grid()
+    ax.set_ylabel('MSD (µm²)')
+    ax.set_xlabel(r'$\Delta t$ (s)')
+    # ax.set_xlim([0.4e-1, 0.6e1])
+    # ax.set_ylim([2e-3, 0.5e0])
+    if len(fig_title)>0:
+        fig.suptitle(fig_title)
+    
+    df_Diffusion = pd.DataFrame(dict_res)
+    df_Diffusion['Tpf_s'] = df_Diffusion['label'].apply(lambda x : Tpf_label2num(x))
+    df_Diffusion['Tpf_min'] = df_Diffusion['Tpf_s']/60
+    
+    fig, axes = plt.subplots(2, 1, figsize=(7, 6), 
+                             sharex = True, layout='compressed')
+    ax = axes[0]
+    ax.plot(df_Diffusion.Tpf_min, df_Diffusion.D_full, ls='-', marker='o', label=r'All $\Delta t$')
+    ax.plot(df_Diffusion.Tpf_min, df_Diffusion.D_lowDt, ls='-', marker='o', label=r'$\Delta t \leq 0.5s$')
+    ax.plot(df_Diffusion.Tpf_min, df_Diffusion.D_highDt, ls='-', marker='o', label=r'$\Delta t \geq 1s$')
+    ax.plot(df_Diffusion.Tpf_min, df_Diffusion.D_linear, ls='-', marker='o', label=r'Linear fit')
+    ax.set_ylabel(r'$D_{eff}\ (\mu m^2/s^\alpha)$')
+    ym, yM = ax.get_ylim()
+    ax.set_ylim([0, yM])
+    ax.legend(loc='center left', bbox_to_anchor=(1, 0.5))
+    ax.grid()
+    
+    ax = axes[1]
+    ax.plot(df_Diffusion.Tpf_min, df_Diffusion.k_full, ls='-', marker='o', label=r'All $\Delta t$')
+    ax.plot(df_Diffusion.Tpf_min, df_Diffusion.k_lowDt, ls='-', marker='o', label=r'$\Delta t \leq 0.5s$')
+    ax.plot(df_Diffusion.Tpf_min, df_Diffusion.k_highDt, ls='-', marker='o', label=r'$\Delta t \geq 1s$')
+    ax.set_ylabel(r'$\alpha$')
+    ax.set_xticks(df_Diffusion['Tpf_min'].values)
+    ax.set_xticklabels(df_Diffusion['Tpf_min'].values.astype(int), rotation = 30)
+    ax.set_xlabel('Tpf (min)')
+    ym, yM = ax.get_ylim()
+    ax.set_ylim([0, yM])
+    ax.legend(loc='center left', bbox_to_anchor=(1, 0.5))
+    ax.grid()
+    if len(fig_title)>0:
+        fig.suptitle(fig_title)
+    
+    plt.show()
+    
+    return(df_Diffusion)
+
+
+
+def import_and_plot_pairMSD(fileNames, Dict_fSuf, fig_title=''):
+    fig, axes = plt.subplots(1, 2, figsize=(11, 5), sharey=True)
+    for ax in axes:
+        ax.set_xscale('log')
+        ax.set_yscale('log')
+    
+    dict_res_MSD = {
+        'label'  : [], 'D_linear' : [],
+        'D_full' : [], 'k_full' : [],
+        'D_lowDt': [], 'k_lowDt': [],
+        'D_highDt':[], 'k_highDt':[],
+        'Tc' : [],
+        }
+    
+    dict_res_pMSD = {
+        'label'  : [], 'D_linear' : [],
+        'D_full' : [], 'k_full' : [],
+        'D_lowDt': [], 'k_lowDt': [],
+        'D_highDt':[], 'k_highDt':[],
+        'Tc' : [],
+        }
+    
+    ColorList = list(sns.color_palette("husl", len(fileNames)))
+    
+    for i in range(len(fileNames)):
+        fN = fileNames[i]
+        msdName = fN + Dict_fSuf['suf_globalMsd'] + '.csv'
+        msdFitsName = fN + Dict_fSuf['suf_globalMsdFits']
+        pairMsdName = fN + Dict_fSuf['suf_globalPairMsd'] + '.csv'
+        pairMsdFitsName = fN + Dict_fSuf['suf_globalPairMsdFits']
+        
+        # cleanTrackName = fN + Dict_fSuf['suf_cleanTracks'] + '.csv'
+        # df = pd.read_csv(os.path.join(dstDir, cleanTrackName), sep='\t')
+        
+        # "Normal" MSD
+        res_emsd = pd.read_csv(os.path.join(dstDir, msdName), sep='\t')
+        T, MSD = res_emsd['lagt'], res_emsd['msd']
+        dict_MSDfits = ufun.json2dict(dstDir, msdFitsName)
+        long_label = '_'.join(fN.split('_')[:6])
+        short_label = '_'.join(fN.split('_')[2:4])
+        
+        ax = axes[0]
+        ax.plot(T, MSD, label=short_label, color=ColorList[i], 
+                marker='o', markersize=3, alpha=0.85)
+                
+        D_linear = dict_MSDfits['D_linear']
+        k_full = dict_MSDfits['k_full']
+        D_full = dict_MSDfits['D_full']
+        k_lowDt = dict_MSDfits['k_lowDt']
+        D_lowDt = dict_MSDfits['D_lowDt']
+        k_highDt = dict_MSDfits['k_highDt']
+        D_highDt = dict_MSDfits['D_highDt']
+        
+        Tc = (D_lowDt/D_highDt)**(1/(k_highDt-k_lowDt))
+        
+        dict_res_MSD['label'].append(long_label)
+        dict_res_MSD['Tc'].append(Tc)
+        dict_res_MSD['D_linear'].append(D_linear)
+        dict_res_MSD['D_full'].append(D_full)
+        dict_res_MSD['k_full'].append(k_full)
+        dict_res_MSD['D_lowDt'].append(D_lowDt)
+        dict_res_MSD['k_lowDt'].append(k_lowDt)
+        dict_res_MSD['D_highDt'].append(D_highDt)
+        dict_res_MSD['k_highDt'].append(k_highDt)
+        
+        # Pair-MSD
+        res_pair_emsd = pd.read_csv(os.path.join(dstDir, pairMsdName), sep='\t')
+        pT, pMSD = res_pair_emsd['lagt'], res_pair_emsd['msd_median']
+        dict_pairMSDfits = ufun.json2dict(dstDir, pairMsdFitsName)
+        long_label = '_'.join(fN.split('_')[:6])
+        short_label = '_'.join(fN.split('_')[2:4])
+        
+        ax = axes[1]
+        ax.plot(pT, pMSD, label=short_label, color=ColorList[i], 
+                marker='o', markersize=3, alpha=0.85)
+        
+        D_linear = dict_pairMSDfits['D_linear']
+        k_full = dict_pairMSDfits['k_full']
+        D_full = dict_pairMSDfits['D_full']
+        k_lowDt = dict_pairMSDfits['k_lowDt']
+        D_lowDt = dict_pairMSDfits['D_lowDt']
+        k_highDt = dict_pairMSDfits['k_highDt']
+        D_highDt = dict_pairMSDfits['D_highDt']
+        
+        Tc = (D_lowDt/D_highDt)**(1/(k_highDt-k_lowDt))
+
+        dict_res_pMSD['label'].append(long_label)
+        dict_res_pMSD['Tc'].append(Tc)
+        dict_res_pMSD['D_linear'].append(D_linear)
+        dict_res_pMSD['D_full'].append(D_full)
+        dict_res_pMSD['k_full'].append(k_full)
+        dict_res_pMSD['D_lowDt'].append(D_lowDt)
+        dict_res_pMSD['k_lowDt'].append(k_lowDt)
+        dict_res_pMSD['D_highDt'].append(D_highDt)
+        dict_res_pMSD['k_highDt'].append(k_highDt)
+        
+    for ax in axes:
+        Xp1 = np.array([1e-1, 5e-1])
+        Xp2 = np.array([1, 2])
+        ax.plot(Xp1, 12e-3*Xp1**0.5, color = 'gray', ls=':', label=r'$y \propto x^{1/2}$')
+        ax.plot(Xp2, 0.15e-1*Xp2**1, color = 'gray', ls='--', label=r'$y \propto x^{1}$')
+        ax.grid()
+        # ax.set_xlim([0.4e-1, 0.6e1])
+        # ax.set_ylim([2e-3, 0.5e0])
+        ax.set_ylabel('MSD (µm²)')
+        ax.set_xlabel(r'$\Delta t$ (s)')
+    
+    ax = axes[0]
+    ax.set_ylabel('MSD (µm²)')
+    
+    ax = axes[1]
+    ax.set_ylabel('pair-MSD (µm²)')
+    ncols = 1 + (len(fileNames)//18)
+    ax.legend(loc='center left', bbox_to_anchor=(1, 0.5), 
+              fontsize=8, ncols = ncols)
+    if len(fig_title)>0:
+        fig.suptitle(fig_title)
+    
+    
+    # Time - D - alpha
+    df_Diffusion = pd.DataFrame(dict_res_MSD)
+    df_Diffusion['Tpf_s'] = df_Diffusion['label'].apply(lambda x : Tpf_label2num(x))
+    df_Diffusion['Tpf_min'] = df_Diffusion['Tpf_s']/60
+    
+    df_pairDiffusion = pd.DataFrame(dict_res_pMSD)
+    df_pairDiffusion['Tpf_s'] = df_Diffusion['label'].apply(lambda x : Tpf_label2num(x))
+    df_pairDiffusion['Tpf_min'] = df_Diffusion['Tpf_s']/60
+    
+    fig, axes = plt.subplots(2, 2, figsize=(12, 7), 
+                             sharey='row', sharex = True, layout='compressed')
+    
+    # "Normal" MSD
+    df = df_Diffusion
+    ax = axes[0, 0]
+    ax.set_title('Individual MSD')
+    ax.plot(df.Tpf_min, df.D_full, ls='-', marker='o', label=r'All $\Delta t$')
+    ax.plot(df.Tpf_min, df.D_lowDt, ls='-', marker='o', label=r'$\Delta t \leq 0.5s$')
+    ax.plot(df.Tpf_min, df.D_highDt, ls='-', marker='o', label=r'$\Delta t \geq 1s$')
+    ax.plot(df.Tpf_min, df.D_linear, ls='-', marker='o', label=r'Linear fit')
+    ax.set_ylabel(r'$D_{eff}\ (\mu m^2/s^\alpha)$')
+    # ax.legend(loc='center left', bbox_to_anchor=(1, 0.5))
+    ax.grid()
+    
+    ax = axes[1, 0]
+    ax.plot(df.Tpf_min, df.k_full, ls='-', marker='o', label=r'All $\Delta t$')
+    ax.plot(df.Tpf_min, df.k_lowDt, ls='-', marker='o', label=r'$\Delta t \leq 0.5s$')
+    ax.plot(df.Tpf_min, df.k_highDt, ls='-', marker='o', label=r'$\Delta t \geq 1s$')
+    ax.set_ylabel(r'$\alpha$')
+    ax.set_xticks(df_Diffusion['Tpf_min'].values)
+    ax.set_xticklabels(df_Diffusion['Tpf_min'].values.astype(int), rotation = 30)
+    ax.set_xlabel('Tpf (min)')
+    # ax.legend(loc='center left', bbox_to_anchor=(1, 0.5))
+    ax.grid()
+    
+    # Pair MSD
+    df = df_pairDiffusion
+    ax = axes[0, 1]
+    ax.set_title('Pair-MSD')
+    ax.plot(df.Tpf_min, df.D_full, ls='-', marker='o', label=r'All $\Delta t$')
+    ax.plot(df.Tpf_min, df.D_lowDt, ls='-', marker='o', label=r'$\Delta t \leq 0.5s$')
+    ax.plot(df.Tpf_min, df.D_highDt, ls='-', marker='o', label=r'$\Delta t \geq 1s$')
+    ax.plot(df.Tpf_min, df.D_linear, ls='-', marker='o', label=r'Linear fit')
+    ax.set_ylabel(r'$D_{eff}\ (\mu m^2/s^\alpha)$')
+    ym, yM = ax.get_ylim()
+    ax.set_ylim([0, yM])
+    ax.legend(loc='center left', bbox_to_anchor=(1, 0.5))
+    ax.grid()
+    
+    ax = axes[1, 1]
+    ax.plot(df.Tpf_min, df.k_full, ls='-', marker='o', label=r'All $\Delta t$')
+    ax.plot(df.Tpf_min, df.k_lowDt, ls='-', marker='o', label=r'$\Delta t \leq 0.5s$')
+    ax.plot(df.Tpf_min, df.k_highDt, ls='-', marker='o', label=r'$\Delta t \geq 1s$')
+    ax.set_ylabel(r'$\alpha$')
+    ax.set_xticks(df_Diffusion['Tpf_min'].values)
+    ax.set_xticklabels(df_Diffusion['Tpf_min'].values.astype(int), rotation = 30)
+    ax.set_xlabel('Tpf (min)')
+    ym, yM = ax.get_ylim()
+    ax.set_ylim([0, yM])
+    ax.legend(loc='center left', bbox_to_anchor=(1, 0.5))
+    ax.grid()
+    if len(fig_title)>0:
+        fig.suptitle(fig_title)
+    
+    plt.show()
+
+    return(df_Diffusion, df_pairDiffusion)
+
+
+
+
+
+# %%% Plot in space
+
+#### Coarsed-grain 2D grids
+
+def df_grid_2_matrix(df_grid, Nx, Ny, xy_col = 'Bxy', parm_col = 'k_full'):
+    V = df_grid[xy_col].values
+    L = [[*tup] for tup in V]
+    XY_g = np.array(L)
+    df_grid['X_g'] = XY_g[:, 0]
+    df_grid['Y_g'] = XY_g[:, 1]
+    if max(XY_g[:, 0]) > (Nx-1):
+        Nx = max(XY_g[:, 0])+1
+    if max(XY_g[:, 1]) > (Ny-1):
+        Ny = max(XY_g[:, 1])+1
+        
+    Hm = np.zeros((Nx, Ny))
+    Hm.fill(np.nan)
+    for xy in XY_g:
+        [x, y] = xy
+        Hm[y, x] = df_grid.loc[(df_grid['X_g'] == x) & (df_grid['Y_g'] == y), parm_col].values[0]
+        
+    return(Hm)
+
+
+def plot_MSD_HeatMap(df_grid, M_boxes, xy_col, parm_col,
+                axtitle = '', cbarlabel = '',
+                cmap='viridis', norm_type = 'lin',
+                c_vmin=None, c_vmax=None,
+                fig=None, ax=None):
+    
+    if ax is None:
+        fig, ax = plt.subplots(1, 1)
+        
+    parm = parm_col
+    if axtitle=='':
+        axtitle=parm
+    ax.set_title(axtitle)
+    
+    HeatMap = df_grid_2_matrix(df_grid_MSD, M_boxes, M_boxes, 
+                               xy_col = xy_col, 
+                               parm_col = parm_col)
+
+    # mpl.colors.Normalize() # mpl.colors.LogNorm()
+    # norm = mpl.colors.Normalize()
+    if norm_type == 'lin':
+        norm = mpl.colors.Normalize(vmin=c_vmin, vmax=c_vmax)
+    elif norm_type == 'log':
+        norm = mpl.colors.LogNorm(vmin=c_vmin, vmax=c_vmax)
+    else:
+        norm = None
+        
+    axim = ax.imshow(HeatMap, aspect='equal',
+                     cmap=cmap, norm=norm, )
+    ax.invert_yaxis()
+
+    # Create colorbar
+    cbar = fig.colorbar(axim, ax=ax, label=cbarlabel)
+    cbar.ax.set_ylabel(cbarlabel, rotation=-90, va="bottom")#, va="bottom")
+
+    xt = np.linspace(0, M_boxes, 3, endpoint=True)
+    yt = np.linspace(0, M_boxes, 3, endpoint=True)
+    xticks = xt - 0.5
+    yticks = yt - 0.5
+    #### HAVE TO BE REDONE FOR NON SQUARE ROIs !!
+    # xlabels = [f'{x*(N_pix)/M_boxes:.0f}' for x in xt]
+    # ylabels = [f'{y*(N_pix)/M_boxes:.0f}' for y in yt]
+    # xlabels = ['' for x in xt]
+    # ylabels = ['' for y in yt]
+    # ax.tick_params(axis='both', length=0,)
+
+    # ax.set_xticks(xticks, labels=xlabels,) # rotation=-30, rotation_mode="xtick")
+    # ax.set_yticks(yticks, labels=ylabels)
+    # ax.spines[:].set_visible(False)
+    ax.grid(which="minor", color="w", linestyle='-', linewidth=0.5)
+    ax.tick_params(which="minor", bottom=False, left=False)
+    return(fig, ax)
+
+
+#### Gaussian-weighted spatial smoothing map.
+
+# For every point on a regular grid, computes the Gaussian-weighted average
+# of the k nearest input points (by Euclidean distance).
+
+# Inputs
+# ------
+# data    : (N, 3) array  [[x, y, v], ...]
+# sigma   : float  Gaussian kernel std (same units as x/y)
+# k       : int    number of nearest neighbours to consider
+
+# Region selection (pick one — both encode the same region):
+#   mask    : (Ny, Nx) bool array in pixel/image coordinates, assumed to span
+#             x_range × y_range.  Mapped to the smoothing grid via
+#             nearest-neighbour lookup.
+#   contour : (M, 2) float array of (x, y) polygon vertices.  Tested with
+#             matplotlib.path.Path.contains_points — works at any resolution
+#             with no resampling.  Prefer this when you have it; it is cheaper.
+
+# Usage
+# -----
+# Run directly for a built-in demo, or import smooth_map / plot_smooth_map.
+
+
+# ---------------------------------------------------------------------------
+# Helper: resolve mask OR contour → boolean grid
+# ---------------------------------------------------------------------------
+
+def _active_from_region(
+    gx: np.ndarray,
+    gy: np.ndarray,
+    mask: np.ndarray | None,
+    contour: np.ndarray | None,
+    x_range: tuple,
+    y_range: tuple,
+) -> np.ndarray:
+    """
+    Return a bool array (shape = gx.shape) that is True inside the region.
+
+    Priority: contour > mask > None (all True).
+    """
+    if contour is not None:
+        contour = np.asarray(contour, dtype=float)
+        if contour.ndim != 2 or contour.shape[1] != 2:
+            raise ValueError("contour must be an (M, 2) array of (x, y) points.")
+        grid_pts = np.column_stack([gx.ravel(), gy.ravel()])
+        return Path(contour).contains_points(grid_pts).reshape(gx.shape)
+
+    if mask is not None:
+        mask = np.asarray(mask, dtype=bool)
+        Ny_px, Nx_px = mask.shape
+        x_min, x_max = x_range
+        y_min, y_max = y_range
+        col_i = np.clip(
+            np.round((gx - x_min) / (x_max - x_min) * (Nx_px - 1)).astype(int),
+            0, Nx_px - 1,
+        )
+        row_i = np.clip(
+            np.round((gy - y_min) / (y_max - y_min) * (Ny_px - 1)).astype(int),
+            0, Ny_px - 1,
+        )
+        return mask[row_i, col_i]
+
+    return np.ones(gx.shape, dtype=bool)
+
+
+# ---------------------------------------------------------------------------
+# Core function
+# ---------------------------------------------------------------------------
+
+def smooth_map(
+    data: np.ndarray,
+    sigma: float,
+    k: int,
+    grid_resolution: int = 300,
+    x_range: tuple | None = None,
+    y_range: tuple | None = None,
+    mask: np.ndarray | None = None,
+    contour: np.ndarray | None = None,
+    weight_threshold: float = 0.0,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """
+    Gaussian-weighted spatial smoothing on a regular grid.
+
+    Parameters
+    ----------
+    data             : (N, 3) array — columns x, y, v.
+    sigma            : Gaussian kernel standard deviation.
+    k                : Number of nearest neighbours per grid point.
+    grid_resolution  : Grid cells along each axis.
+    x_range          : (x_min, x_max) — defaults to data extent + 5 % padding.
+    y_range          : (y_min, y_max) — defaults to data extent + 5 % padding.
+    mask             : (Ny, Nx) bool pixel array spanning x_range × y_range.
+    contour          : (M, 2) polygon vertices in data coordinates.
+                       Preferred over mask when both are supplied.
+    weight_threshold : Fraction of the maximum weight sum in [0, 1).
+                       Grid cells whose Gaussian weight sum falls below
+                       weight_threshold * max(w_sum) are set to NaN.
+                       0.0 (default) disables the threshold.
+                       A value around 0.05–0.2 is a good starting point.
+
+    Returns
+    -------
+    gx, gy : 2-D grid coordinate arrays.
+    gz     : 2-D smoothed-value array (NaN outside the region or below the
+             density threshold).
+    """
+    data = np.asarray(data, dtype=float)
+    if data.ndim != 2 or data.shape[1] != 3:
+        raise ValueError("data must be an (N, 3) array.")
+
+    xy = data[:, :2]
+    v  = data[:, 2]
+    k  = min(k, len(data))
+
+    # --- grid ---
+    def _padded(arr, pad=0.05):
+        lo, hi = arr.min(), arr.max()
+        return lo - (hi - lo) * pad or 1.0, hi + (hi - lo) * pad or 1.0
+
+    x_min, x_max = x_range or _padded(xy[:, 0])
+    y_min, y_max = y_range or _padded(xy[:, 1])
+
+    xs = np.linspace(x_min, x_max, grid_resolution)
+    ys = np.linspace(y_min, y_max, grid_resolution)
+    gx, gy = np.meshgrid(xs, ys)
+
+    # --- active region ---
+    active      = _active_from_region(gx, gy, mask, contour,
+                                      (x_min, x_max), (y_min, y_max))
+    active_flat = active.ravel()
+    active_pts  = np.column_stack([gx.ravel(), gy.ravel()])[active_flat]
+
+    # --- Gaussian-weighted average ---
+    tree = cKDTree(xy)
+    dists, idxs = tree.query(active_pts, k=k)
+
+    if k == 1:
+        dists = dists[:, np.newaxis]
+        idxs  = idxs[:, np.newaxis]
+
+    weights   = np.exp(-0.5 * (dists / sigma) ** 2)
+    w_sum_col = weights.sum(axis=1)                      # shape (M_active,)
+    # abs_weight_threshold = weight_threshold * w_sum_col.max()
+    abs_weight_threshold = weight_threshold * np.percentile(w_sum_col, 90)
+
+    # --- density threshold ---
+    if weight_threshold > 0.0:
+        dense_enough = w_sum_col >= abs_weight_threshold
+    else:
+        dense_enough = np.ones(len(w_sum_col), dtype=bool)
+
+    w_sum_col = np.where(w_sum_col == 0, 1.0, w_sum_col)  # avoid division by zero
+    gz_active = np.where(
+        dense_enough,
+        (weights * v[idxs]).sum(axis=1) / w_sum_col,
+        np.nan,
+    )
+
+    gz_flat              = np.full(gx.size, np.nan)
+    gz_flat[active_flat] = gz_active
+    gz                   = gz_flat.reshape(gx.shape)
+
+    return gx, gy, gz
+
+
+# ---------------------------------------------------------------------------
+# Plotting helper
+# ---------------------------------------------------------------------------
+
+def plot_smooth_map(
+    data: np.ndarray,
+    gx: np.ndarray,
+    gy: np.ndarray,
+    gz: np.ndarray,
+    sigma: float,
+    k: int,
+    contour: np.ndarray | None = None,
+    cmap: str = "viridis",
+    show_points: bool = True,
+) -> plt.Figure:
+    """Render the smoothed map; NaN cells are transparent."""
+    fig, ax = plt.subplots(figsize=(8, 8))
+    ax.set_aspect('equal', adjustable='box')
+
+    valid = gz[np.isfinite(gz)]
+    vmin, vmax = (valid.min(), valid.max()) if valid.size else (0, 1)
+
+    ax.pcolormesh(gx, gy, gz, cmap=cmap, shading="auto", vmin=vmin, vmax=vmax)
+    fig.colorbar(
+        plt.cm.ScalarMappable(
+            norm=plt.Normalize(vmin, vmax), cmap=cmap
+        ), ax=ax
+    ).set_label("Smoothed value", fontsize=11)
+
+    if contour is not None:
+        c = np.asarray(contour)
+        ax.plot(np.append(c[:, 0], c[0, 0]),
+                np.append(c[:, 1], c[0, 1]),
+                color="k", lw=2, ls="-", zorder=4)
+
+    if show_points:
+        ax.scatter(data[:, 0], data[:, 1], c=data[:, 2], cmap=cmap,
+                   s=10, edgecolors="white", linewidths=0.2,
+                   vmin=vmin, vmax=vmax, zorder=3)
+
+    ax.set_xlabel("x", fontsize=11)
+    ax.set_ylabel("y", fontsize=11)
+    ax.set_title(f"Gaussian-weighted smooth map  (σ={sigma}, k={k})", fontsize=12)
+    fig.tight_layout()
+    return fig
+
+
+# ---------------------------------------------------------------------------
+# Demo
+# ---------------------------------------------------------------------------
+
+if __name__ == "__main__":
+    rng    = np.random.default_rng(42)
+    Nx, Ny = 200, 160
+    sigma, k = 15.0, 15
+
+    # Three dense clusters — deliberately leaving large empty areas inside the
+    # contour so the threshold effect is clearly visible.
+    parts = []
+    for cx, cy, cv in [(40, 30, 10), (140, 80, 50), (100, 130, 90)]:
+        xy_p = rng.normal(loc=[cx, cy], scale=12, size=(50, 2))
+        v_p  = rng.normal(loc=cv, scale=5,  size=(50, 1))
+        parts.append(np.hstack([xy_p, v_p]))
+    data = np.vstack(parts)
+
+    # Irregular hexagon contour that encloses all three clusters plus empty space
+    angles  = np.linspace(0, 2 * np.pi, 7)[:-1]
+    radii   = np.array([80, 60, 75, 65, 70, 55])
+    contour = np.column_stack([
+        Nx / 2 + radii * np.cos(angles),
+        Ny / 2 + radii * np.sin(angles),
+    ])
+
+    thresholds = [0.0, 0.05, 0.15]
+    titles     = [f"weight_threshold={t}" for t in thresholds]
+
+    fig, axes = plt.subplots(1, 3, figsize=(18, 6))
+    for ax, t, title in zip(axes, thresholds, titles):
+        gx, gy, gz = smooth_map(
+            data, sigma=sigma, k=k,
+            grid_resolution=300,
+            x_range=(0, Nx), y_range=(0, Ny),
+            contour=contour,
+            weight_threshold=t,
+        )
+        valid = gz[np.isfinite(gz)]
+        vmin, vmax = valid.min(), valid.max()
+        ax.pcolormesh(gx, gy, gz, cmap="plasma", shading="auto",
+                      vmin=vmin, vmax=vmax)
+        c = contour
+        ax.plot(np.append(c[:, 0], c[0, 0]), np.append(c[:, 1], c[0, 1]),
+                color="white", lw=1.2, ls="--", zorder=4)
+        ax.scatter(data[:, 0], data[:, 1], c=data[:, 2], cmap="plasma",
+                   s=30, edgecolors="white", lw=0.4, vmin=vmin, vmax=vmax, zorder=3)
+        ax.set_title(title, fontsize=11)
+        ax.set_xlabel("x"); ax.set_ylabel("y")
+
+    fig.suptitle(f"Effect of weight_threshold  (σ={sigma}, k={k})", fontsize=13)
+    fig.tight_layout()
+    plt.show()
+
+
+
+
 # %% 1. Tracking and MSD
 
 # %%% 26-10-28_D2-s - Ctrl ?
@@ -1571,11 +1764,6 @@ NByolk_msd_compute(tifNames, df_films_PATH, df_res_name,
 df_res_name = 'SPT_Results_01'
 NByolk_ro_msd_compute(tifNames, df_films_PATH, df_res_name,
                           Dict_fSuf, Dict_rP, Dict_pP)
-
-# %%%% Complete pos in iMSD
-
-NByolk_imsd_complete_pos(tifNames, df_films_PATH, 
-                             Dict_fSuf, Dict_rP, Dict_pP)
 
 # %%%% Import MSD & plot / Import pairMSD & plot
 
@@ -2143,10 +2331,6 @@ df_res_name = 'SPT_Results_01'
 NByolk_ro_msd_compute(tifNames, df_films_PATH, df_res_name,
                           Dict_fSuf, Dict_rP, Dict_pP)
 
-# %%%% Complete pos in iMSD
-
-NByolk_imsd_complete_pos(tifNames, df_films_PATH, 
-                             Dict_fSuf, Dict_rP, Dict_pP)
 
 # %%%% Import MSD & plot / Import pairMSD & plot
 
@@ -2558,11 +2742,6 @@ df_res_name = 'SPT_Results_01'
 NByolk_ro_msd_compute(tifNames, df_films_PATH, df_res_name,
                           Dict_fSuf, Dict_rP, Dict_pP)
 
-# %%%% Complete pos in iMSD
-
-NByolk_imsd_complete_pos(tifNames, df_films_PATH, 
-                             Dict_fSuf, Dict_rP, Dict_pP)
-
 # %%%% Import MSD & plot / Import pairMSD & plot
 
 title = '26-09-30_D2'
@@ -2949,6 +3128,7 @@ fig, ax = plt.subplots(1, 1)
 
 metric_T = 'tpf_norm'
 metric_D = 'pmsd_D_highDt'
+metric_D = 'contrast_D_highDt'
 normalize = False
 
 Mid_groups = df_f.groupby('Mid')
@@ -2997,705 +3177,6 @@ plt.show()
 # %% -----
 # %% Tests
 
-# %%%% Claude written 2D smoother
-
-"""
-Gaussian-weighted spatial smoothing map.
-
-For every point on a regular grid, computes the Gaussian-weighted average
-of the k nearest input points (by Euclidean distance).
-
-Inputs
-------
-data  : Nx3 array  [[x, y, v], ...]
-sigma : float      standard deviation of the Gaussian kernel (same units as x/y)
-k     : int        number of nearest neighbours to consider
-
-Usage
------
-Run the script directly for a built-in demo, or import `smooth_map` and call
-it with your own data.
-"""
-
-import numpy as np
-import matplotlib.pyplot as plt
-from scipy.spatial import cKDTree
-
-
-# ---------------------------------------------------------------------------
-# Core function
-# ---------------------------------------------------------------------------
-
-def smooth_map(
-    data: np.ndarray,
-    sigma: float,
-    k: int,
-    grid_resolution: int = 300,
-    x_range: tuple | None = None,
-    y_range: tuple | None = None,
-) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-    """
-    Compute a Gaussian-weighted average of the k nearest values on a 2-D grid.
-
-    Parameters
-    ----------
-    data            : (N, 3) array — columns are x, y, v.
-    sigma           : Gaussian kernel standard deviation.
-    k               : Number of nearest neighbours to use per grid point.
-    grid_resolution : Number of grid cells along each axis.
-    x_range         : (x_min, x_max) — defaults to data extent + 5 % padding.
-    y_range         : (y_min, y_max) — defaults to data extent + 5 % padding.
-
-    Returns
-    -------
-    gx, gy : 2-D arrays of grid coordinates (output of np.meshgrid).
-    gz     : 2-D array of smoothed values.
-    """
-    data = np.asarray(data, dtype=float)
-    if data.ndim != 2 or data.shape[1] != 3:
-        raise ValueError("data must be an (N, 3) array.")
-
-    xy = data[:, :2]
-    v  = data[:, 2]
-    k  = min(k, len(data))          # can't ask for more neighbours than points
-
-    # --- build grid ---
-    def _padded(arr, pad=0.05):
-        lo, hi = arr.min(), arr.max()
-        margin = (hi - lo) * pad or 1.0   # handle degenerate case
-        return lo - margin, hi + margin
-
-    x_min, x_max = x_range or _padded(xy[:, 0])
-    y_min, y_max = y_range or _padded(xy[:, 1])
-
-    xs = np.linspace(x_min, x_max, grid_resolution)
-    ys = np.linspace(y_min, y_max, grid_resolution)
-    gx, gy = np.meshgrid(xs, ys)
-    grid_pts = np.column_stack([gx.ravel(), gy.ravel()])
-
-    # --- k-nearest-neighbour lookup ---
-    tree = cKDTree(xy)
-    dists, idxs = tree.query(grid_pts, k=k)   # shape (M, k)
-
-    # --- Gaussian weights ---
-    if k == 1:                                 # query returns 1-D arrays
-        dists = dists[:, np.newaxis]
-        idxs  = idxs[:, np.newaxis]
-
-    weights = np.exp(-0.5 * (dists / sigma) ** 2)   # shape (M, k)
-    w_sum   = weights.sum(axis=1, keepdims=True)
-    w_sum   = np.where(w_sum == 0, 1.0, w_sum)       # avoid division by zero
-
-    values  = v[idxs]                                # shape (M, k)
-    gz_flat = (weights * values).sum(axis=1) / w_sum.squeeze()
-    gz      = gz_flat.reshape(gx.shape)
-
-    return gx, gy, gz
-
-
-# ---------------------------------------------------------------------------
-# Plotting helper
-# ---------------------------------------------------------------------------
-
-def plot_smooth_map(
-    data: np.ndarray,
-    gx: np.ndarray,
-    gy: np.ndarray,
-    gz: np.ndarray,
-    sigma: float,
-    k: int,
-    cmap: str = "viridis",
-    show_points: bool = True,
-) -> plt.Figure:
-    """Render the smoothed map with the scatter overlay."""
-    fig, ax = plt.subplots(figsize=(8, 6))
-
-    im = ax.pcolormesh(gx, gy, gz, cmap=cmap, shading="auto")
-    cbar = fig.colorbar(im, ax=ax)
-    cbar.set_label("Smoothed value", fontsize=11)
-
-    if show_points:
-        sc = ax.scatter(
-            data[:, 0], data[:, 1],
-            c=data[:, 2], cmap=cmap,
-            s=40, edgecolors="white", linewidths=0.5,
-            vmin=gz.min(), vmax=gz.max(),
-            zorder=3,
-        )
-
-    ax.set_xlabel("x", fontsize=11)
-    ax.set_ylabel("y", fontsize=11)
-    ax.set_title(f"Gaussian-weighted smooth map  (σ={sigma}, k={k})", fontsize=12)
-    fig.tight_layout()
-    return fig
-
-
-# ---------------------------------------------------------------------------
-# Demo
-# ---------------------------------------------------------------------------
-
-# if __name__ == "__main__":
-#     rng = np.random.default_rng(40)
-
-#     # Three clusters with different mean values
-#     n = 60
-#     centers = [(1, 1, 10), (3, 4, 50), (1, 5, 90)]
-#     parts = []
-#     for cx, cy, cv in centers:
-#         xy_part = rng.normal(loc=[cx, cy], scale=1.0, size=(n, 2))
-#         v_part  = rng.normal(loc=cv, scale=20, size=(n, 1))
-#         parts.append(np.hstack([xy_part, v_part]))
-
-#     data = np.vstack(parts)
-
-#     # Parameters
-#     sigma = 1
-#     k     = 50
-
-#     gx, gy, gz = smooth_map(data, sigma=sigma, k=k, grid_resolution=400)
-#     fig = plot_smooth_map(data, gx, gy, gz, sigma=sigma, k=k, cmap="plasma")
-#     plt.show()
-
-# %%%% Another one
-
-"""
-Gaussian-weighted spatial smoothing map.
-
-For every point on a regular grid, computes the Gaussian-weighted average
-of the k nearest input points (by Euclidean distance).
-
-Inputs
-------
-data    : (N, 3) array  [[x, y, v], ...]
-sigma   : float  Gaussian kernel std (same units as x/y)
-k       : int    number of nearest neighbours to consider
-
-Region selection (pick one — both encode the same region):
-  mask    : (Ny, Nx) bool array in pixel/image coordinates, assumed to span
-            x_range × y_range.  Mapped to the smoothing grid via
-            nearest-neighbour lookup.
-  contour : (M, 2) float array of (x, y) polygon vertices.  Tested with
-            matplotlib.path.Path.contains_points — works at any resolution
-            with no resampling.  Prefer this when you have it; it is cheaper.
-
-Usage
------
-Run directly for a built-in demo, or import smooth_map / plot_smooth_map.
-"""
-
-import numpy as np
-import matplotlib.pyplot as plt
-from matplotlib.path import Path
-from scipy.spatial import cKDTree
-
-
-# ---------------------------------------------------------------------------
-# Helper: resolve mask OR contour → boolean grid
-# ---------------------------------------------------------------------------
-
-def _active_from_region(
-    gx: np.ndarray,
-    gy: np.ndarray,
-    mask: np.ndarray | None,
-    contour: np.ndarray | None,
-    x_range: tuple,
-    y_range: tuple,
-) -> np.ndarray:
-    """
-    Return a bool array (shape = gx.shape) that is True inside the region.
-
-    Priority: contour > mask > None (all True).
-    """
-    if contour is not None:
-        contour = np.asarray(contour, dtype=float)
-        if contour.ndim != 2 or contour.shape[1] != 2:
-            raise ValueError("contour must be an (M, 2) array of (x, y) points.")
-        grid_pts = np.column_stack([gx.ravel(), gy.ravel()])
-        return Path(contour).contains_points(grid_pts).reshape(gx.shape)
-
-    if mask is not None:
-        mask = np.asarray(mask, dtype=bool)
-        Ny_px, Nx_px = mask.shape
-        x_min, x_max = x_range
-        y_min, y_max = y_range
-        col_i = np.clip(
-            np.round((gx - x_min) / (x_max - x_min) * (Nx_px - 1)).astype(int),
-            0, Nx_px - 1,
-        )
-        row_i = np.clip(
-            np.round((gy - y_min) / (y_max - y_min) * (Ny_px - 1)).astype(int),
-            0, Ny_px - 1,
-        )
-        return mask[row_i, col_i]
-
-    return np.ones(gx.shape, dtype=bool)
-
-
-# ---------------------------------------------------------------------------
-# Core function
-# ---------------------------------------------------------------------------
-
-def smooth_map(
-    data: np.ndarray,
-    sigma: float,
-    k: int,
-    grid_resolution: int = 300,
-    x_range: tuple | None = None,
-    y_range: tuple | None = None,
-    mask: np.ndarray | None = None,
-    contour: np.ndarray | None = None,
-) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-    """
-    Gaussian-weighted spatial smoothing on a regular grid.
-
-    Parameters
-    ----------
-    data            : (N, 3) array — columns x, y, v.
-    sigma           : Gaussian kernel standard deviation.
-    k               : Number of nearest neighbours per grid point.
-    grid_resolution : Grid cells along each axis.
-    x_range         : (x_min, x_max) — defaults to data extent + 5 % padding.
-    y_range         : (y_min, y_max) — defaults to data extent + 5 % padding.
-    mask            : (Ny, Nx) bool pixel array spanning x_range × y_range.
-    contour         : (M, 2) polygon vertices in data coordinates.
-                      Preferred over mask when both are supplied.
-
-    Returns
-    -------
-    gx, gy : 2-D grid coordinate arrays.
-    gz     : 2-D smoothed-value array (NaN outside the region).
-    """
-    data = np.asarray(data, dtype=float)
-    if data.ndim != 2 or data.shape[1] != 3:
-        raise ValueError("data must be an (N, 3) array.")
-
-    xy = data[:, :2]
-    v  = data[:, 2]
-    k  = min(k, len(data))
-
-    # --- grid ---
-    def _padded(arr, pad=0.05):
-        lo, hi = arr.min(), arr.max()
-        return lo - (hi - lo) * pad or 1.0, hi + (hi - lo) * pad or 1.0
-
-    x_min, x_max = x_range or _padded(xy[:, 0])
-    y_min, y_max = y_range or _padded(xy[:, 1])
-
-    xs = np.linspace(x_min, x_max, grid_resolution)
-    ys = np.linspace(y_min, y_max, grid_resolution)
-    gx, gy = np.meshgrid(xs, ys)
-
-    # --- active region ---
-    active      = _active_from_region(gx, gy, mask, contour,
-                                      (x_min, x_max), (y_min, y_max))
-    active_flat = active.ravel()
-    active_pts  = np.column_stack([gx.ravel(), gy.ravel()])[active_flat]
-
-    # --- Gaussian-weighted average ---
-    tree = cKDTree(xy)
-    dists, idxs = tree.query(active_pts, k=k)
-
-    if k == 1:
-        dists = dists[:, np.newaxis]
-        idxs  = idxs[:, np.newaxis]
-
-    weights = np.exp(-0.5 * (dists / sigma) ** 2)
-    w_sum   = weights.sum(axis=1, keepdims=True)
-    w_sum   = np.where(w_sum == 0, 1.0, w_sum)
-
-    gz_active = (weights * v[idxs]).sum(axis=1) / w_sum.squeeze()
-
-    gz_flat              = np.full(gx.size, np.nan)
-    gz_flat[active_flat] = gz_active
-    gz                   = gz_flat.reshape(gx.shape)
-
-    return gx, gy, gz
-
-
-# ---------------------------------------------------------------------------
-# Plotting helper
-# ---------------------------------------------------------------------------
-
-def plot_smooth_map(
-    data: np.ndarray,
-    gx: np.ndarray,
-    gy: np.ndarray,
-    gz: np.ndarray,
-    sigma: float,
-    k: int,
-    contour: np.ndarray | None = None,
-    cmap: str = "viridis",
-    show_points: bool = True,
-) -> plt.Figure:
-    """Render the smoothed map; NaN cells are transparent."""
-    
-    fig, ax = plt.subplots(figsize=(8, 8))
-    ax.set_aspect('equal', adjustable='box')
-
-    valid = gz[np.isfinite(gz)]
-    vmin, vmax = (valid.min(), valid.max()) if valid.size else (0, 1)
-
-    ax.pcolormesh(gx, gy, gz, cmap=cmap, shading="auto", vmin=vmin, vmax=vmax)
-    fig.colorbar(
-        plt.cm.ScalarMappable(
-            norm=plt.Normalize(vmin, vmax), cmap=cmap
-        ), ax=ax
-    ).set_label("Smoothed value", fontsize=11)
-
-    if contour is not None:
-        c = np.asarray(contour)
-        ax.plot(np.append(c[:, 0], c[0, 0]),
-                np.append(c[:, 1], c[0, 1]),
-                color="k", lw=2, ls="-", zorder=4)
-
-    if show_points:
-        ax.scatter(data[:, 0], data[:, 1], c=data[:, 2], cmap=cmap,
-                   s=40, edgecolors="white", linewidths=0.5,
-                   vmin=vmin, vmax=vmax, zorder=3)
-
-    ax.set_xlabel("x", fontsize=11)
-    ax.set_ylabel("y", fontsize=11)
-    ax.set_title(f"Gaussian-weighted smooth map  (σ={sigma}, k={k})", fontsize=12)
-    fig.tight_layout()
-    return fig
-
-
-# ---------------------------------------------------------------------------
-# Demo
-# ---------------------------------------------------------------------------
-
-# if __name__ == "__main__":
-#     rng  = np.random.default_rng(42)
-#     Nx, Ny = 200, 160
-
-#     n = 60
-#     parts = []
-#     for cx, cy, cv in [(40, 30, 10), (140, 80, 50), (100, 130, 90)]:
-#         xy_p = rng.normal(loc=[cx, cy], scale=15, size=(n, 2))
-#         v_p  = rng.normal(loc=cv, scale=5, size=(n, 1))
-#         parts.append(np.hstack([xy_p, v_p]))
-#     data  = np.vstack(parts)
-#     sigma, k = 15.0, 15
-
-#     # Irregular hexagon contour
-#     angles  = np.linspace(0, 2 * np.pi, 7)[:-1]
-#     radii   = np.array([80, 60, 75, 65, 70, 55])
-#     contour = np.column_stack([
-#         Nx / 2 + radii * np.cos(angles),
-#         Ny / 2 + radii * np.sin(angles),
-#     ])
-
-#     # Equivalent pixel mask (rasterise the contour)
-#     from matplotlib.path import Path as MplPath
-#     xs_px = np.arange(Nx)
-#     ys_px = np.arange(Ny)
-#     gx_px, gy_px = np.meshgrid(xs_px, ys_px)
-#     pixel_pts    = np.column_stack([gx_px.ravel(), gy_px.ravel()])
-#     pixel_mask   = MplPath(contour).contains_points(pixel_pts).reshape(Ny, Nx)
-
-#     fig, axes = plt.subplots(1, 2, figsize=(14, 6))
-#     for ax, kwargs, title in [
-#         (axes[0], dict(contour=contour), "contour"),
-#         (axes[1], dict(mask=pixel_mask), "pixel mask"),
-#     ]:
-#         gx, gy, gz = smooth_map(
-#             data, sigma=sigma, k=k,
-#             grid_resolution=300,
-#             x_range=(0, Nx), y_range=(0, Ny),
-#             **kwargs,
-#         )
-#         valid  = gz[np.isfinite(gz)]
-#         vmin, vmax = valid.min(), valid.max()
-#         ax.pcolormesh(gx, gy, gz, cmap="plasma", shading="auto",
-#                       vmin=vmin, vmax=vmax)
-#         ax.scatter(data[:, 0], data[:, 1], c=data[:, 2], cmap="plasma",
-#                    s=30, edgecolors="white", lw=0.4, vmin=vmin, vmax=vmax, zorder=3)
-#         if "contour" in kwargs:
-#             c = contour
-#             ax.plot(np.append(c[:, 0], c[0, 0]), np.append(c[:, 1], c[0, 1]),
-#                     color="white", lw=1.2, ls="--", zorder=4)
-#         ax.set_title(f"Via {title}  (σ={sigma}, k={k})", fontsize=11)
-#         ax.set_xlabel("x"); ax.set_ylabel("y")
-
-#     fig.suptitle("Both inputs encode the same region — results are identical",
-#                  fontsize=12)
-#     fig.tight_layout()
-#     plt.show()
-
-# %%%% A third one
-
-"""
-Gaussian-weighted spatial smoothing map.
-
-For every point on a regular grid, computes the Gaussian-weighted average
-of the k nearest input points (by Euclidean distance).
-
-Inputs
-------
-data    : (N, 3) array  [[x, y, v], ...]
-sigma   : float  Gaussian kernel std (same units as x/y)
-k       : int    number of nearest neighbours to consider
-
-Region selection (pick one — both encode the same region):
-  mask    : (Ny, Nx) bool array in pixel/image coordinates, assumed to span
-            x_range × y_range.  Mapped to the smoothing grid via
-            nearest-neighbour lookup.
-  contour : (M, 2) float array of (x, y) polygon vertices.  Tested with
-            matplotlib.path.Path.contains_points — works at any resolution
-            with no resampling.  Prefer this when you have it; it is cheaper.
-
-Usage
------
-Run directly for a built-in demo, or import smooth_map / plot_smooth_map.
-"""
-
-import numpy as np
-import matplotlib.pyplot as plt
-from matplotlib.path import Path
-from scipy.spatial import cKDTree
-
-
-# ---------------------------------------------------------------------------
-# Helper: resolve mask OR contour → boolean grid
-# ---------------------------------------------------------------------------
-
-def _active_from_region(
-    gx: np.ndarray,
-    gy: np.ndarray,
-    mask: np.ndarray | None,
-    contour: np.ndarray | None,
-    x_range: tuple,
-    y_range: tuple,
-) -> np.ndarray:
-    """
-    Return a bool array (shape = gx.shape) that is True inside the region.
-
-    Priority: contour > mask > None (all True).
-    """
-    if contour is not None:
-        contour = np.asarray(contour, dtype=float)
-        if contour.ndim != 2 or contour.shape[1] != 2:
-            raise ValueError("contour must be an (M, 2) array of (x, y) points.")
-        grid_pts = np.column_stack([gx.ravel(), gy.ravel()])
-        return Path(contour).contains_points(grid_pts).reshape(gx.shape)
-
-    if mask is not None:
-        mask = np.asarray(mask, dtype=bool)
-        Ny_px, Nx_px = mask.shape
-        x_min, x_max = x_range
-        y_min, y_max = y_range
-        col_i = np.clip(
-            np.round((gx - x_min) / (x_max - x_min) * (Nx_px - 1)).astype(int),
-            0, Nx_px - 1,
-        )
-        row_i = np.clip(
-            np.round((gy - y_min) / (y_max - y_min) * (Ny_px - 1)).astype(int),
-            0, Ny_px - 1,
-        )
-        return mask[row_i, col_i]
-
-    return np.ones(gx.shape, dtype=bool)
-
-
-# ---------------------------------------------------------------------------
-# Core function
-# ---------------------------------------------------------------------------
-
-def smooth_map(
-    data: np.ndarray,
-    sigma: float,
-    k: int,
-    grid_resolution: int = 300,
-    x_range: tuple | None = None,
-    y_range: tuple | None = None,
-    mask: np.ndarray | None = None,
-    contour: np.ndarray | None = None,
-    weight_threshold: float = 0.0,
-) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-    """
-    Gaussian-weighted spatial smoothing on a regular grid.
-
-    Parameters
-    ----------
-    data             : (N, 3) array — columns x, y, v.
-    sigma            : Gaussian kernel standard deviation.
-    k                : Number of nearest neighbours per grid point.
-    grid_resolution  : Grid cells along each axis.
-    x_range          : (x_min, x_max) — defaults to data extent + 5 % padding.
-    y_range          : (y_min, y_max) — defaults to data extent + 5 % padding.
-    mask             : (Ny, Nx) bool pixel array spanning x_range × y_range.
-    contour          : (M, 2) polygon vertices in data coordinates.
-                       Preferred over mask when both are supplied.
-    weight_threshold : Fraction of the maximum weight sum in [0, 1).
-                       Grid cells whose Gaussian weight sum falls below
-                       weight_threshold * max(w_sum) are set to NaN.
-                       0.0 (default) disables the threshold.
-                       A value around 0.05–0.2 is a good starting point.
-
-    Returns
-    -------
-    gx, gy : 2-D grid coordinate arrays.
-    gz     : 2-D smoothed-value array (NaN outside the region or below the
-             density threshold).
-    """
-    data = np.asarray(data, dtype=float)
-    if data.ndim != 2 or data.shape[1] != 3:
-        raise ValueError("data must be an (N, 3) array.")
-
-    xy = data[:, :2]
-    v  = data[:, 2]
-    k  = min(k, len(data))
-
-    # --- grid ---
-    def _padded(arr, pad=0.05):
-        lo, hi = arr.min(), arr.max()
-        return lo - (hi - lo) * pad or 1.0, hi + (hi - lo) * pad or 1.0
-
-    x_min, x_max = x_range or _padded(xy[:, 0])
-    y_min, y_max = y_range or _padded(xy[:, 1])
-
-    xs = np.linspace(x_min, x_max, grid_resolution)
-    ys = np.linspace(y_min, y_max, grid_resolution)
-    gx, gy = np.meshgrid(xs, ys)
-
-    # --- active region ---
-    active      = _active_from_region(gx, gy, mask, contour,
-                                      (x_min, x_max), (y_min, y_max))
-    active_flat = active.ravel()
-    active_pts  = np.column_stack([gx.ravel(), gy.ravel()])[active_flat]
-
-    # --- Gaussian-weighted average ---
-    tree = cKDTree(xy)
-    dists, idxs = tree.query(active_pts, k=k)
-
-    if k == 1:
-        dists = dists[:, np.newaxis]
-        idxs  = idxs[:, np.newaxis]
-
-    weights   = np.exp(-0.5 * (dists / sigma) ** 2)
-    w_sum_col = weights.sum(axis=1)                      # shape (M_active,)
-    # abs_weight_threshold = weight_threshold * w_sum_col.max()
-    abs_weight_threshold = weight_threshold * np.percentile(w_sum_col, 90)
-
-    # --- density threshold ---
-    if weight_threshold > 0.0:
-        dense_enough = w_sum_col >= abs_weight_threshold
-    else:
-        dense_enough = np.ones(len(w_sum_col), dtype=bool)
-
-    w_sum_col = np.where(w_sum_col == 0, 1.0, w_sum_col)  # avoid division by zero
-    gz_active = np.where(
-        dense_enough,
-        (weights * v[idxs]).sum(axis=1) / w_sum_col,
-        np.nan,
-    )
-
-    gz_flat              = np.full(gx.size, np.nan)
-    gz_flat[active_flat] = gz_active
-    gz                   = gz_flat.reshape(gx.shape)
-
-    return gx, gy, gz
-
-
-# ---------------------------------------------------------------------------
-# Plotting helper
-# ---------------------------------------------------------------------------
-
-def plot_smooth_map(
-    data: np.ndarray,
-    gx: np.ndarray,
-    gy: np.ndarray,
-    gz: np.ndarray,
-    sigma: float,
-    k: int,
-    contour: np.ndarray | None = None,
-    cmap: str = "viridis",
-    show_points: bool = True,
-) -> plt.Figure:
-    """Render the smoothed map; NaN cells are transparent."""
-    fig, ax = plt.subplots(figsize=(8, 6))
-
-    valid = gz[np.isfinite(gz)]
-    vmin, vmax = (valid.min(), valid.max()) if valid.size else (0, 1)
-
-    ax.pcolormesh(gx, gy, gz, cmap=cmap, shading="auto", vmin=vmin, vmax=vmax)
-    fig.colorbar(
-        plt.cm.ScalarMappable(
-            norm=plt.Normalize(vmin, vmax), cmap=cmap
-        ), ax=ax
-    ).set_label("Smoothed value", fontsize=11)
-
-    if contour is not None:
-        c = np.asarray(contour)
-        ax.plot(np.append(c[:, 0], c[0, 0]),
-                np.append(c[:, 1], c[0, 1]),
-                color="k", lw=2, ls="-", zorder=4)
-
-    if show_points:
-        ax.scatter(data[:, 0], data[:, 1], c=data[:, 2], cmap=cmap,
-                   s=10, edgecolors="white", linewidths=0.2,
-                   vmin=vmin, vmax=vmax, zorder=3)
-
-    ax.set_xlabel("x", fontsize=11)
-    ax.set_ylabel("y", fontsize=11)
-    ax.set_title(f"Gaussian-weighted smooth map  (σ={sigma}, k={k})", fontsize=12)
-    fig.tight_layout()
-    return fig
-
-
-# ---------------------------------------------------------------------------
-# Demo
-# ---------------------------------------------------------------------------
-
-if __name__ == "__main__":
-    rng    = np.random.default_rng(42)
-    Nx, Ny = 200, 160
-    sigma, k = 15.0, 15
-
-    # Three dense clusters — deliberately leaving large empty areas inside the
-    # contour so the threshold effect is clearly visible.
-    parts = []
-    for cx, cy, cv in [(40, 30, 10), (140, 80, 50), (100, 130, 90)]:
-        xy_p = rng.normal(loc=[cx, cy], scale=12, size=(50, 2))
-        v_p  = rng.normal(loc=cv, scale=5,  size=(50, 1))
-        parts.append(np.hstack([xy_p, v_p]))
-    data = np.vstack(parts)
-
-    # Irregular hexagon contour that encloses all three clusters plus empty space
-    angles  = np.linspace(0, 2 * np.pi, 7)[:-1]
-    radii   = np.array([80, 60, 75, 65, 70, 55])
-    contour = np.column_stack([
-        Nx / 2 + radii * np.cos(angles),
-        Ny / 2 + radii * np.sin(angles),
-    ])
-
-    thresholds = [0.0, 0.05, 0.15]
-    titles     = [f"weight_threshold={t}" for t in thresholds]
-
-    fig, axes = plt.subplots(1, 3, figsize=(18, 6))
-    for ax, t, title in zip(axes, thresholds, titles):
-        gx, gy, gz = smooth_map(
-            data, sigma=sigma, k=k,
-            grid_resolution=300,
-            x_range=(0, Nx), y_range=(0, Ny),
-            contour=contour,
-            weight_threshold=t,
-        )
-        valid = gz[np.isfinite(gz)]
-        vmin, vmax = valid.min(), valid.max()
-        ax.pcolormesh(gx, gy, gz, cmap="plasma", shading="auto",
-                      vmin=vmin, vmax=vmax)
-        c = contour
-        ax.plot(np.append(c[:, 0], c[0, 0]), np.append(c[:, 1], c[0, 1]),
-                color="white", lw=1.2, ls="--", zorder=4)
-        ax.scatter(data[:, 0], data[:, 1], c=data[:, 2], cmap="plasma",
-                   s=30, edgecolors="white", lw=0.4, vmin=vmin, vmax=vmax, zorder=3)
-        ax.set_title(title, fontsize=11)
-        ax.set_xlabel("x"); ax.set_ylabel("y")
-
-    fig.suptitle(f"Effect of weight_threshold  (σ={sigma}, k={k})", fontsize=13)
-    fig.tight_layout()
-    plt.show()
 
 # %%%% Test on real data
 
@@ -3723,7 +3204,7 @@ tifNames = [
     ]
 
 #### ----
-i = 2
+i = 3
 
 tN = tifNames[i]
 fN = tN.split('.')[0]
@@ -4054,778 +3535,6 @@ plt.show()
 
 # %% TBD
     
-# %%%% Import MSD & plot
-    
-fig, ax = plt.subplots(1, 1, figsize=(5, 5))
-ax.set_xscale('log')
-ax.set_yscale('log')
-
-dict_res = {'label':[],
-            'D_full':[],
-            'k_full':[],
-            'D_lowDt':[],
-            'k_lowDt':[],
-            'D_highDt':[],
-            'k_highDt':[],
-            }
-
-for i in range(len(fileNames)):   
-    tifPath, fN = tifPaths[i], fileNames[i]
-    cleanTrackName = fN + Dict_fSuf['suf_cleanTracks'] + '.csv'
-    msdName = fN + Dict_fSuf['suf_globalMsd'] + '.csv'
-    msdFitsName = fN + Dict_fSuf['suf_globalMsdFits']
-    
-    df = pd.read_csv(os.path.join(dstDir, cleanTrackName), sep='\t')
-    res_emsd = pd.read_csv(os.path.join(dstDir, msdName), sep='\t')
-    T, MSD = res_emsd['lagt'], res_emsd['msd']
-    
-    dict_MSDfits = ufun.json2dict(dstDir, msdFitsName)
-    D_linear = dict_MSDfits['D_linear']
-    k_full = dict_MSDfits['k_full']
-    D_full = dict_MSDfits['D_full']
-    k_lowDt = dict_MSDfits['k_lowDt']
-    D_lowDt = dict_MSDfits['D_lowDt']
-    k_highDt = dict_MSDfits['k_highDt']
-    D_highDt = dict_MSDfits['D_highDt']
-    
-    Tc = (D_lowDt/D_highDt)**(1/(k_highDt-k_lowDt))  
-
-    label = fN.split('_')[3]
-
-    ax.plot(T, MSD, label=label, color=pm.cL_Set21[i], 
-            # ls='-', lw = 1, alpha=0.85,)
-            marker='o', markersize=3, alpha=0.85)
-    
-    dict_res['label'].append(label)
-    dict_res['D_full'].append(D_full)
-    dict_res['k_full'].append(k_full)
-    dict_res['D_lowDt'].append(D_lowDt)
-    dict_res['k_lowDt'].append(k_lowDt)
-    dict_res['D_highDt'].append(D_highDt)
-    dict_res['k_highDt'].append(k_highDt)
-    
-
-Xp1 = np.array([1e-1, 5e-1])
-Xp2 = np.array([1, 2])
-ax.plot(Xp1, 12e-3*Xp1**0.5, color = 'gray', ls=':', label=r'$y \propto x^{1/2}$')
-ax.plot(Xp2, 0.15e-1*Xp2**1, color = 'gray', ls='--', label=r'$y \propto x^{1}$')
-ax.legend(edgecolor='None')#, title='Tpf')
-ax.grid()
-ax.set_xlim([0.4e-1, 0.6e1])
-ax.set_ylim([2e-3, 0.5e0])
-ax.set_ylabel('MSD (µm²)')
-ax.set_xlabel(r'$\Delta t$ (s)')
-
-plt.show()
-
-
-df_Diffusion = pd.DataFrame(dict_res)
-df_Diffusion['Tpf_s'] = df_Diffusion['label'].apply(lambda x : Tpf_str2num(x))
-df_Diffusion['Tpf_min'] = df_Diffusion['Tpf_s']/60
-
-fig, axes = plt.subplots(2, 1, figsize=(7, 6), sharex = True, layout='compressed')
-ax = axes[0]
-# ax.plot(np.arange(len(df_Diffusion)), df_Diffusion.D_full, ls='-', marker='o', label=r'$D_{full}$')
-# ax.plot(np.arange(len(df_Diffusion)), df_Diffusion.D_lowDt, ls='-', marker='o', label=r'$D_{\Delta t \leq 0.5s}$')
-# ax.plot(np.arange(len(df_Diffusion)), df_Diffusion.D_highDt, ls='-', marker='o', label=r'$D_{\Delta t \geq 1s}$')
-ax.plot(df_Diffusion.Tpf_min, df_Diffusion.D_full, ls='-', marker='o', label=r'All $\Delta t$')
-ax.plot(df_Diffusion.Tpf_min, df_Diffusion.D_lowDt, ls='-', marker='o', label=r'$\Delta t \leq 0.5s$')
-ax.plot(df_Diffusion.Tpf_min, df_Diffusion.D_highDt, ls='-', marker='o', label=r'$\Delta t \geq 1s$')
-ax.set_ylabel(r'$D_{eff}\ (\mu m^2/s^\alpha)$')
-ax.legend(loc='center left', bbox_to_anchor=(1, 0.5))
-ax.grid()
-
-ax = axes[1]
-# ax.plot(np.arange(len(df_Diffusion)), df_Diffusion.k_full, ls='-', marker='o', label=r'$\alpha_{full}$')
-# ax.plot(np.arange(len(df_Diffusion)), df_Diffusion.k_lowDt, ls='-', marker='o', label=r'$\alpha_{\Delta t \leq 0.5s}$')
-# ax.plot(np.arange(len(df_Diffusion)), df_Diffusion.k_highDt, ls='-', marker='o', label=r'$\alpha_{\Delta t \geq 1s}$')
-ax.plot(df_Diffusion.Tpf_min, df_Diffusion.k_full, ls='-', marker='o', label=r'All $\Delta t$')
-ax.plot(df_Diffusion.Tpf_min, df_Diffusion.k_lowDt, ls='-', marker='o', label=r'$\Delta t \leq 0.5s$')
-ax.plot(df_Diffusion.Tpf_min, df_Diffusion.k_highDt, ls='-', marker='o', label=r'$\Delta t \geq 1s$')
-ax.set_ylabel(r'$\alpha$')
-ax.set_xticks(df_Diffusion['Tpf_min'].values)
-ax.set_xticklabels(df_Diffusion['Tpf_min'].values, rotation = 20)
-ax.set_xlabel('Tpf (min)')
-ax.legend(loc='center left', bbox_to_anchor=(1, 0.5))
-ax.grid()
-
-plt.show()
-
-# %%%% Import tracks -> run imsd
-
-IMSD = []
-
-for ii in range(len(dfNames)): # len(dfNames)
-    dfName = dfNames[ii]
-    df = pd.read_csv(os.path.join(dstDir, dfName), sep='\t')
-    df.particle = df.particle.astype(int)
-    
-    res_imsd = tp.motion.imsd(df, UmPerPix, FPS, max_lagtime=200).reset_index()
-    IMSD.append(res_imsd)
-
-# %%%% Plot a few imsd
-
-res_imsd = IMSD[0]
-df = res_imsd.dropna(axis=1)
-
-dt = df['lag time [s]']
-Np = len(df.columns)
-plot_cols = df.columns.values[np.arange(1, Np, Np//33)] #.astype(int)
-
-fig, ax = plt.subplots(1, 1)
-ax.set_xscale('log')
-ax.set_yscale('log')
-for col in plot_cols:
-    msd = df.loc[:, col].values
-    ax.plot(dt, msd, ls='-', color='gray', lw=1,
-            marker='', alpha = 0.75)
-    
-ax.plot([], [], ls='-', color='gray', lw=1,
-        marker='', alpha = 0.75, label='Single particles MSD')
-    
-
-#### Long term MSD
-ii = 0
-xmlPath = xmlPaths[ii]
-dfName = dfNames[ii]
-print(dfName)
-Tracks = tbca.importTrackMateTracks(xmlPath)
-
-Np = len(Tracks)
-    
-column_names = ['frame', 'x', 'y', 'particle']
-all_tracks = []
-for i, track in enumerate(Tracks):
-    nT = len(track)
-    # test_x_sat = ((np.max(track[:, 1]) - np.min(track[:, 1])) < 1)
-    # test_y_sat = ((np.max(track[:, 2]) - np.min(track[:, 2])) < 1)
-    test_x_sat = ((np.max(track[:, 1]) == (N_pix-1)) or (np.min(track[:, 1]) == 0))
-    test_y_sat = ((np.max(track[:, 2]) == (N_pix-1)) or (np.min(track[:, 2]) == 0))
-    if (not test_x_sat) and (not test_y_sat) and (nT >= 250):
-        track = np.concat((track, np.ones((len(track[:,0]), 1), dtype=int) * (i+1)), axis = 1)
-        track[:, 0] = track[:, 0].astype(int) + 1
-        all_tracks.append(track)
-
-concat_tracks = np.concat(all_tracks, axis = 0)
-df = pd.DataFrame({column_names[k] : concat_tracks[:,k] for k in range(len(column_names))})
-res_emsd = tp.motion.emsd(df, UmPerPix, FPS, max_lagtime=200).reset_index()
-
-ax.plot(res_emsd.lagt, res_emsd.msd, ls='-', color='k', lw=2,
-        marker='', alpha = 1, label='Global MSD')
-
-ax.legend(edgecolor='None')#, title='Tpf')
-ax.grid()
-ax.set_xlim([0.8e-1, 25e0])
-ax.set_ylim([2e-3, 5e0])
-ax.set_ylabel('MSD (µm²)')
-ax.set_xlabel(r'$\Delta t$ (s)')
-
-plt.show()
-
-# %%%% From imsd -> Diffusion Map
-
-DF_PART_MSD = []
-
-for ii in range(len(dfNames)): # range(len(dfNames)) [2]
-    im = ufun.load_stack_region(tifPaths[ii], time_indices=[0])[0]
-    dfName = dfNames[ii]
-    df = pd.read_csv(os.path.join(dstDir, dfName), sep='\t')
-    df.particle = df.particle.astype(int)
-    
-    res_imsd = IMSD[ii]
-    dt = res_imsd.loc[:, 'lag time [s]']
-    
-    dict_particle_MSD = {
-                        'Pid':[],
-                        'Xc':[],
-                        'Yc':[],
-                        'theta':[],
-                        'fmin':[],
-                        'fmax':[],
-                        'D_lin':[],
-                        'D_full':[],
-                        'k_full':[],
-                        }
-    
-    # fig, ax = plt.subplots(1, 1)
-    # ax.set_xscale('log')
-    # ax.set_yscale('log')
-    
-    Pid_list = df.particle.unique()
-    for p in Pid_list[:]:
-        dfp = df[df['particle']==p]
-        msd = res_imsd.loc[:, p].dropna()
-        # ax.plot(dt, msd, 'o', markersize=4, alpha=0.02, 
-        #         color='navy', mec='None')
-                
-        parms, results = ufun.fitLineHuber(dt[:len(msd)], msd, 
-                                           with_intercept = False)
-        D_linear = parms.values[0]/4
-        
-        parms, results = ufun.fitLineHuber(np.log(dt[:len(msd)]), np.log(msd), 
-                                           with_intercept = True)
-        b, a = parms
-        k_full = a
-        D_full = np.exp(b)/4
-        
-        fmin, fmax = np.min(dfp.frame), np.max(dfp.frame)
-        X, Y = dfp.x, dfp.y
-        XY = np.array([X, Y]).T
-        CvxHull = MultiPoint(XY).convex_hull
-        Xc, Yc = CvxHull.centroid.coords[0]
-        theta = np.atan2(Yc - C_pix, Xc - C_pix)
-        
-        dict_particle_MSD['Pid'].append(p)
-        dict_particle_MSD['Xc'].append(Xc)
-        dict_particle_MSD['Yc'].append(Yc)
-        dict_particle_MSD['theta'].append(theta) # *180/np.pi
-        dict_particle_MSD['fmin'].append(fmin)
-        dict_particle_MSD['fmax'].append(fmax)
-        dict_particle_MSD['D_lin'].append(D_linear)
-        dict_particle_MSD['D_full'].append(D_full)
-        dict_particle_MSD['k_full'].append(k_full)
-        
-    df_particle_MSD = pd.DataFrame(dict_particle_MSD)
-    DF_PART_MSD.append(df_particle_MSD)
-
-
-#### SAVE
-
-tableNames = [tifName.split('.')[0] + '_partTrajData.csv' for tifName in tifNames]
-for ii in range(len(dfNames)):
-    df_particle_MSD = DF_PART_MSD[ii]
-    df_particle_MSD.to_csv(os.path.join(dstDir, tableNames[ii]), sep=';', index=False)
-
-
-# %%%% Plot the Map
-
-pm.setGraphicOptions(mode='print')
-df_centers = pd.read_csv(os.path.join(srcDir, 'OrganizingCenters.csv'), sep=';')
-tableNames = [tifName.split('.')[0] + '_partTrajData.csv' for tifName in tifNames]
-
-
-for ii in [0, 2, 3, 5, 7]: # len(dfNames)
-    try:
-        t = nbimages//2
-        im = ufun.load_stack_region(tifPaths[ii], time_indices=[t])[0]
-        NoImg=False
-    except:
-        NoImg=True
-    df_particle_MSD = pd.read_csv(os.path.join(dstDir, tableNames[ii]), sep=';')
-    label = msdNames[ii].split('_')[2]
-    
-    M_boxes = 15
-    L_box = N_pix/M_boxes
-    
-    Xc, Yc = df_centers.loc[ii, 'xc'], df_centers.loc[ii, 'yc']
-
-    df_particle_MSD['Xb'] = (df_particle_MSD['Xc'].values//L_box).astype(int)
-    df_particle_MSD['Yb'] = (df_particle_MSD['Yc'].values//L_box).astype(int)
-
-    df_particle_MSD['Bxy'] = [(x,y) for x, y in zip(df_particle_MSD['Xb'], df_particle_MSD['Yb'])]
-
-    grouped = df_particle_MSD.groupby('Bxy')
-    df_grid_MSD = grouped.agg({'Pid':'count',
-                               'D_lin':'median',
-                               'D_full':'median',
-                               'k_full':'median',
-                               }).rename(columns={'Pid':'count'}).reset_index()
-
-    df_grid_MSD = df_grid_MSD[df_grid_MSD['count'] >= 5]
-
-    lims = np.linspace(0, N_pix-1, (M_boxes+1))
-    fig, axes = plt.subplots(2, 3, figsize = (10, 6), layout='compressed')
-    axes_f = axes.flatten()
-    
-    #### 2.1 - Image
-    ax = axes_f[0]
-    if not NoImg:
-        vmin, vmax = np.percentile(im, 0.5), np.percentile(im, 99.5)
-        ax.imshow(im, cmap='gray', vmin=vmin, vmax=vmax)
-        ax.hlines(lims, 0, N_pix, linestyle=':', color='w', lw=0.75)
-        ax.vlines(lims, 0, N_pix, linestyle=':', color='w', lw=0.75)
-        ax.plot(Xc, Yc, 'ro', markersize=3)
-    ax.set_xlim([0, 511])
-    ax.set_ylim([0, 511])
-    ax.set_title(f'Tpf {label} - tiled image')
-    
-    #### 2.2 - Count Heatmap
-    ax = axes_f[4]
-    parm = 'count'
-    axtitle = r'Trajectories / tile'
-    cbarlabel = r'$N$'
-    
-    fig, ax = MSD_HeatMap(df_grid_MSD, M_boxes, 'Bxy', parm,
-                            axtitle = axtitle, cbarlabel = cbarlabel,
-                            cmap = 'GnBu', norm_type = 'lin',
-                            fig=fig, ax=ax)
-    
-    
-    #### 2.3 - D_full Heatmap
-    ax = axes_f[2]
-    parm = 'D_full'
-    axtitle = r'$D$ - from $MSD = 4D\cdot\Delta t^\alpha$'
-    cbarlabel = r'$D$ (µm²/$s^\alpha$)'
-    
-    fig, ax = MSD_HeatMap(df_grid_MSD, M_boxes, 'Bxy', parm,
-                            axtitle = axtitle, cbarlabel = cbarlabel,
-                            cmap='RdYlBu_r', norm_type = 'lin',
-                            c_vmin = 5e-3, c_vmax = 12.5e-3,
-                            fig=fig, ax=ax)
-    
-    
-    #### 2.4 k_full Heatmap
-    ax = axes_f[5]
-    parm = 'k_full'
-    axtitle = r'$\alpha$ - from $MSD = 4D\cdot\Delta t^\alpha$'
-    cbarlabel = r'$\alpha$'
-    
-    fig, ax = MSD_HeatMap(df_grid_MSD, M_boxes, 'Bxy', parm,
-                            axtitle = axtitle, cbarlabel = cbarlabel,
-                            cmap='PuOr_r', norm_type = 'lin',
-                            c_vmin = 0.6, c_vmax = 1.15,
-                            fig=fig, ax=ax)
-
-    
-    
-    #### 2.5 D_lin Heatmap
-    ax = axes_f[1]
-    parm = 'D_lin'
-    axtitle = r'$D$ - from $MSD = 4D\cdot\Delta t$'
-    cbarlabel = r'$D$ (µm²/s)'
-    
-    fig, ax = MSD_HeatMap(df_grid_MSD, M_boxes, 'Bxy', parm,
-                            axtitle = axtitle, cbarlabel = cbarlabel,
-                            cmap='RdYlBu_r', norm_type = 'lin',
-                            c_vmin = 5e-3, c_vmax = 12.5e-3,
-                            fig=fig, ax=ax)
-
-    plt.show()
-    
-    
-
-
-# %%%% Plot the points
-
-df_centers = pd.read_csv(os.path.join(srcDir, 'OrganizingCenters.csv'), sep=';')
-tableNames = [tifName.split('.')[0] + '_partTrajData.csv' for tifName in tifNames]
-
-# norm=mpl.colors.LogNorm() # norm=mpl.colors.Normalize()
-
-for ii in [0, 2, 3, 5, 7]: #range(len(dfNames)): #
-    t = nbimages//2
-    im = ufun.load_stack_region(tifPaths[ii], time_indices=[t])[0]
-    df_particle_MSD = pd.read_csv(os.path.join(dstDir, tableNames[ii]), sep=';')
-    label = msdNames[ii].split('_')[2]
-    
-    M_boxes = 15
-    L_box = N_pix/M_boxes
-
-    lims = np.linspace(0, N_pix-1, (M_boxes+1))
-    fig, axes = plt.subplots(2, 2, figsize = (8, 6), layout='compressed')
-    axes_f = axes.flatten()
-    ax = axes_f[0]
-    vmin, vmax = np.percentile(im, 0.5), np.percentile(im, 99.5)
-    ax.imshow(im, cmap='gray', vmin=vmin, vmax=vmax, aspect='equal')
-    ax.hlines(lims, 0, N_pix, linestyle=':', color='w', lw=0.75)
-    ax.vlines(lims, 0, N_pix, linestyle=':', color='w', lw=0.75)
-    ax.set_xlim([0, 511])
-    ax.set_ylim([0, 511])
-    ax.set_title(f'Tpf {label}')
-    
-    ax = axes_f[1]
-    parm = 'k_full' # 'D_full', 'k_full'
-    axtitle = r'$\alpha$ - from $MSD = 4D\cdot\Delta t^\alpha$'
-    cbarlabel = r'$\alpha$'
-    ax.set_title(axtitle)
-    ax.set_aspect('equal', adjustable='box')
-    v_high = np.percentile(df_particle_MSD[parm], 98)
-    df_f = df_particle_MSD[df_particle_MSD[parm] < v_high]
-    
-    g = ax.scatter(df_f['Xc'], df_f['Yc'], 
-                   c=df_f[parm], cmap='PuOr_r',
-                   s = 6, alpha = 1, edgecolor='None',
-                   norm=mpl.colors.Normalize(vmin = 0.6, vmax = 1.15),
-                   )
-    cbar = fig.colorbar(g, label=cbarlabel)
-    ax.set_xlim([0, 511])
-    ax.set_ylim([0, 511])
-    
-    
-    
-    ax = axes_f[2]
-    parm = 'D_lin' # 'D_full', 'k_full'
-    axtitle = r'$D$ - from $MSD = 4D\cdot\Delta t$'
-    cbarlabel = r'$D$ (µm²/s)'
-    ax.set_title(axtitle)
-    ax.set_aspect('equal', adjustable='box')
-    v_high = np.percentile(df_particle_MSD[parm], 98)
-    df_f = df_particle_MSD[df_particle_MSD[parm] < v_high]
-    
-    g = ax.scatter(df_f['Xc'], df_f['Yc'], 
-                   c=df_f[parm], cmap='RdYlBu_r',
-                   s = 6, alpha = 1, edgecolor='None',
-                   norm=mpl.colors.Normalize(vmin = 5e-3, vmax = 12.5e-3),
-                   )
-    cbar = fig.colorbar(g, label=cbarlabel)
-    ax.set_xlim([0, 511])
-    ax.set_ylim([0, 511])
-
-    
-    
-    ax = axes_f[3]
-    parm = 'D_full' # 'D_full', 'k_full'
-    axtitle = r'$D$ - from $MSD = 4D\cdot\Delta t^\alpha$'
-    cbarlabel = r'$D$ (µm²/$s^\alpha$)'
-    ax.set_title(axtitle)
-    ax.set_aspect('equal', adjustable='box')
-    v_high = np.percentile(df_particle_MSD[parm], 98)
-    df_f = df_particle_MSD[df_particle_MSD[parm] < v_high]
-    
-    g = ax.scatter(df_f['Xc'], df_f['Yc'], 
-                   c=df_f[parm], cmap='RdYlBu_r',
-                   s = 6, alpha = 1, edgecolor='None',
-                   norm=mpl.colors.Normalize(vmin = 5e-3, vmax = 12.5e-3),
-                   )
-    cbar = fig.colorbar(g, label=cbarlabel)
-    ax.set_xlim([0, 511])
-    ax.set_ylim([0, 511])
-    
-    
-    plt.show()
-        
-    
-# %%%% MSRD functions
-
-
-# Test run
-dfName = dfNames[2]
-df = pd.read_csv(os.path.join(dstDir, dfName), sep='\t')
-
-UmPerPix = cd.UmPerPix_60X_W1
-SCALE = 1/UmPerPix
-Nframes = 2000
-FPS = 10
-
-top = time.time()
-dict_TRanges2pairs_N = tbca.get_pairs_for_TRanges(df, SCALE, FPS, Nframes,
-                          len_TRanges = 100, delta_TRanges = -1,
-                          dist_th_um = 5)
-print(f'Dt = {time.time()-top:.3f} s')
-
-top = time.time()
-dict_TRanges2pairs_D = tbca.get_pairs_for_TRanges_Delaunay(df, SCALE, FPS, Nframes,
-                          len_TRanges = 100, delta_TRanges = -1,
-                          dist_th_um = 5)
-print(f'Dt = {time.time()-top:.3f} s')
-
-
-
-# %%%% MSRD functions II
-
-
-
-
-pm.setGraphicOptions(mode='screen')
-
-TRanges = np.array(list(dict_TRanges2pairs_D.keys()))
-dict_TRanges2pairMSD = {}
-
-for TRange in TRanges:
-
-    pairs = dict_TRanges2pairs_D[TRange]
-
-    # top = time.time()
-    df_pairs = tbca.get_relative_displacement_by_TRange(df, pairs, TRange)
-    # print(f'Dt = {time.time()-top:.3f} s')
-    
-    # top = time.time()
-    res_pair_emsd = tp.motion.emsd(df_pairs.rename(columns={'pair_id':'particle'}), 
-                                   UmPerPix, FPS, max_lagtime=50).reset_index()
-    # print(f'Dt = {time.time()-top:.3f} s')
-
-    dict_TRanges2pairMSD[TRange] = res_pair_emsd
-
-    ax.plot(res_pair_emsd.lagt, res_pair_emsd.msd, ls='', marker='.', label=TRange)
-
-
-fig, ax = plt.subplots(1, 1, figsize=(5, 5))
-ax.set_xscale('log')
-ax.set_yscale('log')
-
-for TRange in TRanges[4:]:
-    res_pair_emsd = dict_TRanges2pairMSD[TRange]
-    ax.plot(res_pair_emsd.lagt, res_pair_emsd.msd, ls='', marker='.', label=TRange)
-    
-ax.grid()
-ax.legend(loc='center left', bbox_to_anchor=(1, 0.5))
-
-plt.show()
-
-# %%%% Functions to define ROI
-
-testDir = "C://Users//Joseph//Desktop//IntraCellTracking//26-09-30_FastAcq-Channel_Fec_NB-Yolk//D2"
-# imgFile = "26-09-30_D1_PostF_45min_C4_20fps_Texp50ms_L20p1_CSU642.ome.tf2"
-imgFile = "26-09-30_D2-R_PostF_53min_C5_20fps_Texp50ms_L20p1_CSU642.ome.tf2"
-imgPath = os.path.join(testDir, imgFile)
-
-pm.setGraphicOptions(mode='print')
-
-ii = 2
-tt = range(0, nbimages, 100)
-img = ufun.load_stack_region(imgPath, time_indices=tt)
-
-nT, nY, nX = img.shape
-img_proj = np.max(img, axis = 0)
-
-# binarize = True
-k_th = 1.0
-zero_padding = 10
-
-# 1. Binarize
-th1 = skm.filters.threshold_li(img_proj) * k_th
- 
-# img_min = ndi.binary_closing(img_min, iterations=5)
-img_bin = (img_proj > th1)
-img_bin = ndi.binary_opening(img_bin, iterations = 5)
-img_bin = ndi.binary_fill_holes(img_bin)
-
-FoundContours = skm.measure.find_contours(img_bin, 0.5)
-MoreContours = FoundContours[:]
-Nr = 2
-for k in range(Nr):
-    img_bin_bis = ndi.binary_erosion(img_bin, iterations=k+1)
-    MoreContours += skm.measure.find_contours(img_bin_bis, 0.5)
-
-longestContour = FoundContours[np.argmax([len(c) for c in FoundContours])]
-x = longestContour[:, 0]
-y = longestContour[:, 1]   
-SIGMA = 5
-x_smooth = gaussian_filter1d(x, sigma=SIGMA, mode="wrap")
-y_smooth = gaussian_filter1d(y, sigma=SIGMA, mode="wrap")
-smooth_contour = np.column_stack((x_smooth, y_smooth))
-
-concat_contours = np.concatenate(MoreContours)
-points = MultiPoint(concat_contours[:,::-1])
-x_ch, y_ch = points.convex_hull.exterior.xy
-
-ALPHA = 0.1
-alpha_shape = alphashape.alphashape(concat_contours[:,::-1], ALPHA)
-x_as, y_as = alpha_shape.exterior.xy
-
-inner_shape = alpha_shape.buffer(-2.5/UmPerPix)
-x_is, y_is = inner_shape.exterior.xy
-
-# list_geoms = list(alpha_shape.geoms)
-# for poly in list_geoms:
-#     x_as, y_as = alpha_shape.exterior.xy
-
-
-fig, axes = plt.subplots(2, 3, figsize=(12, 8), sharex=True, sharey=True)
-axes_f = axes.flatten()
-
-ax = axes_f[0]
-ax.set_aspect('equal', adjustable='box')
-ax.imshow(img_proj, cmap='gray')
-
-ax = axes_f[1]
-ax.set_aspect('equal', adjustable='box')
-ax.imshow(img_bin, cmap='gray')
-
-ax = axes_f[2]
-ax.set_aspect('equal', adjustable='box')
-for c in FoundContours:
-    ax.plot(c[:, 1], c[:, 0], lw=1)
-ax.plot(x_ch, y_ch, lw=1)
-    
-ax = axes_f[3]
-ax.set_aspect('equal', adjustable='box')
-for c in MoreContours:
-    ax.plot(c[:, 1], c[:, 0], lw=1)
-
-
-
-for i in [0, 1, 4]:
-    ax = axes_f[i]
-    ax.set_aspect('equal', adjustable='box')
-    ax.plot(x_as, y_as, lw='0.75')
-    ax.plot(x_is, y_is, lw='0.75')
-
-# list_geoms = list(alpha_shape.geoms)
-# for poly in list_geoms:
-#     x_as, y_as = poly.exterior.xy
-#     ax.plot(x_as, y_as, lw='0.75')
-
-plt.show()
-
-
-# %%%% Import tracks & analyse shape of explored zone
-
-idx_films = [0, 2, 3, 5, 7]
-
-pm.setGraphicOptions(mode='screen')
-fig, axes = plt.subplots(2, len(idx_films), figsize=(len(idx_films)*3, 6),
-                         layout='compressed')
-colors = pm.cL_Set21
-
-dict_res = {'label':[],
-            'AngleDiffs':[]}
-
-GEOM_DATA = []
-
-df_centers = pd.read_csv(os.path.join(srcDir, 'OrganizingCenters.csv'), sep=';')
-
-
-for k, ii in enumerate(idx_films):
-    X_MTcenter, Y_MTcenter = df_centers.loc[ii, 'xc'], df_centers.loc[ii, 'yc']
-    print(X_MTcenter, Y_MTcenter)
-
-    dfName = dfNames[ii]
-    title = '_'.join(dfName.split('_')[1:3])
-    df = pd.read_csv(os.path.join(dstDir, dfName), sep='\t')
-    Lp = df['particle'].unique().astype(int)
-    dict_geom = {'particle':[],
-                 'np':[],
-                 'xc':[],
-                 'yc':[],
-                 'theta':[],
-                 'L':[],
-                 'l':[],
-                 'AR':[],
-                 'phi':[],}
-    
-    ax = axes[0, k]
-    ax.set_xlim([0, 511])
-    ax.set_ylim([0, 511])
-    ax.set_aspect('equal', adjustable='box')
-    ax.set_title(title)
-    
-    for j in Lp[:]:
-        c = colors[j%len(colors)]
-        df_j = df[df['particle']==j]
-        # x, y = 
-        points = np.array([[x, y] for (x, y) in zip(df_j.x, df_j.y)])
-        
-        MPoints = MultiPoint(points)
-        Hull = MPoints.convex_hull
-        xy_ch = np.array([xy for xy in Hull.exterior.coords[1:]])
-        xc, yc = Hull.centroid.coords[0]
-        
-        out = ufun.fit_ellipse_fixedCenter(xy_ch[:, 0], xy_ch[:, 1], 
-                                           xc, yc, mode='cartesian')
-        _, _, a, b, phi = out
-        
-        if j%10 == 0:
-            aa = np.linspace(0, 2*np.pi, 360)
-            xp, yp = ufun.get_ellipse_xy(xc, yc, a, b, phi, aa=aa)
-            # ax.plot(xy_ch[:, 0], xy_ch[:, 1],
-            #         c=c, marker='.', ls='', ) #ls='-', lw=1)
-            ax.plot(xp, yp, c=c, ls='-', lw=0.5)
-        
-        
-        
-        theta = np.atan2(yc - Y_MTcenter, xc - X_MTcenter)
-        theta_deg = theta * 180/np.pi
-        
-        dotprod = np.cos(theta)*np.cos(phi) + np.sin(theta)*np.sin(phi)
-        if dotprod < 0:
-            phi = phi - np.sign(phi) * np.pi
-            
-        phi_deg = phi * 180/np.pi
-        # print(phi_deg, theta_deg)
-        
-        L, l = max(a, b), min(a, b)
-        AR = L/l
-        
-        dict_geom['particle'].append(j)
-        dict_geom['np'].append(len(df_j))
-        dict_geom['xc'].append(xc)
-        dict_geom['yc'].append(yc)
-        dict_geom['theta'].append(theta)
-        dict_geom['L'].append(L)
-        dict_geom['l'].append(l)
-        dict_geom['AR'].append(AR)
-        dict_geom['phi'].append(phi)
-        
-        # # create a minimum rotated rectangle containing all the points
-        # points = np.array(hull_xy).T 
-        # multipoints = MultiPoint(points)
-        # polygon = multipoints.minimum_rotated_rectangle
-        # Xr, Yr = polygon.exterior.coords.xy
-        # ax.plot(Xr, Yr, 'k-', lw=0.5)
-        
-        # d1 = ((Xr[0]-Xr[1])**2 + (Yr[0]-Yr[1])**2)**0.5
-        # d2 = ((Xr[2]-Xr[1])**2 + (Yr[2]-Yr[1])**2)**0.5
-        # # print(d1, d2)
-        # L, l = max(d1, d2), min(d1, d2)
-        # AR = L/l
-        
-        # V1 = (Xr[1]-Xr[0], Yr[1]-Yr[0])
-        # theta = np.atan2(V1[1], V1[0])
-        # print(theta*180/np.pi
-    
-    plt.show()
-    
-    
-    df_geom_raw = pd.DataFrame(dict_geom)
-    GEOM_DATA.append(df_geom_raw)
-    
-    
-    df_geom = df_geom_raw[df_geom_raw['AR'] > 1.5]
-    # N = len(df_geom)
-    
-    GEOM_DATA.append(df_geom_raw)
-    
-    df_geom['theta_bin'] = (df_geom['theta'].values * 18/np.pi).astype(int) * 10 + 5
-    
-    C = np.cos(df_geom['theta'].values) * np.cos(df_geom['phi'].values) + \
-        np.sin(df_geom['theta'].values) * np.sin(df_geom['phi'].values)
-    DA = np.acos(C)
-    
-    ax = axes[1, k]
-    ax.hist(DA, bins=20)
-    ax.set_ylabel('N trajectories')
-    ax.set_xlabel(r'$|\theta - \phi|$ (rad)')
-    ax.set_xticks([0, np.pi/8, np.pi/4, 3*np.pi/8, np.pi/2])
-    ax.set_xticklabels(['0', r'$\pi/8$', r'$\pi/4$', r'$3\pi/8$', r'$\pi/2$'])
-    ax.grid()
-    
-    
-    dict_res['label'].append(title)
-    dict_res['AngleDiffs'].append(DA)
-
-plt.show()
-
-# fig, ax = plt.subplots(1, 1, figsize=(6, 6),
-#                          layout='compressed')
-# for i, L in enumerate(dict_res['label']):
-#     ax.hist(dict_res['AngleDiffs'][i], bins=30, 
-#             density=True, alpha=1, label=L, histtype='step')
-# ax.legend()
-# ax.set_ylabel('Frequency')
-# ax.set_xlabel(r'$|\theta - \phi|$ (rad)')
-# plt.show()
-
-
-# %%%% Plot the geometry
-
-df_geom = pd.DataFrame(dict_geom)
-df_geom['theta_bin'] = (df_geom['theta'].values * 18/np.pi).astype(int) * 10 + 5
-
-C = np.cos(df_geom['theta'].values) * np.cos(df_geom['phi'].values) + np.sin(df_geom['theta'].values) * np.sin(df_geom['phi'].values)
-DA = np.acos(C)
-
-fig, ax = plt.subplots(1, 1, layout='compressed')
-ax.hist(DA, bins=40)
-ax.set_ylabel('N trajectories')
-ax.set_xlabel(r'$|\theta - \phi|$ (rad)')
-ax.set_xticks([0, np.pi/8, np.pi/4, 3*np.pi/8, np.pi/2])
-ax.set_xticklabels(['0', r'$\pi/8$', r'$\pi/4$', r'$3\pi/8$', r'$\pi/2$'])
-ax.grid()
-plt.show()
-
-
-
 # %%%% Radial / OrthoRadial
 
 
