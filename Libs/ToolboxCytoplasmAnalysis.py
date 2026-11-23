@@ -233,6 +233,11 @@ def get_cell_inner_circle(img, PLOT = False):
         plt.show()
     return(contour)
 
+def get_contour_barycenter(contour):
+    """"contour is a Nx2 array [[y0, x0], [y1, x1], ... ]"""
+    poly = Polygon(contour[:, ::-1])
+    y, x = poly.centroid.y, poly.centroid.x
+    return([y, x])
 
 def make_NbYolkCell_contour_and_mask(img, tifName, figDir, PixPerUm,
                                      mode = 'dark_background', buffer_um = 0.0,
@@ -855,6 +860,291 @@ def correct_drift_in_Tracks(df, fN, tP, dstDir, figDir,
         
         
     return(df2, Dxy_corr)
+
+
+#### Global modes QC & correction
+
+# Measures three global (collective) modes per frame at lag tau_qc:
+#   1. Translation  : mean (Δx, Δy) over all particles  [µm]
+#   2. Rotation     : mean Δθ / r  = mean (Δy·er_x − Δx·er_y) / r   [rad/frame]
+#   3. Breathing    : mean radial displacement Δr_r = Δr · ê_r         [µm/frame]
+#
+# These are measured in 'n_ann' equal-count annular bins for rotation and breathing,
+# so a spatially inhomogeneous pattern (e.g. breathing only in the outer ring) is
+# still detected and removed without polluting other rings.
+#
+# The function then optionally subtracts these modes from every displacement, writing
+# corrected columns 'x_corr' / 'y_corr' back into the dataframe.
+#
+# Design choices (matching the report, section 2.4):
+#   - lag = 1 frame (fastest timescale, so each original position contributes to its
+#     own correction at most once per lag-step → auto-correlation bias is negligible)
+#   - correction is cumulative: Δcorr(t) = Σ_{t'<t} [global-mode displacement at t']
+#   - breathing and rotation are removed *per annulus* defined on the ORIGIN position,
+#     consistent with how the report decouples radial inhomogeneity
+#   - the centre (xC, yC) must be supplied in the same pixel units as the track coords
+#
+# Outputs (always):
+#   dict_qc     – per-frame time series (DataFrames / arrays) and global scalars
+#   df_corr     – dataframe with added 'x_corr' / 'y_corr' columns
+#
+# Outputs (if PLOT=True):
+#   figure with four panels (a) positions, (b) global modes vs time,
+#   (c) rotation vs time, (d) one example track before/after correction
+
+def measure_and_correct_global_modes(df, fN, PixPerUm, FPS, xC, yC,
+                                     tau_qc = 1,
+                                     n_ann = 8,
+                                     # correct = True,
+                                     PLOT = False, SHOWPLOT = False, SAVEPLOT = False,
+                                     figDir = None):
+    """
+    Measure the three collective motion modes (translation, rotation, breathing)
+    per frame, then optionally subtract them from the track positions.
+
+    Parameters
+    ----------
+    df          : DataFrame with columns ['frame', 'x', 'y', 'particle']
+    fN          : file name root (used only for saving the figure)
+    PixPerUm    : pixel-per-micron scale of the acquisition
+    FPS         : frames per second
+    xC, yC      : centre of the polar coordinate system (pixels, same units as df.x/y)
+    tau_qc      : lag in frames used to measure the modes (default 1)
+    n_ann       : number of equal-population annular bins for rotation/breathing removal
+    # correct     : if True, write 'x_corr'/'y_corr' columns into the returned dataframe
+    PLOT        : produce the QC figure
+    SHOWPLOT    : call plt.show() (False → figure saved but not displayed)
+    SAVEPLOT    : save the figure to figDir
+    figDir      : directory for the figure (required when SAVEPLOT=True)
+
+    Returns
+    -------
+    dict_qc     : dict with keys
+                    'translation_pix'   – (nFrames, 2) array, mean (Δx, Δy) per frame [pix]
+                    'rotation_rad'      – (nFrames,) array, mean Δθ/r per frame [rad]
+                    'breathing_pix'     – (nFrames,) array, mean Δr_r per frame [pix]
+                    'translation_cum_pix' – cumulative translation [pix]
+                    'frames'            – frame index array
+                    'rms_translation_um_per_s'  – scalar, rms translation speed [µm/s]
+                    'mean_rotation_rad_per_s'   – scalar, mean |rotation| speed [rad/s]
+                    'rms_breathing_um_per_s'    – scalar, rms breathing speed [µm/s]
+    df_corr     : input df with two extra columns 'x_corr' and 'y_corr'
+                    (copies of x, y when correct=False)
+    """
+    
+    df = df.copy().sort_values(['particle', 'frame']).reset_index(drop=True)
+    
+    # ---- Build per-consecutive-frame displacement table ----
+    # Merge frame t and frame t+tau_qc on particle; keeps only particles present at both.
+    frames_sorted = np.sort(df['frame'].unique())
+    nF = len(frames_sorted)
+    
+    # Pre-allocate per-frame mode arrays; indexed by position in frames_sorted
+    Translation   = np.zeros((nF, 2))   # (Δx, Δy) [pix]
+    Rotation      = np.zeros(nF)        # mean Δθ/r [rad / frame]
+    Breathing     = np.zeros(nF)        # mean Δr_r  [pix / frame]
+    
+    # Annular bin edges in pixels, defined on the FULL set of positions
+    # (consistent with the report's convention: bins have equal particle count)
+    r_all = np.hypot(df['x'].values - xC, df['y'].values - yC)
+    ann_quantiles = np.linspace(0, 1, n_ann + 1)
+    ann_edges = np.quantile(r_all, ann_quantiles)
+    ann_edges[0]  -= 1e-6
+    ann_edges[-1] += 1e-6
+    
+    # Group by frame for fast merging
+    grouped = {f: df_f for f, df_f in df.groupby('frame')}
+    
+    for idx, f1 in enumerate(frames_sorted[:-tau_qc]):
+        f2 = frames_sorted[idx + tau_qc]
+        df_f1 = grouped[f1]
+        df_f2 = grouped[f2]
+        
+        merged = pd.merge(df_f1[['particle', 'x', 'y']],
+                          df_f2[['particle', 'x', 'y']],
+                          on='particle', how='inner', suffixes=('_1', '_2'))
+        
+        if len(merged) < 5:
+            continue
+        
+        x1, y1 = merged['x_1'].values, merged['y_1'].values
+        dx      = merged['x_2'].values - x1
+        dy      = merged['y_2'].values - y1
+        
+        # 1. Translation: simple mean displacement
+        Translation[idx, 0] = np.mean(dx)
+        Translation[idx, 1] = np.mean(dy)
+        
+        # 2 & 3. Rotation and breathing in polar coords centred on (xC, yC)
+        rx, ry  = x1 - xC, y1 - yC
+        r       = np.hypot(rx, ry)
+        ok      = r > 1e-9    # avoid division by zero right at centre
+        er_x, er_y = rx / np.where(ok, r, 1), ry / np.where(ok, r, 1)
+        et_x, et_y = -er_y, er_x              # orthoradial unit vector (90° CCW)
+        
+        d_r   = dx * er_x + dy * er_y         # radial component
+        d_th  = (dx * et_x + dy * et_y) / np.where(ok, r, 1)  # angular velocity [rad]
+        
+        # Average per annulus, then take the global mean of annular means
+        ann_idx = np.clip(np.digitize(r, ann_edges) - 1, 0, n_ann - 1)
+        ann_mean_dr  = np.array([np.mean(d_r[ok & (ann_idx == a)])
+                                 if np.any(ok & (ann_idx == a)) else 0.0
+                                 for a in range(n_ann)])
+        ann_mean_dth = np.array([np.mean(d_th[ok & (ann_idx == a)])
+                                 if np.any(ok & (ann_idx == a)) else 0.0
+                                 for a in range(n_ann)])
+        
+        Breathing[idx] = np.mean(ann_mean_dr)
+        Rotation[idx]  = np.mean(ann_mean_dth)
+    
+    # ---- Cumulative correction ----
+    # Cumulative sum of frame-to-frame translation gives the drift to subtract
+    # from position at frame t.  Frame index starts at frames_sorted[0].
+    Translation_cum = np.cumsum(Translation, axis=0)
+    Translation_cum = np.vstack([[0, 0], Translation_cum[:-1]])  # shift: frame[0] stays put
+    
+    # ---- Apply correction to track positions ----
+    df_corr = df.copy()
+    # if correct:
+    frame_to_idx = {f: i for i, f in enumerate(frames_sorted)}
+    idx_col = df_corr['frame'].map(frame_to_idx).values
+    df_corr['x_corr'] = df_corr['x'].values - Translation_cum[idx_col, 0]
+    df_corr['y_corr'] = df_corr['y'].values - Translation_cum[idx_col, 1]
+    # else:
+        # df_corr['x_corr'] = df_corr['x'].values
+        # df_corr['y_corr'] = df_corr['y'].values
+    
+    # ---- Scalar summary ----
+    dt = tau_qc / FPS       # seconds per lag step
+    rms_translation = np.sqrt(np.mean(Translation[:, 0]**2 + Translation[:, 1]**2)) / PixPerUm / dt
+    mean_rotation   = np.mean(np.abs(Rotation)) / dt
+    rms_breathing   = np.sqrt(np.mean(Breathing**2)) / PixPerUm / dt
+    
+    dict_qc = {
+        'frames'                     : frames_sorted,
+        'translation_pix'            : Translation,
+        'translation_cum_pix'        : Translation_cum,
+        'rotation_rad'               : Rotation,
+        'breathing_pix'              : Breathing,
+        'rms_translation_um_per_s'   : rms_translation,
+        'mean_rotation_rad_per_s'    : mean_rotation,
+        'rms_breathing_um_per_s'     : rms_breathing,
+    }
+    
+    # ---- Figure ----
+    if PLOT:
+        if not SHOWPLOT:
+            plt.ioff()
+        else:
+            plt.ion()
+        
+        pm.setGraphicOptions(mode='screen')
+        t_axis = frames_sorted / FPS   # time in seconds
+        
+        fig, axes = plt.subplots(2, 3, figsize=(17, 8), layout='compressed')
+        fig.suptitle(fN + ' — Global modes QC')
+        axes[0, 2].set_visible(False)   # top-right cell unused in 2×3 layout
+        
+        # (a) particle positions + centre
+        ax = axes[0, 0]
+        sub = df.iloc[::max(1, len(df)//5000)]   # downsample for speed
+        ax.scatter(sub['x'], sub['y'], s=0.3, c='0.6', rasterized=True)
+        ax.plot(xC, yC, 'r+', ms=14, mew=2, label='centre')
+        ax.set_aspect('equal', adjustable='datalim')
+        ax.invert_yaxis()
+        ax.set_xlabel('x (pix)')
+        ax.set_ylabel('y (pix)')
+        ax.set_title('(a) Positions & centre')
+        ax.legend()
+        
+        # (b) translation (Δx, Δy) and cumulative drift over time
+        ax = axes[0, 1]
+        ax.plot(t_axis, Translation[:, 0] / PixPerUm, color='tab:blue',  lw=0.8, label='Δx (µm)')
+        ax.plot(t_axis, Translation[:, 1] / PixPerUm, color='tab:red',   lw=0.8, label='Δy (µm)')
+        ax.plot(t_axis, Translation_cum[:, 0] / PixPerUm, color='tab:blue',  lw=1.5, ls='--', alpha=0.7, label='Σ Δx')
+        ax.plot(t_axis, Translation_cum[:, 1] / PixPerUm, color='tab:red',   lw=1.5, ls='--', alpha=0.7, label='Σ Δy')
+        ax.axhline(0, c='k', lw=0.5)
+        ax.grid()
+        ax.set_xlabel('t (s)')
+        ax.set_ylabel('displacement (µm)')
+        ax.set_title(f'(b) Translation  rms={rms_translation*1e3:.1f} nm/s')
+        ax.legend(fontsize=8, ncols=2)
+        
+        # (c) rotation and breathing vs time, each with its cumulative integral
+        # The integrals (cumulative sums) reveal whether modes drift in one direction
+        # over the film or merely fluctuate around zero — analogous to sum_Dxy for translation.
+        # Rotation integral: cumulative angle [rad]  (like a slow spin of the whole cell)
+        # Breathing integral: cumulative radial displacement [µm]  (like slow expansion/contraction)
+        Rotation_cum  = np.cumsum(Rotation)                   # [rad]
+        Breathing_cum = np.cumsum(Breathing) / PixPerUm       # [µm]
+    
+        ax = axes[1, 0]
+        ax.set_title(f'(c) Rotation — per frame & integral')
+        ax.plot(t_axis, Rotation / dt,   color='tab:green', lw=0.8, label=f'Ω (rad/s), rms={mean_rotation:.1e}')
+        ax.axhline(0, c='k', lw=0.5)
+        ax.set_xlabel('t (s)')
+        ax.set_ylabel('Ω (rad/s)', color='tab:green')
+        ax.tick_params(axis='y', colors='tab:green')
+        ax.grid()
+        ax2 = ax.twinx()
+        ax2.plot(t_axis, Rotation_cum,   color='tab:green', lw=1.5, ls='--', alpha=0.7,
+                 label='Σ Ω·Δt (rad)')
+        ax2.set_ylabel('cumulative angle (rad)', color='tab:green', alpha=0.7)
+        ax2.tick_params(axis='y', colors='tab:green')
+        lines1, labs1 = ax.get_legend_handles_labels()
+        lines2, labs2 = ax2.get_legend_handles_labels()
+        ax.legend(lines1 + lines2, labs1 + labs2, fontsize=8)
+    
+        ax = axes[1, 1]
+        ax.set_title(f'(d) Breathing — per frame & integral')
+        ax.plot(t_axis, Breathing / PixPerUm / dt, color='tab:orange', lw=0.8,
+                label=f'ṙ (µm/s), rms={rms_breathing*1e3:.1f} nm/s')
+        ax.axhline(0, c='k', lw=0.5)
+        ax.set_xlabel('t (s)')
+        ax.set_ylabel('ṙ (µm/s)', color='tab:orange')
+        ax.tick_params(axis='y', colors='tab:orange')
+        ax.grid()
+        ax2 = ax.twinx()
+        ax2.plot(t_axis, Breathing_cum, color='tab:orange', lw=1.5, ls='--', alpha=0.7,
+                 label='Σ ṙ·Δt (µm)')
+        ax2.set_ylabel('cumulative radial displacement (µm)', color='tab:orange', alpha=0.7)
+        ax2.tick_params(axis='y', colors='tab:orange')
+        lines1, labs1 = ax.get_legend_handles_labels()
+        lines2, labs2 = ax2.get_legend_handles_labels()
+        ax.legend(lines1 + lines2, labs1 + labs2, fontsize=8)
+        
+        # (e) one example track before and after correction
+        ax = axes[1, 2]
+        pid_example = df['particle'].unique()[len(df['particle'].unique()) // 2]
+        df_eg  = df[df['particle'] == pid_example].sort_values('frame')
+        df_eg2 = df_corr[df_corr['particle'] == pid_example].sort_values('frame')
+        x1_eg  = df_eg['x'].values
+        y1_eg  = df_eg['y'].values
+        x2_eg  = df_eg2['x_corr'].values
+        y2_eg  = df_eg2['y_corr'].values
+        ax.plot((x1_eg - x1_eg[0]) / PixPerUm, (y1_eg - y1_eg[0]) / PixPerUm,
+                color='tab:blue', lw=0.8, label='raw')
+        ax.plot((x2_eg - x2_eg[0]) / PixPerUm, (y2_eg - y2_eg[0]) / PixPerUm,
+                color='tab:red',  lw=0.8, label='corrected (x & y)')
+        ax.set_aspect('equal', adjustable='datalim')
+        ax.set_xlabel('Δx (µm)')
+        ax.set_ylabel('Δy (µm)')
+        ax.set_title(f'(e) Example track (particle {pid_example})')
+        ax.legend()
+        ax.grid()
+        
+        if SHOWPLOT:
+            plt.show()
+        
+        if SAVEPLOT and figDir is not None:
+            figName = fN + '_GlobalModesQC.png'
+            figPath = os.path.join(figDir, figName)
+            fig.savefig(figPath, dpi=150)
+        
+        if not SHOWPLOT:
+            plt.ion()
+
+    return(dict_qc, df_corr)
 
 
 # %%%% Pairwise MSD

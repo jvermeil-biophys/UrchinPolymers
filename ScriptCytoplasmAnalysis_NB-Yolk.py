@@ -72,7 +72,7 @@ Dict_rP = {
 Dict_pP = {
     'dir_trackFig': os.path.join(FIG_DIR, 'Tracking'),
     'dir_segmentFig': os.path.join(FIG_DIR, 'Segmentation'),
-    'dir_driftFig': os.path.join(FIG_DIR, 'Drift correction'),
+    'dir_globalModesFig': os.path.join(FIG_DIR, 'Global modes QC'),
     'dir_diverseFig': os.path.join(FIG_DIR, 'Diverse'),
     }
 
@@ -88,8 +88,9 @@ Dict_fSuf = {
     'suf_mask' : '_cellMask',
     'suf_rawTracks' : '_TmTracks',
     'suf_cleanTracks' : '_PyTracks',
-    'suf_cleanTracks_DriftCorr' : '_PyTracks2',
     'suf_drift' : '_XYdrift',
+    'suf_globalModes' : '_GlobalModes',
+    'suf_cleanTracks_XYcorr' : '_PyTracks_XYcorr',
     'suf_globalMsd' : '_GlobalMsd',
     'suf_globalMsdFits' : '_GlobalMsdFits',
     'suf_globalPairMsd' : '_GlobalPairMsd',
@@ -144,7 +145,8 @@ def NByolk_track_sequence(srcDir, tifNames, df_films_path,
                           Dict_TrackMate_Settings, 
                           Do_Contours = True, 
                           Do_Tracking = True, 
-                          Do_TrackCleaning = True,):
+                          Do_TrackCleaning = True,
+                          Do_GlobalModesQC = True):
     
     DF_FILMS = pd.read_csv(df_films_path)
     tifPaths = [os.path.join(srcDir, tifName) for tifName in tifNames]
@@ -158,7 +160,7 @@ def NByolk_track_sequence(srcDir, tifNames, df_films_path,
         PixPerUm = DF_FILMS.loc[idx, 'PixPerUm']
         FPS = DF_FILMS.loc[idx, 'FPS']
         Segmentation_Mode = DF_FILMS.loc[idx, 'segmentation']
-        Do_DriftCorrection = DF_FILMS.loc[idx, 'drift_correction']
+        Correct_Drift = DF_FILMS.loc[idx, 'drift_correction']
         mask_buffer_um = DF_FILMS.loc[idx, 'mask_edge_cutoff_um']
         edge_buffer_cutoff_um = DF_FILMS.loc[idx, 'tracking_edge_cutoff_um']
         nT = int(DF_FILMS.loc[idx, 'n_frames'])
@@ -230,25 +232,64 @@ def NByolk_track_sequence(srcDir, tifNames, df_films_path,
             df.to_csv(os.path.join(Dict_rP['dir_cleanTracks'], cleanTrackName), index=False, sep = '\t')
             plt.close('all')
         
-        
-        #### Correct global drift in trajectory
-        if Do_DriftCorrection:
-            print(pm.BRIGHTORANGE + '3.5. Drift correction' + pm.NORMAL)                
-            cleanTrackName = fN + Dict_fSuf['suf_cleanTracks'] + '.csv'
-            df = pd.read_csv(os.path.join(dstDir, cleanTrackName), sep='\t')
-        
-            df2, Dxy_corr = tbca.correct_drift_in_Tracks(
-                df, fN, tP, Dict_rP['dir_cleanTracks'], Dict_pP['dir_driftFig'], 
-                PixPerUm, FPS, 
-                PLOT = True, SHOWPLOT = False, SAVEPLOT = True, 
-                export_image = False
+        #### Global modes QC & drift correction       
+        if Do_GlobalModesQC:
+            print(pm.BRIGHTORANGE + '3.7. Global modes QC & correction' + pm.NORMAL)
+            
+            cleanTrackName  = fN + Dict_fSuf['suf_cleanTracks'] + '.csv'
+            cleanTrackPath  = os.path.join(Dict_rP['dir_cleanTracks'], cleanTrackName)
+            df_clean        = pd.read_csv(cleanTrackPath, sep='\t')
+            
+            if Segmentation_Mode == 'cell-contour':
+                contourPath = os.path.join(Dict_rP['dir_segmentation'], fN + Dict_fSuf['suf_contour'] + '.npy')
+                Contour_cell = np.load(contourPath)
+                [yC, xC] = tbca.get_contour_barycenter(Contour_cell)
+            else:
+                xC, yC = nX / 2, nY / 2 # fall back to image centre if no centre logged
+            
+            dict_qc, df_clean_corr = tbca.measure_and_correct_global_modes(
+                df_clean, fN, PixPerUm, FPS,
+                xC = xC, yC = yC,
+                tau_qc = 1, n_ann  = 8,
+                # correct = Correct_Drift,
+                PLOT = True, SHOWPLOT = False, SAVEPLOT = True,
+                figDir = Dict_pP['dir_globalModesFig'],
+            )
+            
+            # Print the scalar summary
+            print(f"    rms translation : {dict_qc['rms_translation_um_per_s']*1e3:.2f} nm/s")
+            print(f"    mean |rotation| : {dict_qc['mean_rotation_rad_per_s']:.2e} rad/s")
+            print(f"    rms breathing   : {dict_qc['rms_breathing_um_per_s']*1e3:.2f} nm/s")
+            
+            if Correct_Drift:
+                # Optionally save the corrected track file under a new suffix
+                # (downstream code can then choose between _PyTracks.csv and _PyTracks_GMcorr.csv)
+                xycorrTrackName = fN + Dict_fSuf['suf_cleanTracks_XYcorr'] + '.csv'
+                df_clean_corr.to_csv(
+                    os.path.join(Dict_rP['dir_cleanTracks'], xycorrTrackName),
+                    index=False, sep='\t'
                 )
             
-            driftArrayName = fN + Dict_fSuf['suf_drift']  + '.txt'
-            np.savetxt(os.path.join(Dict_rP['dir_cleanTracks'], driftArrayName), Dxy_corr)
+            plt.close('all')
+        
+        #### Correct global drift in trajectory
+        # if Do_DriftCorrection:
+        #     print(pm.BRIGHTORANGE + '3.5. Drift correction' + pm.NORMAL)                
+        #     cleanTrackName = fN + Dict_fSuf['suf_cleanTracks'] + '.csv'
+        #     df = pd.read_csv(os.path.join(dstDir, cleanTrackName), sep='\t')
+        
+        #     df2, Dxy_corr = tbca.correct_drift_in_Tracks(
+        #         df, fN, tP, Dict_rP['dir_cleanTracks'], Dict_pP['dir_globalModesFig'], 
+        #         PixPerUm, FPS, 
+        #         PLOT = True, SHOWPLOT = False, SAVEPLOT = True, 
+        #         export_image = False
+        #         )
             
-            dcTrackName = fN + Dict_fSuf['suf_cleanTracks_DriftCorr'] + '.csv'
-            df2.to_csv(os.path.join(Dict_rP['dir_cleanTracks'], dcTrackName), sep='\t')
+        #     driftArrayName = fN + Dict_fSuf['suf_drift']  + '.txt'
+        #     np.savetxt(os.path.join(Dict_rP['dir_cleanTracks'], driftArrayName), Dxy_corr)
+            
+        #     dcTrackName = fN + Dict_fSuf['suf_cleanTracks_DriftCorr'] + '.csv'
+        #     df2.to_csv(os.path.join(Dict_rP['dir_cleanTracks'], dcTrackName), sep='\t')
     
     
 def NByolk_msd_compute(tifNames, df_films_path, df_res_name,
@@ -857,6 +898,16 @@ def NByolk_ro_msd_compute(tifNames, df_films_path, df_res_name,
         ro_emsd_combined = res_emsd_r.copy()
         ro_emsd_combined.columns = ['lagt'] + [f'{c}_r'  for c in res_emsd_r.columns[1:]]
         ro_emsd_combined[[f'{c}_or' for c in res_emsd_or.columns[1:]]] = res_emsd_or.iloc[:, 1:].values
+        
+        # Anisotropy parameter A(τ) = (MSD_r − MSD_or) / (MSD_r + MSD_or)
+        # A < 0 : radial motion dominates ; A > 0 : orthoradial dominates ; A = 0 : isotropic
+        denom_A = ro_emsd_combined['msd_r'] + ro_emsd_combined['msd_or']
+        ro_emsd_combined['A'] = np.where(
+            denom_A > 0,
+            (ro_emsd_combined['msd_r'] - ro_emsd_combined['msd_or']) / denom_A,
+            np.nan,
+        )
+        
         ro_emsd_combined.to_csv(os.path.join(Dict_rP['dir_ROMsd'], roMsdName), index=False, sep='\t')
 
         fits_r  = fit_1d_msd(T_axis, MSD_r,  iLow, iHigh)
@@ -2184,20 +2235,20 @@ tifNames = [
     # '26-09-30_D1_PreF_C1_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
     # '26-09-30_D1_PreF_C2_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
     # '26-09-30_D1_PreF_C3_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
-    '26-09-30_D1_PostF_4min_C4_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
-    '26-09-30_D1_PostF_6min_C4_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
-    '26-09-30_D1_PostF_10min_C4_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
-    '26-09-30_D1_PostF_13min_C4_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
-    '26-09-30_D1_PostF_18min_C4_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
-    '26-09-30_D1_PostF_25min_C4_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
-    '26-09-30_D1_PostF_30min_C4_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
-    '26-09-30_D1_PostF_35min_C4_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
-    '26-09-30_D1_PostF_40min_C4_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
-    '26-09-30_D1_PostF_45min_C4_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
+    # '26-09-30_D1_PostF_4min_C4_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
+    # '26-09-30_D1_PostF_6min_C4_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
+    # '26-09-30_D1_PostF_10min_C4_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
+    # '26-09-30_D1_PostF_13min_C4_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
+    # '26-09-30_D1_PostF_18min_C4_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
+    # '26-09-30_D1_PostF_25min_C4_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
+    # '26-09-30_D1_PostF_30min_C4_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
+    # '26-09-30_D1_PostF_35min_C4_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
+    # '26-09-30_D1_PostF_40min_C4_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
+    # '26-09-30_D1_PostF_45min_C4_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
     '26-09-30_D1_PostF_52min_C4_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
-    '26-09-30_D1_PostF_60min_C4_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
-    '26-09-30_D1_PostF_65min_C4_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
-    '26-09-30_D1_PostF_70min_C4_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
+    # '26-09-30_D1_PostF_60min_C4_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
+    # '26-09-30_D1_PostF_65min_C4_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
+    # '26-09-30_D1_PostF_70min_C4_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
     ]
 
 tifPaths = [os.path.join(srcDir, tifName) for tifName in tifNames]
@@ -2220,8 +2271,8 @@ NByolk_track_sequence(
     srcDir, tifNames, df_films_PATH, 
     Dict_fSuf, Dict_rP, Dict_pP, 
     Dict_TrackMate_Settings, 
-    Do_Contours = True, Do_Tracking = True, 
-    Do_TrackCleaning = True, 
+    Do_Contours = False, Do_Tracking = False, 
+    Do_TrackCleaning = False, Do_GlobalModesQC = True,
     )
 
 # %%%% Run new MSD
@@ -2411,24 +2462,24 @@ mainDir = os.path.join(up.Path_IntraCellTracking, '26-09-30_FastAcq-Channel_Fec_
 srcDir = os.path.join(mainDir, 'D2')
 dstDir = os.path.join(mainDir, 'SPT_Results_2')
 tifNames = [
-    '26-09-30_D2-R_PreF_C3_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
-    '26-09-30_D2-R_PreF_C4_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
-    '26-09-30_D2-R_PostF_4min_C5_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
-    '26-09-30_D2-R_PostF_6min_C5_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
-    '26-09-30_D2-R_PostF_8min_C5_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
-    '26-09-30_D2-R_PostF_12min_C5_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
-    '26-09-30_D2-R_PostF_15min_C5_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
-    '26-09-30_D2-R_PostF_20min_C5_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
-    '26-09-30_D2-R_PostF_25min_C5_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
-    '26-09-30_D2-R_PostF_30min_C5_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
-    '26-09-30_D2-R_PostF_36min_C5_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
-    '26-09-30_D2-R_PostF_40min_C5_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
-    '26-09-30_D2-R_PostF_45min_C5_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
-    '26-09-30_D2-R_PostF_50min_C5_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
+    # '26-09-30_D2-R_PreF_C3_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
+    # '26-09-30_D2-R_PreF_C4_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
+    # '26-09-30_D2-R_PostF_4min_C5_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
+    # '26-09-30_D2-R_PostF_6min_C5_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
+    # '26-09-30_D2-R_PostF_8min_C5_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
+    # '26-09-30_D2-R_PostF_12min_C5_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
+    # '26-09-30_D2-R_PostF_15min_C5_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
+    # '26-09-30_D2-R_PostF_20min_C5_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
+    # '26-09-30_D2-R_PostF_25min_C5_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
+    # '26-09-30_D2-R_PostF_30min_C5_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
+    # '26-09-30_D2-R_PostF_36min_C5_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
+    # '26-09-30_D2-R_PostF_40min_C5_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
+    # '26-09-30_D2-R_PostF_45min_C5_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
+    # '26-09-30_D2-R_PostF_50min_C5_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
     '26-09-30_D2-R_PostF_53min_C5_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
-    '26-09-30_D2-R_PostF_55min_C5_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
-    '26-09-30_D2-R_PostF_60min_C5_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
-    '26-09-30_D2-R_PostF_65min_C5_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
+    # '26-09-30_D2-R_PostF_55min_C5_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
+    # '26-09-30_D2-R_PostF_60min_C5_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
+    # '26-09-30_D2-R_PostF_65min_C5_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
     ]
 
 tifPaths = [os.path.join(srcDir, tifName) for tifName in tifNames]
@@ -2451,8 +2502,8 @@ NByolk_track_sequence(
     srcDir, tifNames, df_films_PATH, 
     Dict_fSuf, Dict_rP, Dict_pP, 
     Dict_TrackMate_Settings, 
-    Do_Contours = True, Do_Tracking = True, 
-    Do_TrackCleaning = True, 
+    Do_Contours = False, Do_Tracking = False, 
+    Do_TrackCleaning = False, Do_GlobalModesQC = True,
     )
 
 # %%%% Run new MSD
