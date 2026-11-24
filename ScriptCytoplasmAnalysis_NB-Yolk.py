@@ -499,6 +499,87 @@ def NByolk_imsd_compute(tifNames, df_films_path,
     fileNames = [fN.split('.')[0] for fN in tifNames]
     # tifPaths = [os.path.join(srcDir, tifName) for tifName in tifNames]
     
+    #### Helper fit function
+    def fit_2d_msd(T_axis, MSD_values, iLow, iHigh):
+        """
+        Fit the standard set of MSD metrics on a 2-D MSD curve.
+        (MSD_2D = 4·D·Δt).
+        Returns a dict of fit results.
+        """
+        res = {}
+        valid = np.isfinite(MSD_values) & (MSD_values > 0)
+        if valid.sum() < 6:
+            for key in ['D_lin', 'k_full', 'D_full',
+                        'k_lowDt', 'D_lowDt',
+                        'D_lin_highDt', 'k_highDt', 'D_highDt', 'tc']:
+                res[key] = np.nan
+            return res
+
+        T   = T_axis[valid]
+        MSD = MSD_values[valid]
+
+        # Linear fit – full range
+        try:
+            parms, _ = ufun.fitLineHuber(T, MSD, with_intercept=False)
+            res['D_lin'] = parms[0] / 4
+        except Exception:
+            res['D_lin'] = np.nan
+
+        # Log-log fit – full range
+        try:
+            parms, _ = ufun.fitLineHuber(np.log(T), np.log(MSD), with_intercept=True)
+            b, a = parms
+            res['k_full'] = a
+            res['D_full'] = np.exp(b) / 4
+        except Exception:
+            res['k_full'] = res['D_full'] = np.nan
+
+        # Log-log fit – low-Δt range
+        valid_low = np.isfinite(MSD_values[:iLow]) & (MSD_values[:iLow] > 0)
+        T_low, MSD_low = T_axis[:iLow][valid_low], MSD_values[:iLow][valid_low]
+        if len(T_low) >= 3:
+            try:
+                # parms, _ = ufun.fitLineHuber(np.log(T_low), np.log(MSD_low), with_intercept=True)
+                # b, a = parms
+                parms = np.polyfit(p.log(T_low), np.log(MSD_low), 1)
+                a, b = parms
+                res['k_lowDt'] = a
+                res['D_lowDt'] = np.exp(b) / 4
+            except Exception:
+                res['k_lowDt'] = res['D_lowDt'] = np.nan
+        else:
+            res['k_lowDt'] = res['D_lowDt'] = np.nan
+
+        # Linear + log-log fits – high-Δt range
+        valid_high = np.isfinite(MSD_values[iHigh:]) & (MSD_values[iHigh:] > 0)
+        T_high, MSD_high = T_axis[iHigh:][valid_high], MSD_values[iHigh:][valid_high]
+        if len(T_high) >= 6:
+            try:
+                parms, _ = ufun.fitLineHuber(T_high, MSD_high, with_intercept=False)
+                res['D_lin_highDt'] = parms[0] / 4
+            except Exception:
+                res['D_lin_highDt'] = np.nan
+            try:
+                # parms, _ = ufun.fitLineHuber(np.log(T_high), np.log(MSD_high), with_intercept=True)
+                # b, a = parms
+                parms = np.polyfit(p.log(T_high), np.log(MSD_high), 1)
+                a, b = parms
+                res['k_highDt'] = a
+                res['D_highDt'] = np.exp(b) / 4
+            except Exception:
+                res['k_highDt'] = res['D_highDt'] = np.nan
+        else:
+            res['D_lin_highDt'] = res['k_highDt'] = res['D_highDt'] = np.nan
+
+        # Cross-over time
+        try:
+            res['tc'] = (res['D_lowDt'] / res['D_highDt']) ** \
+                        (1 / (res['k_highDt'] - res['k_lowDt']))
+        except Exception:
+            res['tc'] = np.nan
+
+        return(res)
+    
     for i in range(len(fileNames)):
         tN, fN = tifNames[i], fileNames[i]
         # tP = tifPaths[i]
@@ -543,9 +624,14 @@ def NByolk_imsd_compute(tifNames, df_films_path,
 
         iLow = ufun.findFirst(lowDt_upper, T_all) + 1
         iHigh = ufun.findFirst(highDt_lower, T_all)
+        
+        group_by_particle = df.groupby('particle')
+        imsd_cols = res_imsd.columns
 
-        for particle_id in res_imsd.columns:
+        for particle_id, df_p in group_by_particle:
             if particle_id == 'lagt':
+                continue
+            if particle_id not in imsd_cols:
                 continue
 
             MSD = res_imsd[particle_id].values
@@ -557,92 +643,95 @@ def NByolk_imsd_compute(tifNames, df_films_path,
 
             T = T_all[valid]
             MSD = MSD[valid]
+            
+            xm = np.median(df_p['x'])
+            ym = np.median(df_p['y'])
 
-            row = {'particle': particle_id}
+            row = {'particle': particle_id,
+                   'x_med_pix':xm,
+                   'y_med_pix':ym,}
+            
+            fits_i  = fit_2d_msd(T, MSD,  iLow, iHigh)
+
+            row = {}
+
+            for metric, val in fits_i.items():
+                row[f'{metric}'] = val
+                
+            imsd_rows.append(row)
+                    
 
             # --- Linear fit over full range (2D: MSD = 4·D·Δt) ---
-            try:
-                parms, _ = ufun.fitLineHuber(T, MSD, with_intercept=False)
-                row['D_lin'] = parms[0] / 4
-            except Exception:
-                row['D_lin'] = np.nan
+            # try:
+            #     parms, _ = ufun.fitLineHuber(T, MSD, with_intercept=False)
+            #     row['D_lin'] = parms[0] / 4
+            # except Exception:
+            #     row['D_lin'] = np.nan
 
-            # --- Log-log fit over full range ---
-            try:
-                parms, _ = ufun.fitLineHuber(np.log(T), np.log(MSD), with_intercept=True)
-                b, a = parms
-                row['k_full'] = a
-                row['D_full'] = np.exp(b) / 4
-            except Exception:
-                row['k_full'], row['D_full'] = np.nan, np.nan
+            # # --- Log-log fit over full range ---
+            # try:
+            #     parms, _ = ufun.fitLineHuber(np.log(T), np.log(MSD), with_intercept=True)
+            #     b, a = parms
+            #     row['k_full'] = a
+            #     row['D_full'] = np.exp(b) / 4
+            # except Exception:
+            #     row['k_full'], row['D_full'] = np.nan, np.nan
 
-            # --- Log-log fit over low-Δt range ---
-            # Re-compute valid mask restricted to low-Δt slice
-            valid_low = np.isfinite(res_imsd[particle_id].values[:iLow]) & \
-                        (res_imsd[particle_id].values[:iLow] > 0)
-            T_low  = T_all[:iLow][valid_low]
-            MSD_low = res_imsd[particle_id].values[:iLow][valid_low]
+            # # --- Log-log fit over low-Δt range ---
+            # # Re-compute valid mask restricted to low-Δt slice
+            # valid_low = np.isfinite(res_imsd[particle_id].values[:iLow]) & \
+            #             (res_imsd[particle_id].values[:iLow] > 0)
+            # T_low  = T_all[:iLow][valid_low]
+            # MSD_low = res_imsd[particle_id].values[:iLow][valid_low]
 
-            if len(T_low) >= 3:
-                try:
-                    parms, _ = ufun.fitLineHuber(np.log(T_low), np.log(MSD_low), with_intercept=True)
-                    b, a = parms
-                    row['k_lowDt'] = a
-                    row['D_lowDt'] = np.exp(b) / 4
-                except Exception:
-                    row['k_lowDt'], row['D_lowDt'] = np.nan, np.nan
-            else:
-                row['k_lowDt'], row['D_lowDt'] = np.nan, np.nan
+            # if len(T_low) >= 3:
+            #     try:
+            #         parms, _ = ufun.fitLineHuber(np.log(T_low), np.log(MSD_low), with_intercept=True)
+            #         b, a = parms
+            #         row['k_lowDt'] = a
+            #         row['D_lowDt'] = np.exp(b) / 4
+            #     except Exception:
+            #         row['k_lowDt'], row['D_lowDt'] = np.nan, np.nan
+            # else:
+            #     row['k_lowDt'], row['D_lowDt'] = np.nan, np.nan
 
-            # --- Linear + log-log fits over high-Δt range ---
-            valid_high = np.isfinite(res_imsd[particle_id].values[iHigh:]) & \
-                         (res_imsd[particle_id].values[iHigh:] > 0)
-            T_high   = T_all[iHigh:][valid_high]
-            MSD_high = res_imsd[particle_id].values[iHigh:][valid_high]
+            # # --- Linear + log-log fits over high-Δt range ---
+            # valid_high = np.isfinite(res_imsd[particle_id].values[iHigh:]) & \
+            #              (res_imsd[particle_id].values[iHigh:] > 0)
+            # T_high   = T_all[iHigh:][valid_high]
+            # MSD_high = res_imsd[particle_id].values[iHigh:][valid_high]
 
-            if len(T_high) >= 6:
-                try:
-                    parms, _ = ufun.fitLineHuber(T_high, MSD_high, with_intercept=False)
-                    row['D_lin_highDt'] = parms[0] / 4
-                except Exception:
-                    row['D_lin_highDt'] = np.nan
+            # if len(T_high) >= 6:
+            #     try:
+            #         parms, _ = ufun.fitLineHuber(T_high, MSD_high, with_intercept=False)
+            #         row['D_lin_highDt'] = parms[0] / 4
+            #     except Exception:
+            #         row['D_lin_highDt'] = np.nan
 
-                try:
-                    parms, _ = ufun.fitLineHuber(np.log(T_high), np.log(MSD_high), with_intercept=True)
-                    b, a = parms
-                    row['k_highDt'] = a
-                    row['D_highDt'] = np.exp(b) / 4
-                except Exception:
-                    row['k_highDt'], row['D_highDt'] = np.nan, np.nan
-            else:
-                row['D_lin_highDt'] = np.nan
-                row['k_highDt'], row['D_highDt'] = np.nan, np.nan
+            #     try:
+            #         parms, _ = ufun.fitLineHuber(np.log(T_high), np.log(MSD_high), with_intercept=True)
+            #         b, a = parms
+            #         row['k_highDt'] = a
+            #         row['D_highDt'] = np.exp(b) / 4
+            #     except Exception:
+            #         row['k_highDt'], row['D_highDt'] = np.nan, np.nan
+            # else:
+            #     row['D_lin_highDt'] = np.nan
+            #     row['k_highDt'], row['D_highDt'] = np.nan, np.nan
 
-            # --- Cross-over time ---
-            try:
-                row['tc'] = (row['D_lowDt'] / row['D_highDt']) ** \
-                            (1 / (row['k_highDt'] - row['k_lowDt']))
-            except Exception:
-                row['tc'] = np.nan
+            # # --- Cross-over time ---
+            # try:
+            #     row['tc'] = (row['D_lowDt'] / row['D_highDt']) ** \
+            #                 (1 / (row['k_highDt'] - row['k_lowDt']))
+            # except Exception:
+            #     row['tc'] = np.nan
 
-            imsd_rows.append(row)
+            # imsd_rows.append(row)
 
         df_imsd_fits = pd.DataFrame(imsd_rows)
         print(f'{time.time()-top:.2f} s')
         
-        #### C. Complete with postion info
-        print(pm.BRIGHTORANGE + 'C. Complete with postion info... ' + pm.NORMAL, end='')
-        top = time.time()
         
-        valid_particles = df_imsd_fits['particle'].to_numpy()
-        for p, df_p in df.groupby('particle'):
-            if p in valid_particles:
-                xm = np.median(df_p['x'])
-                ym = np.median(df_p['y'])
-                df_imsd_fits.loc[df_imsd_fits['particle']==p, 'x_med_pix'] = xm
-                df_imsd_fits.loc[df_imsd_fits['particle']==p, 'y_med_pix'] = ym
-        print(f'{time.time()-top:.2f} s')
-
         #### D. Save the per-particle fit results
         imsdFitsName = fN + Dict_fSuf['suf_indivMsdFits'] + '.csv'
         df_imsd_fits.to_csv(os.path.join(Dict_rP['dir_indivMsd'], imsdFitsName), index=False, sep='\t')
@@ -705,6 +794,89 @@ def NByolk_ro_msd_compute(tifNames, df_films_path, df_res_name,
     fileNames = [fN.split('.')[0] for fN in tifNames]
     # tifPaths = [os.path.join(srcDir, tifName) for tifName in tifNames]
     
+    #### Helper fit function
+    def fit_1d_msd(T_axis, MSD_values, iLow, iHigh):
+        """
+        Fit the standard set of MSD metrics on a 1-D MSD curve.
+        Divides by 2 instead of 4 (MSD_1D = 2·D·Δt).
+        Returns a dict of fit results.
+        """
+        res = {}
+        valid = np.isfinite(MSD_values) & (MSD_values > 0)
+        if valid.sum() < 6:
+            for key in ['D_lin', 'k_full', 'D_full',
+                        'k_lowDt', 'D_lowDt',
+                        'D_lin_highDt', 'k_highDt', 'D_highDt', 'tc']:
+                res[key] = np.nan
+            return res
+
+        T   = T_axis[valid]
+        MSD = MSD_values[valid]
+
+        # Linear fit – full range
+        try:
+            parms, _ = ufun.fitLineHuber(T, MSD, with_intercept=False)
+            res['D_lin'] = parms[0] / 2
+        except Exception:
+            res['D_lin'] = np.nan
+
+        # Log-log fit – full range
+        try:
+            parms, _ = ufun.fitLineHuber(np.log(T), np.log(MSD), with_intercept=True)
+            b, a = parms
+            res['k_full'] = a
+            res['D_full'] = np.exp(b) / 2
+        except Exception:
+            res['k_full'] = res['D_full'] = np.nan
+
+        # Log-log fit – low-Δt range
+        valid_low = np.isfinite(MSD_values[:iLow]) & (MSD_values[:iLow] > 0)
+        T_low, MSD_low = T_axis[:iLow][valid_low], MSD_values[:iLow][valid_low]
+        if len(T_low) >= 3:
+            try:
+                # parms, _ = ufun.fitLineHuber(np.log(T_low), np.log(MSD_low), with_intercept=True)
+                # b, a = parms
+                parms = np.polyfit(p.log(T_low), np.log(MSD_low), 1)
+                a, b = parms
+                res['k_lowDt'] = a
+                res['D_lowDt'] = np.exp(b) / 2
+            except Exception:
+                res['k_lowDt'] = res['D_lowDt'] = np.nan
+        else:
+            res['k_lowDt'] = res['D_lowDt'] = np.nan
+
+        # Linear + log-log fits – high-Δt range
+        valid_high = np.isfinite(MSD_values[iHigh:]) & (MSD_values[iHigh:] > 0)
+        T_high, MSD_high = T_axis[iHigh:][valid_high], MSD_values[iHigh:][valid_high]
+        if len(T_high) >= 6:
+            try:
+                parms, _ = ufun.fitLineHuber(T_high, MSD_high, with_intercept=False)
+                res['D_lin_highDt'] = parms[0] / 2
+            except Exception:
+                res['D_lin_highDt'] = np.nan
+            try:
+                # parms, _ = ufun.fitLineHuber(np.log(T_high), np.log(MSD_high), with_intercept=True)
+                # b, a = parms
+                parms = np.polyfit(p.log(T_high), np.log(MSD_high), 1)
+                a, b = parms
+                res['k_highDt'] = a
+                res['D_highDt'] = np.exp(b) / 2
+            except Exception:
+                res['k_highDt'] = res['D_highDt'] = np.nan
+        else:
+            res['D_lin_highDt'] = res['k_highDt'] = res['D_highDt'] = np.nan
+
+        # Cross-over time
+        try:
+            res['tc'] = (res['D_lowDt'] / res['D_highDt']) ** \
+                        (1 / (res['k_highDt'] - res['k_lowDt']))
+        except Exception:
+            res['tc'] = np.nan
+
+        return(res)
+    
+    
+    #### Main loop
     for i in range(len(fileNames)):
         tN, fN = tifNames[i], fileNames[i]
         # tP = tifPaths[i]
@@ -748,81 +920,7 @@ def NByolk_ro_msd_compute(tifNames, df_films_path, df_res_name,
             # 4. Compute contrast = (parm_r - parm_or) / (parm_r + parm_or) for each metric
             # 5. Collect everything into one per-particle DataFrame
 
-        def fit_1d_msd(T_axis, MSD_values, iLow, iHigh):
-            """
-            Fit the standard set of MSD metrics on a 1-D MSD curve.
-            Divides by 2 instead of 4 (MSD_1D = 2·D·Δt).
-            Returns a dict of fit results.
-            """
-            res = {}
-            valid = np.isfinite(MSD_values) & (MSD_values > 0)
-            if valid.sum() < 6:
-                for key in ['D_lin', 'k_full', 'D_full',
-                            'k_lowDt', 'D_lowDt',
-                            'D_lin_highDt', 'k_highDt', 'D_highDt', 'tc']:
-                    res[key] = np.nan
-                return res
-
-            T   = T_axis[valid]
-            MSD = MSD_values[valid]
-
-            # Linear fit – full range
-            try:
-                parms, _ = ufun.fitLineHuber(T, MSD, with_intercept=False)
-                res['D_lin'] = parms[0] / 2
-            except Exception:
-                res['D_lin'] = np.nan
-
-            # Log-log fit – full range
-            try:
-                parms, _ = ufun.fitLineHuber(np.log(T), np.log(MSD), with_intercept=True)
-                b, a = parms
-                res['k_full'] = a
-                res['D_full'] = np.exp(b) / 2
-            except Exception:
-                res['k_full'] = res['D_full'] = np.nan
-
-            # Log-log fit – low-Δt range
-            valid_low = np.isfinite(MSD_values[:iLow]) & (MSD_values[:iLow] > 0)
-            T_low, MSD_low = T_axis[:iLow][valid_low], MSD_values[:iLow][valid_low]
-            if len(T_low) >= 3:
-                try:
-                    parms, _ = ufun.fitLineHuber(np.log(T_low), np.log(MSD_low), with_intercept=True)
-                    b, a = parms
-                    res['k_lowDt'] = a
-                    res['D_lowDt'] = np.exp(b) / 2
-                except Exception:
-                    res['k_lowDt'] = res['D_lowDt'] = np.nan
-            else:
-                res['k_lowDt'] = res['D_lowDt'] = np.nan
-
-            # Linear + log-log fits – high-Δt range
-            valid_high = np.isfinite(MSD_values[iHigh:]) & (MSD_values[iHigh:] > 0)
-            T_high, MSD_high = T_axis[iHigh:][valid_high], MSD_values[iHigh:][valid_high]
-            if len(T_high) >= 6:
-                try:
-                    parms, _ = ufun.fitLineHuber(T_high, MSD_high, with_intercept=False)
-                    res['D_lin_highDt'] = parms[0] / 2
-                except Exception:
-                    res['D_lin_highDt'] = np.nan
-                try:
-                    parms, _ = ufun.fitLineHuber(np.log(T_high), np.log(MSD_high), with_intercept=True)
-                    b, a = parms
-                    res['k_highDt'] = a
-                    res['D_highDt'] = np.exp(b) / 2
-                except Exception:
-                    res['k_highDt'] = res['D_highDt'] = np.nan
-            else:
-                res['D_lin_highDt'] = res['k_highDt'] = res['D_highDt'] = np.nan
-
-            # Cross-over time
-            try:
-                res['tc'] = (res['D_lowDt'] / res['D_highDt']) ** \
-                            (1 / (res['k_highDt'] - res['k_lowDt']))
-            except Exception:
-                res['tc'] = np.nan
-
-            return res
+        
 
         # Metric names for which we compute the contrast
         contrast_metrics = ['D_lin', 'k_full', 'D_full',
