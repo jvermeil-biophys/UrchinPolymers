@@ -67,6 +67,7 @@ Dict_rP = {
     'dir_pairMsd': os.path.join(RES_DIR, 'pairMSD'),
     'dir_indivMsd': os.path.join(RES_DIR, 'indivMSD'),
     'dir_ROMsd': os.path.join(RES_DIR, 'RO-MSD'),
+    'dir_corrCoefs': os.path.join(RES_DIR, 'Correlations-coefs')
     }
 
 Dict_pP = {
@@ -74,6 +75,7 @@ Dict_pP = {
     'dir_segmentFig': os.path.join(FIG_DIR, 'Segmentation'),
     'dir_globalModesFig': os.path.join(FIG_DIR, 'Global modes QC'),
     'dir_diverseFig': os.path.join(FIG_DIR, 'Diverse'),
+    'dir_corrCoefs': os.path.join(FIG_DIR, 'Correlations-coefs')
     }
 
 df_cells_PATH = os.path.join(RES_DIR, 'SPT_Data_Cells.csv')
@@ -1992,6 +1994,188 @@ def NByolk_explore_zone_shape_plot(tifNames, Dict_rP, Dict_pP, df_films_path,
 
     return fig
 
+#### Plot displacement correlations C(tau, R) and rho(tau, R)
+
+
+# Companion to compute_displacement_correlations().
+# Two-panel figure:
+#   Left  — C(R) with tau colour-coded + null model as dashed lines
+#   Right — rho(R) with tau colour-coded + horizontal zero line
+#
+# Optional exponential fit on a chosen tau:
+#   fits C(R) = A * exp(-R / xi) over all finite R values for that tau,
+#   draws the fit curve, and annotates xi on the plot.
+
+
+def plot_displacement_correlations(tau_s_arr, R_centers_um, C, rho, C_null,
+                                   projection      = 'full',
+                                   fit_exp         = False,
+                                   fit_tau_s       = None,
+                                   SHOWPLOT        = False,
+                                   SAVEPLOT        = False,
+                                   figDir          = None,
+                                   figName         = 'DisplacementCorrelations',
+                                   fig_title       = ''):
+    """
+    Plot C(R) and rho(R) for all lag times, with tau colour-coded.
+
+    Parameters
+    ----------
+    tau_s_arr    : 1-D array of lag times (s), shape (n_tau,).
+                   Output of compute_displacement_correlations().
+    R_centers_um : 1-D array of bin centres (µm), shape (n_R,).
+    C            : 2-D array, covariance, shape (n_tau, n_R).
+    rho          : 2-D array, correlation coefficient, shape (n_tau, n_R).
+    C_null       : 2-D array, null-model covariance, shape (n_tau, n_R).
+    projection   : string label used in axis titles ('full', 'r', or 'theta').
+    fit_exp      : if True, fit C(R) = A * exp(-R / xi) for the lag time
+                   closest to fit_tau_s and display xi on the C panel.
+    fit_tau_s    : lag time (s) to use for the exponential fit.
+                   If None, the median tau is used.
+                   The closest available tau in tau_s_arr is selected.
+    SHOWPLOT     : call plt.show().
+    SAVEPLOT     : save the figure to figDir / figName + '.png'.
+    figDir       : directory for saving (required when SAVEPLOT=True).
+    figName      : file name root (no extension).
+    fig_title    : optional suptitle string.
+
+    Returns
+    -------
+    fig, axes    : the matplotlib Figure and (ax_C, ax_rho) axes tuple.
+    fit_results  : dict with keys 'tau_s', 'A', 'xi_um', 'R2' if fit_exp=True,
+                   else None.
+    """
+
+    n_tau = len(tau_s_arr)
+
+    # ---- colour map: one colour per tau, log-spaced from cold to warm ----
+    cmap   = plt.cm.plasma
+    t_norm = mpl.colors.LogNorm(vmin=tau_s_arr.min(), vmax=tau_s_arr.max()) \
+             if tau_s_arr.min() > 0 else mpl.colors.Normalize(
+                 vmin=tau_s_arr.min(), vmax=tau_s_arr.max())
+    colors = [cmap(t_norm(t)) for t in tau_s_arr]
+
+    # ---- projection label for axis titles ----
+    proj_labels = {
+        'full' : r'$\mathbf{\Delta r}_i \cdot \mathbf{\Delta r}_j$  (full tensor trace)',
+        'r'    : r'$\hat{e}_r$ projection  ($C_{rr}$, $\rho_{rr}$)',
+        'theta': r'$\hat{e}_\theta$ projection  ($C_{\theta\theta}$, $\rho_{\theta\theta}$)',
+    }
+    proj_label = proj_labels.get(projection, projection)
+
+    # ---- optional exponential fit ----
+    fit_results = None
+    if fit_exp:
+        def exp_decay(R, A, xi):
+            return A * np.exp(-R / xi)
+        
+        if fit_tau_s is None:
+            fit_tau_s = np.median(tau_s_arr)
+        fit_tau_idx = int(np.argmin(np.abs(tau_s_arr - fit_tau_s)))
+        fit_tau_actual = float(tau_s_arr[fit_tau_idx])
+
+        C_fit_row = C[fit_tau_idx, :]
+        valid     = np.isfinite(C_fit_row)
+
+        if valid.sum() >= 3:
+            from scipy.optimize import curve_fit
+            
+            try:
+                R_fit  = R_centers_um[valid]
+                C_fit  = C_fit_row[valid]
+                p0     = [C_fit[0], R_fit[-1] / 2]
+                popt, _ = curve_fit(exp_decay, R_fit, C_fit, p0=p0, maxfev=4000)
+                A_fit, xi_fit = popt
+                # R² on the fitted points
+                C_pred = exp_decay(R_fit, *popt)
+                ss_res = np.sum((C_fit - C_pred)**2)
+                ss_tot = np.sum((C_fit - C_fit.mean())**2)
+                R2     = 1 - ss_res / ss_tot if ss_tot > 0 else np.nan
+                fit_results = dict(tau_s=fit_tau_actual, A=float(A_fit),
+                                   xi_um=float(xi_fit), R2=float(R2))
+            except Exception as e:
+                print(f'  [plot_displacement_correlations] Exponential fit failed: {e}')
+                fit_results = None
+
+    # ---- figure ----
+    if not SHOWPLOT:
+        plt.ioff()
+    else:
+        plt.ion()
+
+    fig, axes = plt.subplots(1, 2, figsize=(12, 5), layout='constrained')
+
+    if fig_title:
+        fig.suptitle(fig_title)
+
+    ax_C, ax_rho = axes
+
+    # --- panel 1: C(R) ---
+    ax_C.set_xlabel('R (µm)')
+    ax_C.set_ylabel('C (µm²)')
+    ax_C.set_title(f'Covariance C(R)\n{proj_label}')
+    ax_C.axhline(0, color='k', lw=0.5, zorder=0)
+
+    for tau_idx, (tau_s, col) in enumerate(zip(tau_s_arr, colors)):
+        label = f'τ = {tau_s:g} s'
+        ax_C.plot(R_centers_um, C[tau_idx, :],
+                  'o-', color=col, lw=1.4, ms=4, label=label)
+        #### QUESTIONABLE CONDITION HERE !
+        if np.max(C_null[tau_idx, :]) < 0.05:
+            ax_C.fill_between(R_centers_um, C_null[tau_idx, :],
+                              color=col, alpha=0.3)
+
+    # exponential fit curve and annotation
+    if fit_results is not None:
+        R_smooth = np.linspace(R_centers_um[0], R_centers_um[-1], 200)
+        C_smooth = fit_results['A'] * np.exp(-R_smooth / fit_results['xi_um'])
+        # fit_col  = colors[fit_tau_idx]
+        
+        xi = fit_results['xi_um']
+        # R_max = R_centers_um[-1]
+        ann_text = (f'ξ = {xi:.1f} µm\n'
+                    f'R² = {fit_results["R2"]:.2f}')
+        
+        ax_C.plot(R_smooth, C_smooth, '-.', color='k', lw=1.0, alpha=1,
+                  zorder=5, label=f'exp fit τ={fit_results["tau_s"]:g} s\n' + ann_text)
+
+    # dummy lines for the null-model legend entry
+    ax_C.fill_between([], [], alpha=0.5, label='null model')
+    ax_C.legend(fontsize=8, loc='upper right', framealpha=0.85)
+    ax_C.grid(True, lw=0.4, alpha=0.5)
+
+    # --- panel 2: rho(R) ---
+    ax_rho.set_xlabel('R (µm)')
+    ax_rho.set_ylabel('ρ')
+    ax_rho.set_title(f'Correlation coefficient ρ(R)\n{proj_label}')
+    ax_rho.axhline(0, color='k', lw=0.5, zorder=0)
+
+    for tau_idx, (tau_s, col) in enumerate(zip(tau_s_arr, colors)):
+        label = f'τ = {tau_s:g} s'
+        ax_rho.plot(R_centers_um, rho[tau_idx, :],
+                    'o-', color=col, lw=1.4, ms=4, label=label)
+
+    ax_rho.legend(fontsize=8, loc='upper right', framealpha=0.85)
+    ax_rho.grid(True, lw=0.4, alpha=0.5)
+
+    # # ---- shared colorbar (tau) ----
+    # sm = plt.cm.ScalarMappable(cmap=cmap, norm=t_norm)
+    # sm.set_array([])
+    # cbar = fig.colorbar(sm, ax=axes, fraction=0.025, pad=0.02, aspect=30)
+    # cbar.set_label('τ (s)', fontsize=10)
+
+    # ---- save / show ----
+    if SAVEPLOT and figDir is not None:
+        os.makedirs(figDir, exist_ok=True)
+        fig.savefig(os.path.join(figDir, figName + '.png'), dpi=150)
+
+    if SHOWPLOT:
+        plt.show()
+    else:
+        plt.ion()
+
+    return fig, axes, fit_results
+
 
 # %% 1. Tracking and MSD
 
@@ -2336,14 +2520,14 @@ tifNames = [
     # '26-09-30_D1_PostF_4min_C4_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
     # '26-09-30_D1_PostF_6min_C4_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
     # '26-09-30_D1_PostF_10min_C4_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
-    # '26-09-30_D1_PostF_13min_C4_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
+    '26-09-30_D1_PostF_13min_C4_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
     # '26-09-30_D1_PostF_18min_C4_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
     # '26-09-30_D1_PostF_25min_C4_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
     # '26-09-30_D1_PostF_30min_C4_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
     # '26-09-30_D1_PostF_35min_C4_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
     # '26-09-30_D1_PostF_40min_C4_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
     # '26-09-30_D1_PostF_45min_C4_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
-    '26-09-30_D1_PostF_52min_C4_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
+    # '26-09-30_D1_PostF_52min_C4_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
     # '26-09-30_D1_PostF_60min_C4_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
     # '26-09-30_D1_PostF_65min_C4_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
     # '26-09-30_D1_PostF_70min_C4_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
@@ -2389,6 +2573,85 @@ df_res_name = 'SPT_Results_01'
 NByolk_ro_msd_compute(tifNames, df_films_PATH, df_res_name,
                           Dict_fSuf, Dict_rP, Dict_pP)
 
+# %%%% Test -> Compute correl
+
+dateDir = os.path.join(up.Path_IntraCellTracking, '26-09-30_FastAcq-Channel_Fec_NB-Yolk')
+srcDir = os.path.join(dateDir, 'D1')
+
+tifNames = [
+    '26-09-30_D1_PreF_C1_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
+    '26-09-30_D1_PreF_C2_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
+    '26-09-30_D1_PreF_C3_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
+    '26-09-30_D1_PostF_13min_C4_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
+    ]
+
+tifPaths = [os.path.join(srcDir, tifName) for tifName in tifNames]
+fileNames = [fN.split('.')[0] for fN in tifNames]
+
+DF_FILMS = pd.read_csv(df_films_PATH)
+for i in range(len(fileNames)):    
+    tN, fN = tifNames[i], fileNames[i]
+    # tP = tifPaths[i]
+    print(pm.CYAN + f'\nFile {i+1:.0f}/{len(fileNames):.0f} - {fN}' + pm.NORMAL)
+    
+    try:
+        DF_RES = pd.read_csv(os.path.join(RES_DIR, df_res_name + '.csv')).reset_index(drop=True)
+    except:
+        DF_RES = pd.DataFrame({})
+        
+    if ('tN' not in DF_RES.columns) or (tN not in DF_RES['tN'].to_numpy()):
+        DF_RES.loc[len(DF_RES), 'tN'] = tN
+    
+    idx = DF_FILMS[DF_FILMS['tN'] == tN].index[0]
+    PixPerUm = DF_FILMS.loc[idx, 'PixPerUm']
+    FPS = DF_FILMS.loc[idx, 'FPS']
+    # Use_DriftCorrected = DF_FILMS.loc[idx, 'drift_correction']
+    max_Dt_s = DF_FILMS.loc[idx, 'msd_max_Dt_s']
+    # lowDt_upper = DF_FILMS.loc[idx, 'msd_lowDt_upper_s']
+    # highDt_lower = DF_FILMS.loc[idx, 'msd_highDt_lower_s']
+    # pairMSD_Dt_s = DF_FILMS.loc[idx, 'pMsd_max_Dt_s']
+    # pairMSD_dist_th_um = DF_FILMS.loc[idx, 'pMSD_dist_th_um']
+    Nx, Ny = DF_FILMS.loc[idx, 'im_width'], DF_FILMS.loc[idx, 'im_height']
+    xC, yC = DF_FILMS.loc[idx, 'x_center'], DF_FILMS.loc[idx, 'y_center']
+    if np.isnan(xC) or np.isnan(yC):
+        contourPath = os.path.join(Dict_rP['dir_segmentation'], 
+                                   fN + Dict_fSuf['suf_contour'] + '.npy')
+        Contour_cell = np.load(contourPath)
+        [yC, xC] = tbca.get_contour_barycenter(Contour_cell)
+
+    trackName = fN + Dict_fSuf['suf_cleanTracks'] + '.csv'
+    df = pd.read_csv(os.path.join(Dict_rP['dir_cleanTracks'], trackName), sep='\t')
+    
+    for PROJ in ['full', 'r', 'theta',]:
+    # PROJ = 'r' # 'full', 'r', 'theta',
+
+        out = tbca.compute_displacement_correlations(df, PixPerUm, FPS, xC, yC,
+                                                      tau_s_list     = [0.2, 0.5, 2.0, 5.0, 10.0,],
+                                                      R_bin_edges_um = np.arange(2, 16, 1),
+                                                      projection     = PROJ, # 'full', 'r', 'theta',
+                                                      correct_modes  = True,
+                                                      correct_xy     = True,
+                                                      correct_r      = True,
+                                                      correct_rot    = True,
+                                                      n_ann_modes    = 5,
+                                                      rbar_min_um    = 3.0,
+                                                      R_min_um       = 1.8,
+                                                      null_shift_s   = 30.0,
+                                                      null_match_um  = 1.5,
+                                                      origin_step    = 40)
+        
+        tau_s_arr, R_centers_um, C, rho, C_null = out
+    
+    
+        out_plot = plot_displacement_correlations(tau_s_arr, R_centers_um, C, rho, C_null,
+                                           projection      = PROJ,
+                                           fit_exp         = True,
+                                           fit_tau_s       = 5,
+                                           SHOWPLOT        = True,
+                                           SAVEPLOT        = True,
+                                           figDir          = Dict_pP['dir_corrCoefs'],
+                                           figName         = fN + f'_{PROJ}_corr',
+                                           fig_title       = '')
 
 # %%%% Import MSD & plot / Import pairMSD & plot
 
