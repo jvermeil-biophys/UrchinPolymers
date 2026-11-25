@@ -2120,10 +2120,8 @@ def plot_displacement_correlations(tau_s_arr, R_centers_um, C, rho, C_null,
         label = f'τ = {tau_s:g} s'
         ax_C.plot(R_centers_um, C[tau_idx, :],
                   'o-', color=col, lw=1.4, ms=4, label=label)
-        #### QUESTIONABLE CONDITION HERE !
-        if np.max(C_null[tau_idx, :]) < 0.05:
-            ax_C.fill_between(R_centers_um, C_null[tau_idx, :],
-                              color=col, alpha=0.3)
+        # ax_C.fill_between(R_centers_um, C_null[tau_idx, :],
+        #                   color=col, alpha=0.3)
 
     # exponential fit curve and annotation
     if fit_results is not None:
@@ -2140,7 +2138,7 @@ def plot_displacement_correlations(tau_s_arr, R_centers_um, C, rho, C_null,
                   zorder=5, label=f'exp fit τ={fit_results["tau_s"]:g} s\n' + ann_text)
 
     # dummy lines for the null-model legend entry
-    ax_C.fill_between([], [], alpha=0.5, label='null model')
+    # ax_C.fill_between([], [], alpha=0.5, label='null model')
     ax_C.legend(fontsize=8, loc='upper right', framealpha=0.85)
     ax_C.grid(True, lw=0.4, alpha=0.5)
 
@@ -2580,9 +2578,9 @@ srcDir = os.path.join(dateDir, 'D1')
 
 tifNames = [
     '26-09-30_D1_PreF_C1_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
-    '26-09-30_D1_PreF_C2_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
-    '26-09-30_D1_PreF_C3_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
-    '26-09-30_D1_PostF_13min_C4_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
+    # '26-09-30_D1_PreF_C2_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
+    # '26-09-30_D1_PreF_C3_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
+    # '26-09-30_D1_PostF_13min_C4_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
     ]
 
 tifPaths = [os.path.join(srcDir, tifName) for tifName in tifNames]
@@ -2640,7 +2638,7 @@ for i in range(len(fileNames)):
                                                       null_match_um  = 1.5,
                                                       origin_step    = 40)
         
-        tau_s_arr, R_centers_um, C, rho, C_null = out
+        tau_s_arr, R_centers_um, C, rho, C_null, rho_null, M = out
     
     
         out_plot = plot_displacement_correlations(tau_s_arr, R_centers_um, C, rho, C_null,
@@ -2650,8 +2648,107 @@ for i in range(len(fileNames)):
                                            SHOWPLOT        = True,
                                            SAVEPLOT        = True,
                                            figDir          = Dict_pP['dir_corrCoefs'],
-                                           figName         = fN + f'_{PROJ}_corr',
+                                           figName         = fN + f'_{PROJ}_corr2',
                                            fig_title       = '')
+
+# %%%% Test -> Compute correl
+
+dateDir = os.path.join(up.Path_IntraCellTracking, '26-09-30_FastAcq-Channel_Fec_NB-Yolk')
+srcDir = os.path.join(dateDir, 'D1')
+
+tifNames = [
+    '26-09-30_D1_PreF_C1_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
+    # '26-09-30_D1_PreF_C2_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
+    # '26-09-30_D1_PreF_C3_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
+    # '26-09-30_D1_PostF_13min_C4_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
+    ]
+
+tifPaths = [os.path.join(srcDir, tifName) for tifName in tifNames]
+fileNames = [fN.split('.')[0] for fN in tifNames]
+
+DF_FILMS = pd.read_csv(df_films_PATH)
+for i in range(len(fileNames)):    
+    tN, fN = tifNames[i], fileNames[i]
+    # tP = tifPaths[i]
+    print(pm.CYAN + f'\nFile {i+1:.0f}/{len(fileNames):.0f} - {fN}' + pm.NORMAL)
+    
+    try:
+        DF_RES = pd.read_csv(os.path.join(RES_DIR, df_res_name + '.csv')).reset_index(drop=True)
+    except:
+        DF_RES = pd.DataFrame({})
+        
+    if ('tN' not in DF_RES.columns) or (tN not in DF_RES['tN'].to_numpy()):
+        DF_RES.loc[len(DF_RES), 'tN'] = tN
+    
+    idx = DF_FILMS[DF_FILMS['tN'] == tN].index[0]
+    PixPerUm = DF_FILMS.loc[idx, 'PixPerUm']
+    FPS = DF_FILMS.loc[idx, 'FPS']
+    # Use_DriftCorrected = DF_FILMS.loc[idx, 'drift_correction']
+    max_Dt_s = DF_FILMS.loc[idx, 'msd_max_Dt_s']
+    # lowDt_upper = DF_FILMS.loc[idx, 'msd_lowDt_upper_s']
+    # highDt_lower = DF_FILMS.loc[idx, 'msd_highDt_lower_s']
+    # pairMSD_Dt_s = DF_FILMS.loc[idx, 'pMsd_max_Dt_s']
+    # pairMSD_dist_th_um = DF_FILMS.loc[idx, 'pMSD_dist_th_um']
+    Nx, Ny = DF_FILMS.loc[idx, 'im_width'], DF_FILMS.loc[idx, 'im_height']
+    xC, yC = DF_FILMS.loc[idx, 'x_center'], DF_FILMS.loc[idx, 'y_center']
+    if np.isnan(xC) or np.isnan(yC):
+        contourPath = os.path.join(Dict_rP['dir_segmentation'], 
+                                   fN + Dict_fSuf['suf_contour'] + '.npy')
+        Contour_cell = np.load(contourPath)
+        [yC, xC] = tbca.get_contour_barycenter(Contour_cell)
+
+    trackName = fN + Dict_fSuf['suf_cleanTracks'] + '.csv'
+    df = pd.read_csv(os.path.join(Dict_rP['dir_cleanTracks'], trackName), sep='\t')
+    
+    # for PROJ in ['full', 'r', 'theta',]:
+    PROJ = 'r' # 'full', 'r', 'theta',
+
+    out_r = tbca.compute_displacement_correlations(df, PixPerUm, FPS, xC, yC,
+                                                  tau_s_list     = [0.2, 0.5, 2.0, 5.0, 10.0,],
+                                                  R_bin_edges_um = np.arange(2, 16, 1),
+                                                  projection     = PROJ, # 'full', 'r', 'theta',
+                                                  correct_modes  = True,
+                                                  correct_xy     = True,
+                                                  correct_r      = True,
+                                                  correct_rot    = True,
+                                                  n_ann_modes    = 5,
+                                                  rbar_min_um    = 3.0,
+                                                  R_min_um       = 1.8,
+                                                  null_shift_s   = 30.0,
+                                                  null_match_um  = 1.5,
+                                                  origin_step    = 20)
+    
+    tau_s_arr, R_centers_um, C_r, rho, C_null, rho_null, M_r = out_r
+    
+    PROJ = 'theta' # 'full', 'r', 'theta',
+
+    out_th = tbca.compute_displacement_correlations(df, PixPerUm, FPS, xC, yC,
+                                                  tau_s_list     = [0.2, 0.5, 2.0, 5.0, 10.0,],
+                                                  R_bin_edges_um = np.arange(2, 16, 1),
+                                                  projection     = PROJ, # 'full', 'r', 'theta',
+                                                  correct_modes  = True,
+                                                  correct_xy     = True,
+                                                  correct_r      = True,
+                                                  correct_rot    = True,
+                                                  n_ann_modes    = 5,
+                                                  rbar_min_um    = 3.0,
+                                                  R_min_um       = 1.8,
+                                                  null_shift_s   = 30.0,
+                                                  null_match_um  = 1.5,
+                                                  origin_step    = 20)
+    
+    tau_s_arr, R_centers_um, C_th, rho, C_null, rho_null, M_th = out_th
+
+
+    # out_plot = plot_displacement_correlations(tau_s_arr, R_centers_um, C, rho, C_null,
+    #                                    projection      = PROJ,
+    #                                    fit_exp         = True,
+    #                                    fit_tau_s       = 5,
+    #                                    SHOWPLOT        = True,
+    #                                    SAVEPLOT        = True,
+    #                                    figDir          = Dict_pP['dir_corrCoefs'],
+    #                                    figName         = fN + f'_{PROJ}_corr2',
+    #                                    fig_title       = '')
 
 # %%%% Import MSD & plot / Import pairMSD & plot
 

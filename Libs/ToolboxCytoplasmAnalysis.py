@@ -1514,7 +1514,7 @@ def compute_pairwise_MSD(df, PixPerUm, FPS, Nframes,
     return(df_allTRange_pair_MSD)
 
 
-# %%%% Displacement correlations C(tau, R) and rho(tau, R)
+# %%%% V1 - Displacement correlations C(tau, R) and rho(tau, R) 
 
 # Computes, for each lag tau and inter-particle distance bin R:
 #
@@ -1542,9 +1542,427 @@ def compute_pairwise_MSD(df, PixPerUm, FPS, Nframes,
 #   mean Δr_r [breathing] and mean Δr_θ [rotation].  Each mode is independently togglable.
 
 
+# def compute_displacement_correlations(df, PixPerUm, FPS, xC, yC,
+#                                       tau_s_list     = [0.1, 0.5, 2.0, 5.0, 10.0, 20.0, 50.0],
+#                                       R_bin_edges_um = np.arange(2, 22, 2),
+#                                       projection     = 'full',
+#                                       correct_modes  = True,
+#                                       correct_xy     = True,
+#                                       correct_r      = True,
+#                                       correct_rot    = True,
+#                                       n_ann_modes    = 8,
+#                                       rbar_min_um    = 3.0,
+#                                       R_min_um       = 2.0,
+#                                       null_shift_s   = 30.0,
+#                                       null_match_um  = 1.5,
+#                                       origin_step    = 10):
+#     """
+#     Compute displacement correlation C(tau, R) and rho(tau, R).
+
+#     Parameters
+#     ----------
+#     df              : DataFrame with columns ['frame', 'x', 'y', 'particle'], positions in pixels.
+#     PixPerUm        : pixel-per-micron scale.
+#     FPS             : frames per second.
+#     xC, yC          : centre of the polar coordinate system (pixels).
+#     tau_s_list      : list of lag times in seconds.
+#     R_bin_edges_um  : 1-D array of bin edges for the inter-particle distance R (µm).
+#     projection      : 'full'  – tensor trace C_xx + C_yy  (Δr_i · Δr_j dot product, lab frame)
+#                       'r'     – project on ê_r at the pair barycenter → C_rr
+#                       'theta' – project on ê_θ at the pair barycenter → C_θθ
+#                       # TAG: 'L' and 'T' (pair-frame longitudinal/transverse) to be added here
+#     correct_modes   : if True, subtract global modes before computing correlations.
+#     correct_xy      : subtract mean (Δx, Δy) per origin [translation].
+#     correct_r       : subtract mean Δr_r per annulus [breathing].
+#     correct_rot     : subtract mean Δr_θ per annulus [rotation].
+#     n_ann_modes     : number of equal-population annular bins for mode subtraction.
+#     rbar_min_um     : exclude pairs whose barycenter is closer than this to the centre.
+#     R_min_um        : exclude pairs closer than this (risk of detection overlaps).
+#     null_shift_s    : time shift for the null model (seconds).
+#     null_match_um   : max spatial distance for the nearest-neighbour match in the null model.
+#     origin_step     : subsample origins; only frames where (frame - f_min) % origin_step == 0
+#                       are used.
+
+#     Returns
+#     -------
+#     tau_s_arr    : 1-D array, lag times (s), shape (n_tau,)
+#     R_centers_um : 1-D array, bin centres (µm), shape (n_R,)
+#     C            : 2-D array, covariance, shape (n_tau, n_R)
+#     rho          : 2-D array, correlation coefficient, shape (n_tau, n_R)
+#     C_null       : 2-D array, null-model covariance, shape (n_tau, n_R)
+#     """
+
+#     df = df.sort_values(['particle', 'frame']).reset_index(drop=True)
+#     UmPerPix = 1.0 / PixPerUm
+
+#     # Lag times in frames, deduplicated
+#     seen = set()
+#     tau_frames_unique = [t for t in [int(round(tau_s * FPS)) for tau_s in tau_s_list]
+#                          if not (t in seen or seen.add(t))]
+
+#     n_tau        = len(tau_frames_unique)
+#     n_R          = len(R_bin_edges_um) - 1
+#     R_centers_um = 0.5 * (R_bin_edges_um[:-1] + R_bin_edges_um[1:])
+#     tau_s_arr    = np.array([t / FPS for t in tau_frames_unique])
+
+#     # Positions in µm, centred on (xC, yC)
+#     frames_all   = df['frame'].values
+#     x_um_all     = (df['x'].values - xC) * UmPerPix
+#     y_um_all     = (df['y'].values - yC) * UmPerPix
+#     particle_all = df['particle'].values
+
+#     frames_unique = np.unique(frames_all)
+#     frame_to_rows = {f: np.where(frames_all == f)[0] for f in frames_unique}
+
+#     null_shift_fr = int(round(null_shift_s * FPS))
+#     f_min = int(frames_unique.min())
+#     f_max = int(frames_unique.max())
+#     f_range = f_max - f_min + 1
+
+#     # Equal-population annular edges for mode subtraction
+#     r_all        = np.hypot(x_um_all, y_um_all)
+#     ann_edges_um = np.quantile(r_all[r_all > 0], np.linspace(0, 1, n_ann_modes + 1))
+#     ann_edges_um[0]  -= 1e-6
+#     ann_edges_um[-1] += 1e-6
+
+#     # --- accumulators ---
+#     # Scalar projections ('r', 'theta'):
+#     #   S_ai, S_aj  : Σ a_i,  Σ a_j
+#     #   S_ai2, S_aj2: Σ a_i², Σ a_j²
+#     #   S_aiaj      : Σ a_i*a_j
+#     #
+#     # Full projection ('full'):
+#     #   S_ai, S_aj  : Σ Δx_i, Σ Δx_j         (x-component mean for bias correction)
+#     #   S_bi, S_bj  : Σ Δy_i, Σ Δy_j         (y-component mean for bias correction)
+#     #   S_ai2, S_aj2: Σ |Δr_i|², Σ |Δr_j|²   (for variance)
+#     #   S_aiaj      : Σ (Δr_i · Δr_j)         (dot product cross term)
+#     # C_full = S_aiaj/n - (S_ai/n)(S_aj/n) - (S_bi/n)(S_bj/n)
+#     # Var_i  = S_ai2/n  - (S_ai/n)²        - (S_bi/n)²
+
+#     def _empty():
+#         return np.zeros((n_tau, n_R), dtype=np.float64)
+
+#     S_ai   = _empty(); S_aj   = _empty()
+#     S_bi   = _empty(); S_bj   = _empty()   # y-component means (only used for 'full')
+#     S_ai2  = _empty(); S_aj2  = _empty()
+#     S_aiaj = _empty(); S_n    = _empty()
+
+#     S_ai_null   = _empty(); S_aj_null   = _empty()
+#     S_bi_null   = _empty(); S_bj_null   = _empty()
+#     S_ai2_null  = _empty(); S_aj2_null  = _empty()
+#     S_aiaj_null = _empty(); S_n_null    = _empty()
+
+#     is_full = (projection == 'full')
+
+#     # ----- main loop over lag times -----
+#     for tau_idx, tau_fr in enumerate(tau_frames_unique):
+
+#         origins = frames_unique[frames_unique + tau_fr <= f_max]
+#         origins = origins[(origins - f_min) % origin_step == 0]
+
+#         for o in origins:
+#             rows_i = frame_to_rows.get(o,         None)
+#             rows_j = frame_to_rows.get(o + tau_fr, None)
+#             if rows_i is None or rows_j is None:
+#                 continue
+
+#             # particles present at both t=o and t=o+tau
+#             pid_i = particle_all[rows_i]; pid_j = particle_all[rows_j]
+#             pid_common = np.intersect1d(pid_i, pid_j)
+#             if len(pid_common) < 2:
+#                 continue
+
+#             # sort both sets so particle ordering matches
+#             si = np.argsort(pid_i[np.isin(pid_i, pid_common)])
+#             sj = np.argsort(pid_j[np.isin(pid_j, pid_common)])
+#             idx_i = rows_i[np.isin(pid_i, pid_common)][si]
+#             idx_j = rows_j[np.isin(pid_j, pid_common)][sj]
+
+#             x0 = x_um_all[idx_i]; y0 = y_um_all[idx_i]
+#             dx = x_um_all[idx_j] - x0
+#             dy = y_um_all[idx_j] - y0
+
+#             # ---- global mode subtraction ----
+#             if correct_modes:
+#                 dx, dy = _subtract_global_modes(x0, y0, dx, dy, ann_edges_um,
+#                                                 correct_xy, correct_r, correct_rot)
+
+#             # ---- null-model origin o' ----
+#             o_null_target = int((o - f_min + null_shift_fr) % f_range + f_min)
+#             o_null = frames_unique[np.argmin(np.abs(frames_unique - o_null_target))]
+#             if abs(o_null - o) < null_shift_fr // 2:
+#                 o_null = None
+#             if o_null is not None and frame_to_rows.get(o_null + tau_fr) is None:
+#                 o_null = None
+
+#             # ---- pair geometry ----
+#             pts    = np.c_[x0, y0]
+#             tree_i = cKDTree(pts)
+#             pairs  = tree_i.query_pairs(R_bin_edges_um[-1], output_type='ndarray')
+#             if len(pairs) == 0:
+#                 continue
+
+#             p, q = pairs[:, 0], pairs[:, 1]
+#             bx = (x0[p] + x0[q]) / 2;  by = (y0[p] + y0[q]) / 2
+#             rb = np.hypot(bx, by)
+#             R  = np.hypot(x0[q] - x0[p], y0[q] - y0[p])
+
+#             keep = (R >= R_min_um) & (rb >= rbar_min_um)
+#             p, q, R, bx, by, rb = p[keep], q[keep], R[keep], bx[keep], by[keep], rb[keep]
+#             if len(p) == 0:
+#                 continue
+
+#             iR       = np.digitize(R, R_bin_edges_um) - 1
+#             in_range = (iR >= 0) & (iR < n_R)
+#             p, q, iR, bx, by, rb = [v[in_range] for v in (p, q, iR, bx, by, rb)]
+#             if len(p) == 0:
+#                 continue
+
+#             # ---- per-pair quantities ----
+#             if is_full:
+#                 # a = Δx (for mean bias), b = Δy (for mean bias)
+#                 # ai2 = |Δr|² (for variance), cross = Δr_i · Δr_j
+#                 ai = dx[p]; aj = dx[q]          # x-components (bias terms)
+#                 bi = dy[p]; bj = dy[q]          # y-components (bias terms)
+#                 ai2 = dx[p]**2 + dy[p]**2       # |Δr_i|²
+#                 aj2 = dx[q]**2 + dy[q]**2       # |Δr_j|²
+#                 cross = dx[p]*dx[q] + dy[p]*dy[q]  # Δr_i · Δr_j
+#             else:
+#                 a   = _project(x0, y0, dx, dy, projection)
+#                 ai  = a[p]; aj = a[q]
+#                 bi  = None; bj = None
+#                 ai2 = ai**2; aj2 = aj**2
+#                 cross = ai * aj
+
+#             # ---- accumulate ----
+#             for k_R in range(n_R):
+#                 m = iR == k_R
+#                 if not m.any():
+#                     continue
+#                 S_ai  [tau_idx, k_R] += ai[m].sum()
+#                 S_aj  [tau_idx, k_R] += aj[m].sum()
+#                 S_ai2 [tau_idx, k_R] += ai2[m].sum()
+#                 S_aj2 [tau_idx, k_R] += aj2[m].sum()
+#                 S_aiaj[tau_idx, k_R] += cross[m].sum()
+#                 S_n   [tau_idx, k_R] += m.sum()
+#                 if is_full:
+#                     S_bi[tau_idx, k_R] += bi[m].sum()
+#                     S_bj[tau_idx, k_R] += bj[m].sum()
+
+#             # ---- null model ----
+#             if o_null is not None:
+#                 rows_null_0   = frame_to_rows[o_null]
+#                 rows_null_tau = frame_to_rows[o_null + tau_fr]
+ 
+#                 # Keep only particles present at both null frames (same intersection
+#                 # logic as for the real origin above)
+#                 pid_null_0   = particle_all[rows_null_0]
+#                 pid_null_tau = particle_all[rows_null_tau]
+#                 pid_null_common = np.intersect1d(pid_null_0, pid_null_tau)
+ 
+#                 sn0  = np.argsort(pid_null_0  [np.isin(pid_null_0,   pid_null_common)])
+#                 snt  = np.argsort(pid_null_tau [np.isin(pid_null_tau, pid_null_common)])
+#                 idx_null_0   = rows_null_0  [np.isin(pid_null_0,   pid_null_common)][sn0]
+#                 idx_null_tau = rows_null_tau[np.isin(pid_null_tau, pid_null_common)][snt]
+ 
+#                 x0_no   = x_um_all[idx_null_0]; y0_no   = y_um_all[idx_null_0]
+#                 dx_null = x_um_all[idx_null_tau] - x0_no
+#                 dy_null = y_um_all[idx_null_tau] - y0_no
+
+#                 if correct_modes:
+#                     dx_null, dy_null = _subtract_global_modes(
+#                         x0_no, y0_no, dx_null, dy_null, ann_edges_um,
+#                         correct_xy, correct_r, correct_rot)
+
+#                 # nearest neighbour in null frame for every particle i at origin o
+#                 tree_null      = cKDTree(np.c_[x0_no, y0_no])
+#                 dist_nn, idx_nn = tree_null.query(pts, k=1)
+#                 matched        = dist_nn < null_match_um
+
+#                 dx_nn = dx_null[idx_nn]; dy_nn = dy_null[idx_nn]
+
+#                 if is_full:
+#                     # null aj = Δx_null[j_match], bj = Δy_null[j_match]
+#                     # cross_null = Δr_i(real) · Δr_j(null)
+#                     pass    # computed inside the R-bin loop below
+#                 else:
+#                     a_null = _project(x0_no[idx_nn], y0_no[idx_nn], dx_nn, dy_nn, projection)
+
+#                 for k_R in range(n_R):
+#                     m   = iR == k_R
+#                     if not m.any():
+#                         continue
+#                     p_m = p[m]; q_m = q[m]
+#                     ok  = matched[p_m] & matched[q_m]
+#                     if not ok.any():
+#                         continue
+
+#                     if is_full:
+#                         ai_n   = dx[p_m[ok]];         aj_n  = dx_nn[q_m[ok]]
+#                         bi_n   = dy[p_m[ok]];         bj_n  = dy_nn[q_m[ok]]
+#                         ai2_n  = dx[p_m[ok]]**2 + dy[p_m[ok]]**2
+#                         aj2_n  = dx_nn[q_m[ok]]**2 + dy_nn[q_m[ok]]**2
+#                         cross_n = dx[p_m[ok]]*dx_nn[q_m[ok]] + dy[p_m[ok]]*dy_nn[q_m[ok]]
+#                     else:
+#                         ai_n    = ai[m][ok]
+#                         aj_n    = a_null[q_m[ok]]
+#                         bi_n    = None; bj_n = None
+#                         ai2_n   = ai_n**2; aj2_n = aj_n**2
+#                         cross_n = ai_n * aj_n
+
+#                     S_ai_null  [tau_idx, k_R] += ai_n.sum()
+#                     S_aj_null  [tau_idx, k_R] += aj_n.sum()
+#                     S_ai2_null [tau_idx, k_R] += ai2_n.sum()
+#                     S_aj2_null [tau_idx, k_R] += aj2_n.sum()
+#                     S_aiaj_null[tau_idx, k_R] += cross_n.sum()
+#                     S_n_null   [tau_idx, k_R] += ok.sum()
+#                     if is_full:
+#                         S_bi_null[tau_idx, k_R] += bi_n.sum()
+#                         S_bj_null[tau_idx, k_R] += bj_n.sum()
+
+#     # ----- compute C and rho -----
+#     def _C_rho(S_a, S_b, S_a2, S_b2, S_ab, S_bx, S_by, S_bxb, S_byb, S_n, full):
+#         """
+#         S_a, S_b     : Σ a_i,   Σ a_j      (x-component for 'full', scalar for others)
+#         S_bx, S_by   : Σ Δy_i,  Σ Δy_j     (y-component; only used when full=True)
+#         S_a2, S_b2   : Σ a_i²,  Σ a_j²     (|Δr|² for 'full', a² for scalars)
+#         S_ab         : Σ a_i*a_j or Σ Δr_i·Δr_j
+#         """
+#         nn   = np.where(S_n > 0, S_n, np.nan)
+#         mi   = S_a  / nn; mj  = S_b  / nn
+#         mi2  = S_a2 / nn; mj2 = S_b2 / nn
+#         mij  = S_ab / nn
+#         if full:
+#             myi  = S_bx / nn; myj = S_by / nn
+#             Ci   = mi2 - mi**2 - myi**2     # <|Δr_i|²> - <Δx_i>² - <Δy_i>²
+#             Cj   = mj2 - mj**2 - myj**2
+#             C    = mij - mi*mj - myi*myj    # <Δr_i·Δr_j> - <Δx_i><Δx_j> - <Δy_i><Δy_j>
+#         else:
+#             Ci   = mi2 - mi**2
+#             Cj   = mj2 - mj**2
+#             C    = mij - mi*mj
+#         rho  = C / np.sqrt(np.abs(Ci * Cj))
+#         rho  = np.where(np.isfinite(rho), rho, np.nan)
+#         M = 0.5 * (mi2 + mj2)                   # ← INSERT HERE, before the return
+#         return C, rho, denom, M
+
+#     C,      rho,      denom, M      = _C_rho(S_ai,     S_aj,     S_bi,     S_bj,
+#                                               S_ai2,     S_aj2,     S_aiaj,     S_n,      is_full)
+#     C_null, rho_null, _, _          = _C_rho(S_ai_null, S_aj_null, S_bi_null, S_bj_null,
+#                                               S_ai2_null, S_aj2_null, S_aiaj_null, S_n_null, is_full)
+
+#     rho_null = np.where(denom > 0, C_null / denom, np.nan)   # ### TAG_RHO_NULL
+
+#     return tau_s_arr, R_centers_um, C, rho, C_null, rho_null, M   # M added
+
+
+# # ---- helpers ----------------------------------------------------------------
+
+# def _subtract_global_modes(x0, y0, dx, dy, ann_edges_um,
+#                             correct_xy=True, correct_r=True, correct_rot=True):
+#     """
+#     Subtract global collective modes from displacement arrays for a single origin time.
+
+#     correct_xy  : subtract mean (Δx, Δy) [translation]
+#     correct_r   : subtract mean Δr_r per annulus [breathing]
+#     correct_rot : subtract mean Δr_θ per annulus [rotation]
+#     """
+#     dx = dx.copy(); dy = dy.copy()
+#     if len(dx) == 0:
+#         return dx, dy
+
+#     if correct_xy:
+#         dx -= dx.mean()
+#         dy -= dy.mean()
+
+#     if not (correct_r or correct_rot):
+#         return dx, dy
+
+#     r    = np.hypot(x0, y0)
+#     ok   = r > 1e-9
+#     er_x = np.where(ok, x0 / r, 0.0); er_y = np.where(ok, y0 / r, 0.0)
+#     et_x = -er_y;                       et_y =  er_x
+
+#     d_r = dx * er_x + dy * er_y
+#     d_t = dx * et_x + dy * et_y
+
+#     ann_idx = np.clip(np.digitize(r, ann_edges_um) - 1, 0, len(ann_edges_um) - 2)
+
+#     for a in range(len(ann_edges_um) - 1):
+#         m = ann_idx == a
+#         if m.sum() < 2:
+#             continue
+#         if correct_r:
+#             d_r[m] -= d_r[m].mean()
+#         if correct_rot:
+#             d_t[m] -= d_t[m].mean()
+
+#     return d_r * er_x + d_t * et_x, d_r * er_y + d_t * et_y
+
+
+# def _project(x0, y0, dx, dy, projection):
+#     """
+#     Scalar projection of displacements onto the chosen axis.
+#     Not called for projection='full' (handled directly in the pair loop).
+
+#     projection : 'r'     – ê_r at the barycenter
+#                  'theta' – ê_θ at the barycenter
+#                  # TAG: add 'L' (longitudinal) and 'T' (transverse) projections here.
+#                  # Both require the pair separation vector as an extra argument.
+#                  # uL = (x0_j - x0_i, y0_j - y0_i) / R  (longitudinal)
+#                  # uT = (-uL_y, uL_x)                     (transverse)
+#     """
+#     r    = np.hypot(x0, y0)
+#     ok   = r > 1e-9
+#     er_x = np.where(ok, x0 / r, 0.0); er_y = np.where(ok, y0 / r, 0.0)
+
+#     if projection == 'r':
+#         return dx * er_x + dy * er_y
+
+#     if projection == 'theta':
+#         return dx * (-er_y) + dy * er_x
+
+#     raise ValueError(f"Unknown projection '{projection}'. Valid: 'full', 'r', 'theta'.")
+    
+    
+
+
+# %%%% V2 - Displacement correlations C(tau, R) and rho(tau, R) 
+
+# Computes, for each lag tau and inter-particle distance bin R:
+#
+#   For projection = 'r' or 'theta' (scalar projection a = u · Δr):
+#     C_aa   = <a_i * a_j>  -  <a_i><a_j>
+#     Var_a  = <a²> - <a>²
+#     rho_aa = C_aa / sqrt(Var_i * Var_j)
+#
+#   For projection = 'full' (tensor trace, dot product):
+#     C_full = <Δr_i · Δr_j>  -  <Δx_i><Δx_j>  -  <Δy_i><Δy_j>
+#            = C_xx + C_yy  (lab-frame tensor trace)
+#            ≈ C_rr + C_θθ  (barycenter polar trace — equal only if all barycenters
+#              had the same orientation, which they don't; use 'r'+'theta' for that)
+#     Var_i  = <|Δr_i|²>  -  <Δx_i>²  -  <Δy_i>²
+#     rho    = C_full / sqrt(Var_i * Var_j)
+#
+#   # TAG: add 'L' and 'T' (pair-frame longitudinal/transverse) projections here
+#
+# Null model (section 4.4 of the report, "Modèle nul par décalage temporel"):
+#   For each origin t, particle j's displacement is replaced by that of its nearest
+#   spatial neighbour at a time-shifted origin t' = t + null_shift (mod film duration).
+#   C_null is NOT expected to be zero: the nearest-neighbour matching preserves individual
+#   displacement statistics and spatial geometry, so residual spatial correlations survive.
+#   The correct interpretation (as in the report, fig. 3) is that C_null defines a BAND
+#   around which C fluctuates under the null hypothesis; the real signal is C - C_null,
+#   and correlations are significant only where C >> C_null (or C_null band).
+#
+# Global mode subtraction (section 2.4 / 4.3):
+#   Per origin: subtract mean (Δx, Δy) [translation], then per annulus subtract
+#   mean Δr_r [breathing] and mean Δr_θ [rotation].  Each mode is independently togglable.
+
+
 def compute_displacement_correlations(df, PixPerUm, FPS, xC, yC,
-                                      tau_s_list     = [0.1, 0.5, 2.0, 5.0, 10.0, 20.0, 50.0],
-                                      R_bin_edges_um = np.arange(2, 22, 2),
+                                      tau_s_list     = [0.2, 0.5, 2.0, 5.0],
+                                      R_bin_edges_um = np.arange(2, 22, 1),
                                       projection     = 'full',
                                       correct_modes  = True,
                                       correct_xy     = True,
@@ -1555,7 +1973,7 @@ def compute_displacement_correlations(df, PixPerUm, FPS, xC, yC,
                                       R_min_um       = 2.0,
                                       null_shift_s   = 30.0,
                                       null_match_um  = 1.5,
-                                      origin_step    = 10):
+                                      origin_step    = 20):
     """
     Compute displacement correlation C(tau, R) and rho(tau, R).
 
@@ -1590,6 +2008,13 @@ def compute_displacement_correlations(df, PixPerUm, FPS, xC, yC,
     C            : 2-D array, covariance, shape (n_tau, n_R)
     rho          : 2-D array, correlation coefficient, shape (n_tau, n_R)
     C_null       : 2-D array, null-model covariance, shape (n_tau, n_R)
+    rho_null     : 2-D array, null-model rho = C_null / sqrt(Var_i * Var_j),
+    M            : 2-D array, average raw second moment of pair members, shape (n_tau, n_R).
+                   M = ½(<a_i²> + <a_j²>), i.e. the per-component MSD estimated on the
+                   same pair sample as C and rho.  The ratio C/M gives the collective
+                   fraction of the displacement variance for each (tau, R) bin (section 4.6).
+                   where Var_i and Var_j come from the REAL data (same denominator
+                   as rho), so that rho and rho_null are directly comparable.  ### TAG_RHO_NULL
     """
 
     df = df.sort_values(['particle', 'frame']).reset_index(drop=True)
@@ -1678,7 +2103,8 @@ def compute_displacement_correlations(df, PixPerUm, FPS, xC, yC,
             idx_i = rows_i[np.isin(pid_i, pid_common)][si]
             idx_j = rows_j[np.isin(pid_j, pid_common)][sj]
 
-            x0 = x_um_all[idx_i]; y0 = y_um_all[idx_i]
+            x0 = x_um_all[idx_i]
+            y0 = y_um_all[idx_i]
             dx = x_um_all[idx_j] - x0
             dy = y_um_all[idx_j] - y0
 
@@ -1753,18 +2179,18 @@ def compute_displacement_correlations(df, PixPerUm, FPS, xC, yC,
             if o_null is not None:
                 rows_null_0   = frame_to_rows[o_null]
                 rows_null_tau = frame_to_rows[o_null + tau_fr]
- 
+
                 # Keep only particles present at both null frames (same intersection
                 # logic as for the real origin above)
                 pid_null_0   = particle_all[rows_null_0]
                 pid_null_tau = particle_all[rows_null_tau]
                 pid_null_common = np.intersect1d(pid_null_0, pid_null_tau)
- 
+
                 sn0  = np.argsort(pid_null_0  [np.isin(pid_null_0,   pid_null_common)])
                 snt  = np.argsort(pid_null_tau [np.isin(pid_null_tau, pid_null_common)])
                 idx_null_0   = rows_null_0  [np.isin(pid_null_0,   pid_null_common)][sn0]
                 idx_null_tau = rows_null_tau[np.isin(pid_null_tau, pid_null_common)][snt]
- 
+
                 x0_no   = x_um_all[idx_null_0]; y0_no   = y_um_all[idx_null_0]
                 dx_null = x_um_all[idx_null_tau] - x0_no
                 dy_null = y_um_all[idx_null_tau] - y0_no
@@ -1798,11 +2224,11 @@ def compute_displacement_correlations(df, PixPerUm, FPS, xC, yC,
                         continue
 
                     if is_full:
-                        ai_n   = dx[p_m[ok]];         aj_n  = dx_nn[q_m[ok]]
-                        bi_n   = dy[p_m[ok]];         bj_n  = dy_nn[q_m[ok]]
-                        ai2_n  = dx[p_m[ok]]**2 + dy[p_m[ok]]**2
-                        aj2_n  = dx_nn[q_m[ok]]**2 + dy_nn[q_m[ok]]**2
-                        cross_n = dx[p_m[ok]]*dx_nn[q_m[ok]] + dy[p_m[ok]]*dy_nn[q_m[ok]]
+                        ai_n    = dx[p_m[ok]];         aj_n  = dx_nn[q_m[ok]]
+                        bi_n    = dy[p_m[ok]];         bj_n  = dy_nn[q_m[ok]]
+                        ai2_n   = ai_n**2 + bi_n**2
+                        aj2_n   = aj_n**2 + bj_n**2
+                        cross_n = ai_n*aj_n + bi_n*bj_n
                     else:
                         ai_n    = ai[m][ok]
                         aj_n    = a_null[q_m[ok]]
@@ -1820,37 +2246,49 @@ def compute_displacement_correlations(df, PixPerUm, FPS, xC, yC,
                         S_bi_null[tau_idx, k_R] += bi_n.sum()
                         S_bj_null[tau_idx, k_R] += bj_n.sum()
 
-    # ----- compute C and rho -----
-    def _C_rho(S_a, S_b, S_a2, S_b2, S_ab, S_bx, S_by, S_bxb, S_byb, S_n, full):
+    # ----- compute C, rho, C_null, rho_null -----
+
+    def _C_rho(S_ai, S_aj, S_bi, S_bj, S_ai2, S_aj2, S_aiaj, S_n, full):
         """
-        S_a, S_b     : Σ a_i,   Σ a_j      (x-component for 'full', scalar for others)
-        S_bx, S_by   : Σ Δy_i,  Σ Δy_j     (y-component; only used when full=True)
-        S_a2, S_b2   : Σ a_i²,  Σ a_j²     (|Δr|² for 'full', a² for scalars)
-        S_ab         : Σ a_i*a_j or Σ Δr_i·Δr_j
+        C   = <a_i * a_j>  -  <a_i><a_j>
+        Var = <a_i²> - <a_i>²
+        rho = C / sqrt(Var_i * Var_j)
+        For 'full': a = Δx (bias/variance use both Δx and Δy components).
         """
         nn   = np.where(S_n > 0, S_n, np.nan)
-        mi   = S_a  / nn; mj  = S_b  / nn
-        mi2  = S_a2 / nn; mj2 = S_b2 / nn
-        mij  = S_ab / nn
+        mi   = S_ai  / nn;  mj  = S_aj  / nn
+        mi2  = S_ai2 / nn;  mj2 = S_aj2 / nn
+        mij  = S_aiaj / nn
         if full:
-            myi  = S_bx / nn; myj = S_by / nn
-            Ci   = mi2 - mi**2 - myi**2     # <|Δr_i|²> - <Δx_i>² - <Δy_i>²
+            myi  = S_bi / nn;  myj = S_bj / nn
+            Ci   = mi2 - mi**2 - myi**2
             Cj   = mj2 - mj**2 - myj**2
-            C    = mij - mi*mj - myi*myj    # <Δr_i·Δr_j> - <Δx_i><Δx_j> - <Δy_i><Δy_j>
+            C    = mij - mi*mj - myi*myj
         else:
             Ci   = mi2 - mi**2
             Cj   = mj2 - mj**2
             C    = mij - mi*mj
-        rho  = C / np.sqrt(np.abs(Ci * Cj))
-        rho  = np.where(np.isfinite(rho), rho, np.nan)
-        return C, rho
+        denom = np.sqrt(np.abs(Ci * Cj))
+        rho   = np.where(denom > 0, C / denom, np.nan)
+        # M = ½(<a_i²> + <a_j²>) : average raw second moment of the two pair members.
+        # For 'full': mi2 = <|Δr_i|²>, so M = ½(<|Δr_i|²> + <|Δr_j|²>).
+        # For 'r'/'theta': M = ½(<(u·Δr_i)²> + <(u·Δr_j)²>) = per-component MSD on the pair sample.
+        # Uses the raw second moment (not centred), matching the report's definition (section 4.6).
+        M     = 0.5 * (mi2 + mj2)
+        return C, rho, denom, M
 
-    C,      rho      = _C_rho(S_ai,      S_aj,      S_ai2,      S_aj2,
-                               S_aiaj,    S_bi,      S_bj,       S_bi,      S_bj,      S_n,      is_full)
-    C_null, rho_null = _C_rho(S_ai_null,  S_aj_null,  S_ai2_null,  S_aj2_null,
-                               S_aiaj_null, S_bi_null, S_bj_null, S_bi_null, S_bj_null, S_n_null, is_full)
+    C, rho, denom, M = _C_rho(S_ai,      S_aj,      S_bi,      S_bj,
+                                         S_ai2,      S_aj2,      S_aiaj,      S_n,      is_full)
+    C_null, _, _, _  = _C_rho(S_ai_null,  S_aj_null,  S_bi_null,  S_bj_null,
+                                         S_ai2_null,  S_aj2_null,  S_aiaj_null,  S_n_null, is_full)
 
-    return tau_s_arr, R_centers_um, C, rho, C_null
+    # ### TAG_RHO_NULL: rho_null uses the REAL data denominator (same Var_i, Var_j as rho)
+    # so that rho and rho_null are on the same scale and directly comparable.
+    # Using the null denominator would give a different normalisation and make
+    # the two curves harder to compare visually.
+    rho_null = np.where(denom > 0, C_null / denom, np.nan)                  # ### TAG_RHO_NULL
+
+    return tau_s_arr, R_centers_um, C, rho, C_null, rho_null, M
 
 
 # ---- helpers ----------------------------------------------------------------
@@ -1877,8 +2315,10 @@ def _subtract_global_modes(x0, y0, dx, dy, ann_edges_um,
 
     r    = np.hypot(x0, y0)
     ok   = r > 1e-9
-    er_x = np.where(ok, x0 / r, 0.0); er_y = np.where(ok, y0 / r, 0.0)
-    et_x = -er_y;                       et_y =  er_x
+    er_x = np.where(ok, x0 / r, 0.0)
+    er_y = np.where(ok, y0 / r, 0.0)
+    et_x = -er_y
+    et_y =  er_x
 
     d_r = dx * er_x + dy * er_y
     d_t = dx * et_x + dy * et_y
@@ -1886,7 +2326,7 @@ def _subtract_global_modes(x0, y0, dx, dy, ann_edges_um,
     ann_idx = np.clip(np.digitize(r, ann_edges_um) - 1, 0, len(ann_edges_um) - 2)
 
     for a in range(len(ann_edges_um) - 1):
-        m = ann_idx == a
+        m = (ann_idx == a)
         if m.sum() < 2:
             continue
         if correct_r:
@@ -1894,7 +2334,7 @@ def _subtract_global_modes(x0, y0, dx, dy, ann_edges_um,
         if correct_rot:
             d_t[m] -= d_t[m].mean()
 
-    return d_r * er_x + d_t * et_x, d_r * er_y + d_t * et_y
+    return (d_r * er_x) + (d_t * et_x), (d_r * er_y) + (d_t * et_y)
 
 
 def _project(x0, y0, dx, dy, projection):
@@ -1920,8 +2360,6 @@ def _project(x0, y0, dx, dy, projection):
         return dx * (-er_y) + dy * er_x
 
     raise ValueError(f"Unknown projection '{projection}'. Valid: 'full', 'r', 'theta'.")
-    
-    
 
 # %%% Pipeline main functions
 
