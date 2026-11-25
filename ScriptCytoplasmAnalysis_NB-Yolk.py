@@ -1697,9 +1697,10 @@ def plot_smooth_map(
     show_points: bool = True,
     ax: plt.Axes | None = None,
     log_scale: bool = False,
-    display_smooth_parms: bool = True,
+    hide_cbar: bool = False,
     figTitle: str = "Gaussian-weighted smooth map",
     parmName: str = "Smoothed value",
+    display_smooth_parms: bool = True,
     set_parm_lim: list | None = None,
 ) -> plt.Figure:
     """
@@ -1737,9 +1738,12 @@ def plot_smooth_map(
         norm = plt.Normalize(vmin=vmin, vmax=vmax)
  
     ax.pcolormesh(gx, gy, gz, cmap=cmap, shading="auto", norm=norm)
-    fig.colorbar(
-        plt.cm.ScalarMappable(norm=norm, cmap=cmap), ax=ax, fraction = 0.12, shrink=0.9,
-    ).set_label(parmName, fontsize=11)
+    if not hide_cbar:
+        cbar = fig.colorbar(
+            plt.cm.ScalarMappable(norm=norm, cmap=cmap), ax=ax, fraction = 0.10, shrink=0.65,
+        )
+        cbar.set_label(parmName, fontsize=11)
+        cbar.ax.tick_params(labelsize=9)
  
     if contour is not None:
         c = np.asarray(contour)
@@ -1752,71 +1756,140 @@ def plot_smooth_map(
                    norm=norm, s=10, edgecolors="white", linewidths=0.2,
                    zorder=3)
     
-    ax.set_xlabel("x", fontsize=11)
-    ax.set_ylabel("y", fontsize=11)
+    ax.set_xlabel("x")
+    ax.set_ylabel("y")
     if display_smooth_parms:
         Ng = gz.shape[0]
         figTitle = figTitle + f"\n(Smoothing params: σ={sigma}, k={k}, Ng={Ng})"
-    ax.set_title(figTitle, fontsize=12)
+    ax.set_title(figTitle)
  
     # if own_fig:
     #     fig.tight_layout()
     return fig
 
 
-# ---------------------------------------------------------------------------
-# Demo
-# ---------------------------------------------------------------------------
-
-# if __name__ == "__main__":
-#     rng    = np.random.default_rng(42)
-#     Nx, Ny = 200, 160
-#     sigma, k = 15.0, 15
-
-#     # Three dense clusters — deliberately leaving large empty areas inside the
-#     # contour so the threshold effect is clearly visible.
-#     parts = []
-#     for cx, cy, cv in [(40, 30, 10), (140, 80, 50), (100, 130, 90)]:
-#         xy_p = rng.normal(loc=[cx, cy], scale=12, size=(50, 2))
-#         v_p  = rng.normal(loc=cv, scale=5,  size=(50, 1))
-#         parts.append(np.hstack([xy_p, v_p]))
-#     data = np.vstack(parts)
-
-#     # Irregular hexagon contour that encloses all three clusters plus empty space
-#     angles  = np.linspace(0, 2 * np.pi, 7)[:-1]
-#     radii   = np.array([80, 60, 75, 65, 70, 55])
-#     contour = np.column_stack([
-#         Nx / 2 + radii * np.cos(angles),
-#         Ny / 2 + radii * np.sin(angles),
-#     ])
-
-#     thresholds = [0.0, 0.05, 0.15]
-#     titles     = [f"weight_threshold={t}" for t in thresholds]
-
-#     fig, axes = plt.subplots(1, 3, figsize=(18, 6))
-#     for ax, t, title in zip(axes, thresholds, titles):
-#         gx, gy, gz = smooth_map(
-#             data, sigma=sigma, k=k,
-#             grid_resolution=300,
-#             x_range=(0, Nx), y_range=(0, Ny),
-#             contour=contour,
-#             weight_threshold=t,
-#         )
-#         valid = gz[np.isfinite(gz)]
-#         vmin, vmax = valid.min(), valid.max()
-#         ax.pcolormesh(gx, gy, gz, cmap="plasma", shading="auto",
-#                       vmin=vmin, vmax=vmax)
-#         c = contour
-#         ax.plot(np.append(c[:, 0], c[0, 0]), np.append(c[:, 1], c[0, 1]),
-#                 color="white", lw=1.2, ls="--", zorder=4)
-#         ax.scatter(data[:, 0], data[:, 1], c=data[:, 2], cmap="plasma",
-#                    s=30, edgecolors="white", lw=0.4, vmin=vmin, vmax=vmax, zorder=3)
-#         ax.set_title(title, fontsize=11)
-#         ax.set_xlabel("x"); ax.set_ylabel("y")
-
-#     fig.suptitle(f"Effect of weight_threshold  (σ={sigma}, k={k})", fontsize=13)
-#     fig.tight_layout()
-#     plt.show()
+def plot_groups_of_smooth_maps(tifNames, parmList, parmNames, parmBounds,
+                         MODE = 'Panels_Tpf',
+                         sigma = 40, k = 400, Ng = 100):
+    pm.setGraphicOptions(mode='print')
+    #### if MODE == 'Panels_Parms'
+    if MODE == 'Panels_Parms':
+        for i in range(len(tifNames)):
+            j = 0
+            fig, axes = plt.subplots(2, 2, figsize=(7, 7), layout='compressed')
+            axes_f = axes.flatten()
+            for parm, parmName, parmB in zip(parmList, parmNames, parmBounds):
+                ax = axes_f[j]; j += 1
+                tN = tifNames[i]
+                fN = tN.split('.')[0]
+                if 'contrast' in parm:
+                    file_roMSDfits = fN + Dict_fSuf['suf_indivROMsdFits'] + '.csv'
+                    df = pd.read_csv(os.path.join(Dict_rP['dir_ROMsd'], file_roMSDfits), sep='\t')
+                    cmap = 'viridis'
+                else:
+                    file_iMSDfits = fN + Dict_fSuf['suf_indivMsdFits'] + '.csv'
+                    df = pd.read_csv(os.path.join(Dict_rP['dir_indivMsd'], file_iMSDfits), sep='\t')
+                    cmap = 'plasma'
+                
+                file_contour = fN + Dict_fSuf['suf_contour'] + '.npy'
+                contourCell = np.load(os.path.join(Dict_rP['dir_segmentation'], file_contour))[:, ::-1]
+                
+                # DF_FILMS = pd.read_csv(df_films_PATH)
+                Nx = DF_FILMS.loc[DF_FILMS['tN'] == tN, 'im_width']
+                Ny = DF_FILMS.loc[DF_FILMS['tN'] == tN, 'im_height']
+                im_shape = [Ny, Nx]
+                
+                # data = np.vstack(parts)
+                b_inf, b_sup = np.percentile(df[parm].to_numpy(), [2, 98])
+                FILTER = (df[parm] < b_sup) & (df[parm] > b_inf)
+                df_f = df[FILTER]
+                
+                data = np.array([
+                        df_f['x_med_pix'].to_numpy(),
+                        df_f['y_med_pix'].to_numpy(),
+                        df_f[parm].to_numpy(),
+                        ]).T
+                
+                # gx, gy, gz = smooth_map(data, sigma=sigma, k=k, grid_resolution=400,
+                #                         x_range=(0, Nx), y_range=(0, Ny),)
+                # fig = plot_smooth_map(data, gx, gy, gz, sigma=sigma, k=k, cmap="plasma", show_points=False)
+                
+                gx, gy, gz = smooth_map(
+                    data, sigma=sigma, k=k,
+                    grid_resolution=Ng,
+                    x_range=(0, Nx), y_range=(0, Ny),
+                    contour = contourCell,
+                    weight_threshold = 0.6,
+                )
+                
+                plot_smooth_map(data, gx, gy, gz, sigma=sigma, k=k, ax=ax,
+                                contour=contourCell, cmap=cmap, 
+                                show_points=False, log_scale = False, set_parm_lim=parmB,
+                                display_smooth_parms=False,
+                                figTitle = '', parmName = '')
+                ax.set_title(parmName)
+                
+            fig.suptitle(fN + f"\n(Smoothing params: σ={sigma}, k={k}, Ng={Ng})")
+            plt.show()
+    
+    #### if MODE == 'Panels_Tpf'
+    if MODE == 'Panels_Tpf':
+        for parm, parmName, parmB in zip(parmList, parmNames, parmBounds):
+            fig, axes = plt.subplots(1, len(tifNames), figsize=(15, 4), layout='compressed')
+            axes_f = axes
+            for i in range(len(tifNames)):
+                ax = axes_f[i]
+                tN = tifNames[i]
+                fN = tN.split('.')[0]
+                if 'contrast' in parm:
+                    file_roMSDfits = fN + Dict_fSuf['suf_indivROMsdFits'] + '.csv'
+                    df = pd.read_csv(os.path.join(Dict_rP['dir_ROMsd'], file_roMSDfits), sep='\t')
+                    cmap = 'viridis'
+                else:
+                    file_iMSDfits = fN + Dict_fSuf['suf_indivMsdFits'] + '.csv'
+                    df = pd.read_csv(os.path.join(Dict_rP['dir_indivMsd'], file_iMSDfits), sep='\t')
+                    cmap = 'plasma'
+                
+                file_contour = fN + Dict_fSuf['suf_contour'] + '.npy'
+                contourCell = np.load(os.path.join(Dict_rP['dir_segmentation'], file_contour))[:, ::-1]
+                
+                # DF_FILMS = pd.read_csv(df_films_PATH)
+                Nx = DF_FILMS.loc[DF_FILMS['tN'] == tN, 'im_width']
+                Ny = DF_FILMS.loc[DF_FILMS['tN'] == tN, 'im_height']
+                im_shape = [Ny, Nx]
+                
+                # data = np.vstack(parts)
+                b_inf, b_sup = np.percentile(df[parm].to_numpy(), [2, 98])
+                FILTER = (df[parm] < b_sup) & (df[parm] > b_inf)
+                df_f = df[FILTER]
+                
+                data = np.array([
+                        df_f['x_med_pix'].to_numpy(),
+                        df_f['y_med_pix'].to_numpy(),
+                        df_f[parm].to_numpy(),
+                        ]).T
+                
+                # gx, gy, gz = smooth_map(data, sigma=sigma, k=k, grid_resolution=400,
+                #                         x_range=(0, Nx), y_range=(0, Ny),)
+                # fig = plot_smooth_map(data, gx, gy, gz, sigma=sigma, k=k, cmap="plasma", show_points=False)
+                
+                gx, gy, gz = smooth_map(
+                    data, sigma=sigma, k=k,
+                    grid_resolution=Ng,
+                    x_range=(0, Nx), y_range=(0, Ny),
+                    contour = contourCell,
+                    weight_threshold = 0.6,
+                )
+                
+                plot_smooth_map(data, gx, gy, gz, sigma=sigma, k=k, ax=ax,
+                                contour=contourCell, cmap=cmap, 
+                                show_points=False, log_scale = False, set_parm_lim=parmB,
+                                display_smooth_parms=False, hide_cbar = (i != len(tifNames)-1),
+                                figTitle = '', parmName = '')
+                ax.set_title(f'Tpf = {Tpf_label2num(fN)//60} min')
+                
+            fig.suptitle(parmName + f" (Smoothing params: σ={sigma}, k={k}, Ng={Ng})")
+            plt.show()
 
 # %%% Other plots
 
@@ -2795,120 +2868,43 @@ fig = NByolk_explore_zone_shape_plot(
     SHOWPLOT=False, SAVEPLOT = True, figTitle = '26-09-30_D1_Ellipses_1'
 )
 
-# %%%% Maps plotting
+# %%%% GOOD Maps plotting
 
-parm = 'k_highDt'
-parmName = parm # + ' (µm²/s)'
+MODE = 'Panels_Tpf' # 'Panels_Parms', 'Panels_Tpf'
 
-#### ----
-for i in range(len(tifNames)):
+tifNames = [
+    '26-09-30_D1_PreF_C1_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
+    # '26-09-30_D1_PreF_C2_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
+    # '26-09-30_D1_PreF_C3_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
+    '26-09-30_D1_PostF_4min_C4_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
+    # '26-09-30_D1_PostF_6min_C4_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
+    # '26-09-30_D1_PostF_10min_C4_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
+    # '26-09-30_D1_PostF_13min_C4_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
+    '26-09-30_D1_PostF_18min_C4_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
+    # '26-09-30_D1_PostF_25min_C4_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
+    '26-09-30_D1_PostF_30min_C4_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
+    # '26-09-30_D1_PostF_35min_C4_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
+    # '26-09-30_D1_PostF_40min_C4_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
+    '26-09-30_D1_PostF_45min_C4_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
+    # '26-09-30_D1_PostF_52min_C4_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
+    # '26-09-30_D1_PostF_60min_C4_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
+    # '26-09-30_D1_PostF_65min_C4_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
+    # '26-09-30_D1_PostF_70min_C4_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
+    ]
 
-    tN = tifNames[i]
-    fN = tN.split('.')[0]
-    file_iMSDfits = fN + Dict_fSuf['suf_indivMsdFits'] + '.csv'
-    df_iMSDfits = pd.read_csv(os.path.join(Dict_rP['dir_indivMsd'], file_iMSDfits), sep='\t')
-    
-    file_contour = fN + Dict_fSuf['suf_contour'] + '.npy'
-    contourCell = np.load(os.path.join(Dict_rP['dir_segmentation'], file_contour))[:, ::-1]
-    
-    # DF_FILMS = pd.read_csv(df_films_PATH)
-    Nx = DF_FILMS.loc[DF_FILMS['tN'] == tN, 'im_width']
-    Ny = DF_FILMS.loc[DF_FILMS['tN'] == tN, 'im_height']
-    im_shape = [Ny, Nx]
-    
-    #### ----
-    
-    # data = np.vstack(parts)
-    b_sup = np.percentile(df_iMSDfits[parm].to_numpy(), 98)
-    b_inf = np.percentile(df_iMSDfits[parm].to_numpy(), 2)
-    FILTER = (df_iMSDfits[parm] < b_sup) & (df_iMSDfits[parm] > b_inf)
-    df_iMSDfits = df_iMSDfits[FILTER]
-    
-    data = np.array([
-            df_iMSDfits['x_med_pix'].to_numpy(),
-            df_iMSDfits['y_med_pix'].to_numpy(),
-            df_iMSDfits[parm].to_numpy(),
-            ]).T
-    
-    # Parameters
-    sigma = 40
-    k     = 400
-    
-    # gx, gy, gz = smooth_map(data, sigma=sigma, k=k, grid_resolution=400,
-    #                         x_range=(0, Nx), y_range=(0, Ny),)
-    # fig = plot_smooth_map(data, gx, gy, gz, sigma=sigma, k=k, cmap="plasma", show_points=False)
-    
-    gx, gy, gz = smooth_map(
-        data, sigma=sigma, k=k,
-        grid_resolution=100,
-        x_range=(0, Nx), y_range=(0, Ny),
-        contour = contourCell,
-        weight_threshold = 0.6,
-    )
-    
-    plot_smooth_map(data, gx, gy, gz, sigma=sigma, k=k, 
-                    contour=contourCell, cmap="plasma", 
-                    show_points=False, log_scale = False, # set_parm_lim=[0.0025, 0.0075],
-                    figTitle = fN, parmName = parmName)
-    
-    plt.show()
-    
-#### ----
+parmList = ['D_highDt', 'k_highDt', 
+         'contrast_D_highDt', 'contrast_k_highDt']
+parmNames = [r'$D_{\Delta \tau > 1s}$ (µm²/s)', r'$k_{\Delta \tau > 1s}$', 
+             r'Anisotropy on $D_{\Delta \tau > 1s}$', r'Anisotropy on $k_{\Delta \tau > 1s}$']
+parmBounds = [[0.0035, 0.0075], [0.65, 1.05],
+              [-0.2, 0.2], [-0.2, 0.2],]
 
-parm = 'contrast_D_highDt'
-parmName = parm + ' (r)'
+plot_groups_of_smooth_maps(
+    tifNames, parmList, parmNames, parmBounds,
+    MODE = 'Panels_Tpf',
+    sigma = 40, k = 400, Ng = 100)
 
-for i in range(len(tifNames)):
 
-    tN = tifNames[i]
-    fN = tN.split('.')[0]
-    file_roMSDfits = fN + Dict_fSuf['suf_indivROMsdFits'] + '.csv'
-    df_roMSDfits = pd.read_csv(os.path.join(Dict_rP['dir_ROMsd'], file_roMSDfits), sep='\t')
-    
-    file_contour = fN + Dict_fSuf['suf_contour'] + '.npy'
-    contourCell = np.load(os.path.join(Dict_rP['dir_segmentation'], file_contour))[:, ::-1]
-    
-    # DF_FILMS = pd.read_csv(df_films_PATH)
-    Nx = DF_FILMS.loc[DF_FILMS['tN'] == tN, 'im_width']
-    Ny = DF_FILMS.loc[DF_FILMS['tN'] == tN, 'im_height']
-    im_shape = [Ny, Nx]
-    
-    #### ----
-    
-    # data = np.vstack(parts)
-    b_sup = np.percentile(df_roMSDfits[parm].to_numpy(), 98)
-    b_inf = np.percentile(df_roMSDfits[parm].to_numpy(), 2)
-    FILTER = (df_roMSDfits[parm] < b_sup) & (df_roMSDfits[parm] > b_inf)
-    df_roMSDfits = df_roMSDfits[FILTER]
-    
-    data = np.array([
-            df_roMSDfits['x_med_pix'].to_numpy(),
-            df_roMSDfits['y_med_pix'].to_numpy(),
-            df_roMSDfits[parm].to_numpy(),
-            ]).T
-    
-    # Parameters
-    sigma = 40
-    k     = 400
-    
-    # gx, gy, gz = smooth_map(data, sigma=sigma, k=k, grid_resolution=400,
-    #                         x_range=(0, Nx), y_range=(0, Ny),)
-    # fig = plot_smooth_map(data, gx, gy, gz, sigma=sigma, k=k, cmap="plasma", show_points=False)
-    
-    gx, gy, gz = smooth_map(
-        data, sigma=sigma, k=k,
-        grid_resolution=100,
-        x_range=(0, Nx), y_range=(0, Ny),
-        contour = contourCell,
-        weight_threshold = 0.5,
-    )
-    
-    plot_smooth_map(data, gx, gy, gz, sigma=sigma, k=k, 
-                    contour=contourCell, cmap="plasma", 
-                    show_points=False, log_scale = False, #set_parm_lim=[0.0025, 0.0075],
-                    figTitle = fN, parmName = parmName)
-    
-    plt.show()
 
 # -----------------------------------------------------------------------------
 # %%% 26-09-30_D2
