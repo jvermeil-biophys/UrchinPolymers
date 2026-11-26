@@ -75,7 +75,8 @@ Dict_pP = {
     'dir_segmentFig': os.path.join(FIG_DIR, 'Segmentation'),
     'dir_globalModesFig': os.path.join(FIG_DIR, 'Global modes QC'),
     'dir_diverseFig': os.path.join(FIG_DIR, 'Diverse'),
-    'dir_corrCoefs': os.path.join(FIG_DIR, 'Correlations-coefs')
+    'dir_corrCoefs': os.path.join(FIG_DIR, 'Correlations-coefs'),
+    'dir_maps': os.path.join(FIG_DIR, 'Spatial-maps'),
     }
 
 df_cells_PATH = os.path.join(RES_DIR, 'SPT_Data_Cells.csv')
@@ -1769,8 +1770,9 @@ def plot_smooth_map(
 
 
 def plot_groups_of_smooth_maps(tifNames, parmList, parmNames, parmBounds,
-                         MODE = 'Panels_Tpf',
-                         sigma = 40, k = 400, Ng = 100):
+                               MODE = 'Panels_Tpf',
+                               sigma = 40, k = 400, Ng = 100,
+                               PLOTSAVE = False, figDir = Dict_pP['dir_maps']):
     pm.setGraphicOptions(mode='print')
     #### if MODE == 'Panels_Parms'
     if MODE == 'Panels_Parms':
@@ -1829,8 +1831,13 @@ def plot_groups_of_smooth_maps(tifNames, parmList, parmNames, parmBounds,
                                 figTitle = '', parmName = '')
                 ax.set_title(parmName)
                 
-            fig.suptitle(fN + f"\n(Smoothing params: σ={sigma}, k={k}, Ng={Ng})")
-            plt.show()
+        fig.suptitle(fN + f"\n(Smoothing params: σ={sigma}, k={k}, Ng={Ng})")
+        plt.show()
+        
+        if PLOTSAVE:
+            figName_i = '_'.join(fN.split('_')[:5]) + '.png'
+            figPath = os.path.join(figDir, figName_i)
+            fig.savefig(figPath, dpi=400)
     
     #### if MODE == 'Panels_Tpf'
     if MODE == 'Panels_Tpf':
@@ -1890,6 +1897,11 @@ def plot_groups_of_smooth_maps(tifNames, parmList, parmNames, parmBounds,
                 
             fig.suptitle(parmName + f" (Smoothing params: σ={sigma}, k={k}, Ng={Ng})")
             plt.show()
+            
+            if PLOTSAVE:
+                figName_i = '_'.join(fN.split('_')[:2]) + '_' + parm + '.png'
+                figPath = os.path.join(figDir, figName_i)
+                fig.savefig(figPath, dpi=400)
 
 # %%% Other plots
 
@@ -2441,6 +2453,51 @@ fig = NByolk_explore_zone_shape_plot(
 )
 
 
+# %%%% Maps plotting
+
+MODE = 'Panels_Tpf' # 'Panels_Parms', 'Panels_Tpf'
+
+tifNames = [
+    # '26-10-07_D1-L_PreF_0min_C1_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
+    # '26-10-07_D1-L_PreF_0min_C2_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
+    # '26-10-07_D1-L_PreF_0min_C3_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
+    '26-10-07_D1-L_PostF_3min_C4_20fps_Texp50ms_L20p1_CSU642.ome.tif',
+    # '26-10-07_D1-L_PostF_7min_C4_20fps_Texp50ms_L30p1_CSU642.ome.tf2',
+    # '26-10-07_D1-L_PostF_12min_C4_20fps_Texp50ms_L30p1_CSU642.ome.tf2',
+    '26-10-07_D1-L_PostF_17min_C4_20fps_Texp50ms_L30p1_CSU642.ome.tf2',
+    # '26-10-07_D1-L_PostF_20min_C4_20fps_Texp50ms_L30p1_CSU642.ome.tf2',
+    # '26-10-07_D1-L_PostF_25min_C4_20fps_Texp50ms_L30p1_CSU642.ome.tf2',
+    '26-10-07_D1-L_PostF_29min_C4_20fps_Texp50ms_L30p1_CSU642.ome.tf2',
+    # '26-10-07_D1-L_PostF_35min_noco_C4_20fps_Texp50ms_L30p1_CSU642.ome.tf2',
+    '26-10-07_D1-L_PostF_38min_noco_C4_20fps_Texp50ms_L30p1_CSU642.ome.tf2',
+    # '26-10-07_D1-L_PostF_45min_nocoWashed_C4_20fps_Texp50ms_L30p1_CSU642.ome.tf2',
+    # '26-10-07_D1-L_PostF_51min_nocoWashed2_C4_20fps_Texp50ms_L30p1_CSU642.ome.tf2',
+    '26-10-07_D1-L_PostF_55min_nocoWashed2_C4_20fps_Texp50ms_L30p1_CSU642.ome.tf2',
+    # '26-10-07_D1-L_PostF_60min_nocoWashed2_C4_20fps_Texp50ms_L30p1_CSU642.ome.tf2',
+    # '26-10-07_D1-L_PostF_65min_nocoWashed2_C4_20fps_Texp50ms_L30p1_CSU642.ome.tf2',
+    # '26-10-07_D1-L_PostF_70min_nocoWashed2_C4_20fps_Texp50ms_L30p1_CSU642.ome.tf2',
+    # '26-10-07_D1-L_PostF_75min_nocoWashed2_C4_20fps_Texp50ms_L30p1_CSU642.ome.tf2',
+    # '26-10-07_D1-L_PostF_80min_nocoWashed2_C4_20fps_Texp50ms_L30p1_CSU642.ome.tf2',
+    # '26-10-07_D1-L_PostF_85min_nocoWashed2_C4_20fps_Texp50ms_L30p1_CSU642.ome.tf2',
+    # '26-10-07_D1-L_PostF_90min_nocoWashed3_C4_20fps_Texp50ms_L30p1_CSU642.ome.tf2',
+    # '26-10-07_D1-L_PostF_95min_nocoWashed3_C4_20fps_Texp50ms_L30p1_CSU642.ome.tf2',
+    # '26-10-07_D1-L_PostF_100min_nocoWashed3_C4_20fps_Texp50ms_L30p1_CSU642.ome.tf2',
+    # '26-10-07_D1-L_PostF_124min_nocoWashed3_C4_20fps_Texp50ms_L30p1_CSU642.ome.tf2',
+    ]
+
+parmList = ['D_highDt', 'k_highDt', 
+         'contrast_D_highDt', 'contrast_k_highDt']
+parmNames = [r'$D_{\Delta \tau > 1s}$ (µm²/s)', r'$k_{\Delta \tau > 1s}$', 
+             r'Anisotropy on $D_{\Delta \tau > 1s}$', r'Anisotropy on $k_{\Delta \tau > 1s}$']
+parmBounds = [[0.0045, 0.0075], [0.65, 1.05],
+              [-0.2, 0.2], [-0.2, 0.2],]
+
+plot_groups_of_smooth_maps(
+    tifNames, parmList, parmNames, parmBounds,
+    MODE = 'Panels_Tpf', PLOTSAVE = True, 
+    sigma = 40, k = 400, Ng = 100)
+
+
 # -----------------------------------------------------------------------------
 # %%% 26-10-07_D1-s - ctrl
 
@@ -2868,7 +2925,7 @@ fig = NByolk_explore_zone_shape_plot(
     SHOWPLOT=False, SAVEPLOT = True, figTitle = '26-09-30_D1_Ellipses_1'
 )
 
-# %%%% GOOD Maps plotting
+# %%%% Maps plotting
 
 MODE = 'Panels_Tpf' # 'Panels_Parms', 'Panels_Tpf'
 
@@ -2901,7 +2958,7 @@ parmBounds = [[0.0035, 0.0075], [0.65, 1.05],
 
 plot_groups_of_smooth_maps(
     tifNames, parmList, parmNames, parmBounds,
-    MODE = 'Panels_Tpf',
+    MODE = 'Panels_Tpf', PLOTSAVE = True, 
     sigma = 40, k = 400, Ng = 100)
 
 
@@ -3029,6 +3086,43 @@ fig = NByolk_explore_zone_shape_plot(
     Dict_fSuf, List_Df_Geom, Dict_AngleDiffs, AR_threshold=1.5, 
     SHOWPLOT=False, SAVEPLOT = True, figTitle = '26-09-30_D2-R_Ellipses_1'
 )
+
+# %%%% Maps plotting
+
+MODE = 'Panels_Tpf' # 'Panels_Parms', 'Panels_Tpf'
+
+tifNames = [
+    '26-09-30_D2-R_PreF_C3_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
+    # '26-09-30_D2-R_PreF_C4_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
+    '26-09-30_D2-R_PostF_4min_C5_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
+    # '26-09-30_D2-R_PostF_6min_C5_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
+    # '26-09-30_D2-R_PostF_8min_C5_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
+    # '26-09-30_D2-R_PostF_12min_C5_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
+    '26-09-30_D2-R_PostF_15min_C5_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
+    # '26-09-30_D2-R_PostF_20min_C5_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
+    '26-09-30_D2-R_PostF_25min_C5_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
+    # '26-09-30_D2-R_PostF_30min_C5_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
+    # '26-09-30_D2-R_PostF_36min_C5_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
+    # '26-09-30_D2-R_PostF_40min_C5_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
+    # '26-09-30_D2-R_PostF_45min_C5_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
+    '26-09-30_D2-R_PostF_50min_C5_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
+    # '26-09-30_D2-R_PostF_53min_C5_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
+    # '26-09-30_D2-R_PostF_55min_C5_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
+    # '26-09-30_D2-R_PostF_60min_C5_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
+    # '26-09-30_D2-R_PostF_65min_C5_20fps_Texp50ms_L20p1_CSU642.ome.tf2',
+    ]
+
+parmList = ['D_highDt', 'k_highDt', 
+         'contrast_D_highDt', 'contrast_k_highDt']
+parmNames = [r'$D_{\Delta \tau > 1s}$ (µm²/s)', r'$k_{\Delta \tau > 1s}$', 
+             r'Anisotropy on $D_{\Delta \tau > 1s}$', r'Anisotropy on $k_{\Delta \tau > 1s}$']
+parmBounds = [[0.004, 0.01], [0.65, 1.05],
+              [-0.2, 0.2], [-0.2, 0.2],]
+
+plot_groups_of_smooth_maps(
+    tifNames, parmList, parmNames, parmBounds,
+    MODE = 'Panels_Tpf', PLOTSAVE = True, 
+    sigma = 40, k = 400, Ng = 100)
 
 
 
@@ -3206,12 +3300,17 @@ for i in range(len(df_f)):
     df_f.loc[i, 'tpf_norm'] = tpf_norm
 
 
-fig, ax = plt.subplots(1, 1)
+
 
 metric_T = 'tpf_norm'
-metric_D = 'pmsd_D_highDt'
-metric_D = 'contrast_D_highDt'
+metric_D = 'msd_D_highDt'
+# metric_D = 'contrast_D_highDt'
 normalize = False
+
+fig, ax = plt.subplots(1, 1)
+ax.axvline(1, ls='-', color='dimgray', lw=0.75, alpha=0.75)
+ax.axvline(2, ls='-', color='dimgray', lw=0.75, alpha=0.75)
+ax.axvline(3, ls='-', color='dimgray', lw=0.75, alpha=0.75)
 
 Mid_groups = df_f.groupby('Mid')
 for mid, df_c in Mid_groups:
@@ -3236,7 +3335,10 @@ plt.show()
 
 
 
-
+parmList = ['D_highDt', 'k_highDt', 
+         'contrast_D_highDt', 'contrast_k_highDt']
+parmNames = [r'$D_{\Delta \tau > 1s}$ (µm²/s)', r'$k_{\Delta \tau > 1s}$', 
+             r'Anisotropy on $D_{\Delta \tau > 1s}$', r'Anisotropy on $k_{\Delta \tau > 1s}$']
 
 
 
